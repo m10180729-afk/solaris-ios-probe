@@ -9,7 +9,7 @@
 1. ZIP을 Windows에서 풀고 그 폴더의 `UPLOAD_GIT_BASH.sh`를 Git Bash로 실행합니다.
    이 스크립트는 기존 GitHub 저장소를 새 작업 폴더에 복제하고 수정 소스를 일반 push합니다.
    기존 Downloads 작업 폴더는 건드리지 않습니다. GitHub 로그인 창이 나오면 본인 계정으로 로그인합니다.
-2. GitHub Actions가 자동으로 코드 검사 → 브라우저 영상 시험 → Swift 검사 → iOS 빌드를 실행합니다.
+2. GitHub Actions가 자동으로 코드 검사 → Swift 검사 → iOS 빌드를 실행합니다.
 3. 초록색 성공 후 `Solaris-0.3.1-app-and-receiver` 결과물을 내려받아 압축을 풉니다.
    `SolarisProbe-resign.ipa`를 기존 방식으로 AltStore에 설치합니다. 앱 첫 화면의 **0.3.1**을 확인합니다.
 4. Windows에서 함께 제공한 `Solaris-Windows-0.3.1.html` 또는 소스의
