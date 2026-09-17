@@ -43,6 +43,10 @@ struct P2PBroadcastConfig: Codable {
     let publishableKey: String
     let roomID: String
 
+    // A separate transport room prevents the old WebView callee from answering
+    // offers intended for the native ReplayKit extension.
+    var signalingRoom: String { roomID + "-screen-v031" }
+
     var url: URL? {
         guard let parts = URLComponents(string: projectURL),
               parts.scheme == "https", let host = parts.host,
@@ -53,9 +57,20 @@ struct P2PBroadcastConfig: Codable {
     }
 
     var valid: Bool {
-        url != nil && publishableKey.hasPrefix("sb_publishable_") &&
+        url != nil && publishableKey.range(of: "^sb_publishable_[A-Za-z0-9_-]+$", options: .regularExpression) != nil &&
             roomID.range(of: "^[A-Za-z0-9-]{3,64}$", options: .regularExpression) != nil
     }
+}
+
+struct BroadcastDiagnostics: Codable {
+    var version = "0.3.1"
+    var updatedAt = Date().timeIntervalSince1970
+    var room = ""
+    var sessionID = ""
+    var state = "방송 시작 대기"
+    var ice = "new"
+    var framesSubmitted = 0
+    var lastError = ""
 }
 
 struct ProbeStats: Codable {
@@ -81,6 +96,7 @@ enum ProbeShared {
     static let configName = "probe-config.json"
     static let p2pConfigName = "p2p-broadcast-config.json"
     static let statsName = "probe-stats.json"
+    static let diagnosticsName = "screen-diagnostics-v031.json"
     // AltStore may rewrite App Group identifiers. Prefer the actual profile's
     // entitlements, not a hard-coded Team ID. A profile is NOT proof that access works.
     static func groupCandidates() -> [String] {

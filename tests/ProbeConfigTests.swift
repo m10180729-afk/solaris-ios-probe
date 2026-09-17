@@ -29,6 +29,16 @@ struct ProbeConfigTests {
         precondition(!P2PBroadcastConfig(projectURL: "https://abcdefghijklmnop.supabase.co",
                                          publishableKey: "sb_secret_do-not-use",
                                          roomID: "solaris-test-3").valid)
+        precondition(!P2PBroadcastConfig(projectURL: "https://test.supabase.co",
+                                         publishableKey: "sb_publishable_",
+                                         roomID: "solaris-test-3").valid)
+        let screen = P2PBroadcastConfig(projectURL: "https://test.supabase.co",
+                                        publishableKey: key, roomID: "same-room")
+        precondition(screen.signalingRoom == "same-room-screen-v031")
+        let report = BroadcastDiagnostics()
+        let encoded = try! JSONEncoder().encode(report)
+        precondition(try! JSONDecoder().decode(BroadcastDiagnostics.self, from: encoded).version == "0.3.1")
+        precondition(!String(data: encoded, encoding: .utf8)!.contains(key))
         print("PASS: shared Swift LAN and P2P configuration validation (not an iOS device test)")
     }
 }

@@ -11,7 +11,7 @@ GROUP = "group.org.solaris.probe"
 
 def check_sources():
     for path in sorted(ROOT.rglob("*.py")):
-        if not {"build", "dist", "__pycache__"}.intersection(path.relative_to(ROOT).parts):
+        if not {"build", "dist", "__pycache__", "node_modules"}.intersection(path.relative_to(ROOT).parts):
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for name in ("App", "Broadcast"):
         info = plistlib.loads((ROOT / f"ios/{name}/Info.plist").read_bytes())

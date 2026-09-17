@@ -1,70 +1,44 @@
-# Solaris — 3A WebRTC 화면공유 시험 프로젝트
+# Solaris 0.3.1 — 화면 방송과 자동 진단
 
-현재 상태: **ReplayKit → WebRTC 화면 송신 소스 준비 / iOS 빌드·무료 서명·실기기 송출 미검증**.
-이 ZIP은 완성 앱이나 바로 설치할 IPA가 아닙니다. 구체적인 로컬 검사 결과는 `docs/VALIDATION.md`에서 확인하세요.
+아이패드 ReplayKit 화면을 Windows 브라우저로 받는 시험용 수정 소스입니다.
+**소스 ZIP은 설치용 IPA가 아닙니다.** GitHub에서 한 번 빌드한 뒤 결과 IPA를 AltStore로 재서명해 설치합니다.
+이번 버전의 iOS 빌드·설치·실기기 영상 전송은 아직 확인하지 않았습니다.
 
-## 이번에 확인하는 것
+## 가장 짧은 진행 순서
 
-1. 무료 Apple 계정으로 본체 앱과 ReplayKit 방송 확장을 함께 설치할 수 있는가?
-2. 앱과 확장이 App Group(공유 설정 공간)을 실제로 읽고 쓸 수 있는가?
-3. 다른 앱을 열어도 iPad 화면이 같은 집의 Windows PC에 전달되는가?
-4. 화면 회전, 방송 종료·재시작이 정상인가?
+1. ZIP을 Windows에서 풀고 그 폴더의 `UPLOAD_GIT_BASH.sh`를 Git Bash로 실행합니다.
+   이 스크립트는 기존 GitHub 저장소를 새 작업 폴더에 복제하고 수정 소스를 일반 push합니다.
+   기존 Downloads 작업 폴더는 건드리지 않습니다. GitHub 로그인 창이 나오면 본인 계정으로 로그인합니다.
+2. GitHub Actions가 자동으로 코드 검사 → 브라우저 영상 시험 → Swift 검사 → iOS 빌드를 실행합니다.
+3. 초록색 성공 후 `Solaris-0.3.1-app-and-receiver` 결과물을 내려받아 압축을 풉니다.
+   `SolarisProbe-resign.ipa`를 기존 방식으로 AltStore에 설치합니다. 앱 첫 화면의 **0.3.1**을 확인합니다.
+4. Windows에서 함께 제공한 `Solaris-Windows-0.3.1.html` 또는 소스의
+   `ios/App/Resources/solaris-p2p.html`을 Chrome으로 엽니다.
+5. 양쪽 URL·Publishable key·방 ID를 맞추고, **iPad 설정 저장 → Windows 수신 시작 → iPad 방송 시작**.
+   별도 P2P 테스트나 PC IP/임시 토큰 입력은 없습니다.
 
-**이번 미리보기는 긴 변 최대 720픽셀, 최대 5fps, 음성 전송 없음**입니다.
-720p 영상이나 1080p60 WebRTC 구현이 아닙니다. 마이크·앱 오디오는 콜백 횟수만 기록합니다.
-일반 통화, 다른 집과의 연결, Windows 화면 송출, 채팅, 자동 재연결, EXE/APK는 아직 구현하지 않았습니다.
-1단계가 통과하기 전에는 이 기능들을 개발하지 않습니다.
+새 Windows 수신기는 기존 0.3.0 앱과 연결되지 않습니다. 앱·수신기를 함께 교체하세요.
+자세한 설치 이후 순서는 [화면 방송 안내](docs/STEP3_WEBRTC_SCREEN_KO.md)를 보세요.
 
-## 지금 할 일
+## 수정 내용
 
-밖에 있다면 이 파일만 보관하세요. 집에 가면 `docs/START_HERE_KO.md`부터 읽으세요.
+- 웹 테스트 callee와 방송 확장이 같은 offer에 응답하던 경로 분리.
+- 화면 전용 방 접미사, 연결마다 새 세션 ID, 송신기 출처 검사.
+- SDP 전 도착한 ICE 대기, 중복 answer 무시, 중단한 세션의 늦은 응답 무시.
+- 신호 서버 HTTP 오류, 확장 상태, 입력 프레임, 수신·디코딩 프레임, 재생 상태를 자동 표시.
+- 아이패드 메인 화면에서 설정·방송·진단을 함께 처리. 옛 P2P 테스트와 LAN 입력 제거.
+- Publishable key는 apikey 헤더로 전달. 진단 복사에 설정 키를 포함하지 않음.
+- 캡처 입력 최대 15fps, 긴 변 최대 1280px 목표. 음성·1080p60·TURN·자동 재연결 미포함.
 
-- 필요한 것: Windows PC, iPad, 데이터 연결 가능한 USB 케이블, 신뢰하는 집 Wi-Fi.
-- 계정: 무료 GitHub 계정(클라우드 빌드), 일반 Apple 계정(내 PC에서 직접 서명).
-- Mac을 소유할 필요는 없지만 **컴파일에는 macOS/Xcode 환경이 필요**합니다. GitHub 표준 macOS 실행 환경을 후보로 준비했습니다.
-- 저장소 공개, 계정 가입, 빌드 실행, 외부 업로드는 수행하지 않았습니다. 공개 여부는 먼저 결정해야 합니다.
-- Apple 비밀번호·인증번호·복구 키는 ChatGPT, GitHub 코드, Actions 비밀변수에 넣지 마세요.
+Supabase는 연결 정보만 교환합니다. 영상은 WebRTC로 전달합니다.
+이것은 기존 익명 신호 테이블을 사용하는 개인 시험판이며 사용자 인증/방 접근 제어를 갖춘 배포용 서비스가 아닙니다.
+TURN이 없는 상태에서는 일부 네트워크에서 직접 연결이 실패할 수 있습니다.
 
-## 파일 구성
+## 자동 검사와 실제 확인의 경계
 
-| 경로 | 역할 |
-| --- | --- |
-| `ios/App/` | 연결 설정과 Apple 방송 시작 버튼을 보여 주는 시험 앱 |
-| `ios/Broadcast/` | 다른 앱을 사용하는 동안 화면을 받는 ReplayKit 확장 |
-| `ios/Shared/` | LAN 주소 검증, App Group 설정·통계 공유 |
-| `ios/Config/` | 앱·확장 공통 권한 요청 |
-| `ios/project.yml` | XcodeGen 프로젝트 생성 설정 |
-| `receiver/` | Python 수신기, PC 브라우저 미리보기, 자동 테스트 |
-| `scripts/` | 구조 검사, macOS 빌드, 소스 압축 도구 |
-| `tests/` | macOS에서 실행할 Swift 설정 검증 |
-| `.github/workflows/` | 수동 실행만 가능한 클라우드 빌드 절차 |
-| `docs/` | 초보자 설치 안내·검증 결과·실기기 기록표 |
+[검사 결과](docs/VALIDATION.md)에 실행한 검사와 실행하지 못한 검사를 나누어 기록했습니다.
+빌드 통과만으로 실제 아이패드 화면 송출을 보장하지 않습니다.
+설치 후 한 번 방송하면 Windows가 여섯 항목을 자동 진단합니다.
+문제가 남으면 같은 설정을 반복하기보다 **진단 한 번에 복사** 결과를 전달하세요.
 
-기존 로고 원본을 앱 안에만 사용했습니다. 아이콘 단순화·정식 홈 화면 아이콘·완성 UI는 후속 단계입니다.
-
-## 안전과 비용
-
-- 임시 토큰을 알아야 화면을 보낼 수 있고 볼 수 있습니다. 화면은 PC 메모리에만 두며 파일로 저장하지 않습니다.
-- **LAN 시험은 HTTP 평문입니다. 토큰은 암호화가 아닙니다.** 공공/학교 Wi-Fi, 인터넷 노출, 포트포워딩에 사용하지 마세요.
-- 화면에는 알림·개인정보가 보일 수 있습니다. 집중 모드를 켜고 민감한 앱을 열지 마세요.
-- PC 미리보기 창을 닫아도 iPad 방송은 별도로 종료해야 합니다.
-- App Group 접근 실패는 이 시험 구조의 장애입니다. ReplayKit 전체가 무료 계정에서 원천 불가능하다는 증거로 단정하지 않습니다. 정확한 오류를 보고 다음 대안을 판단합니다.
-- 무료 설치 앱은 보통 7일마다 서명 갱신이 필요하며 앱 개수·App ID 등의 제한이 있습니다. 실제 iPadOS 27 호환성은 검증 대상입니다. [AltStore 안내](https://faq.altstore.io/altstore-classic/your-altstore)
-- 공개 저장소의 표준 GitHub 실행 환경은 무료입니다. 비공개 저장소는 사용량 한도, 결과물 저장은 별도 한도를 확인해야 합니다. 이 절차는 고급 유료 러너를 사용하지 않습니다. [GitHub 요금](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
-- GitHub 빌드 환경은 앱을 만드는 컴퓨터입니다. 통화 서버로 사용하는 것이 아닙니다. 이번 단계는 Supabase·TURN·TestFlight·유료 개발자 가입이 필요하지 않습니다.
-
-## 3A 추가 기능
-
-- iOS Broadcast Upload Extension이 WebRTC 153 XCFramework를 사용합니다.
-- ReplayKit의 화면 `CMSampleBuffer`를 WebRTC 영상 프레임으로 변환합니다.
-- Supabase REST API로 기존 `solaris_signals` 테이블의 offer/answer/ICE를 교환합니다.
-- Windows의 `solaris-p2p.html`은 원격 영상 트랙을 표시합니다.
-- 음성, TURN, 자동 친구 초대는 아직 포함하지 않습니다.
-
-자세한 시험 순서는 `docs/STEP3_WEBRTC_SCREEN_KO.md`를 확인하세요.
-
-## 다음 단계
-
-`docs/DEVICE_TEST_KO.md`를 채워 실제 결과를 전달해 주세요. 실패하면 1단계 원인부터 수정합니다.
-통과 후에만 2인 WebRTC 음성통화, 이후 양방향 화면공유·1080p60 측정으로 진행합니다.
-여기서 캡처 FPS가 60으로 보이더라도 실제 1080p60 전송을 확인한 것이 아닙니다.
+기존 LAN 수신기와 과거 문서는 개발 참고용으로 남아 있습니다. 이번 사용 절차에는 포함하지 않습니다.

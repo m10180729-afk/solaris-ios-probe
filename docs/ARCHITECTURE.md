@@ -1,3 +1,8 @@
+# 이전 버전 설계 기록
+
+0.3.1의 화면 송신/수신 변경은 README와 STEP3_WEBRTC_SCREEN_KO.md를 우선합니다.
+이 문서의 LAN/2A 절차는 현재 앱 사용 절차가 아닙니다.
+
 # Probe 1A: intentionally limited capture path
 
 The SwiftUI container app writes a validated RFC1918 IPv4 endpoint and a per-run

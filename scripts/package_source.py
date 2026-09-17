@@ -1,24 +1,28 @@
-"""Package source and instructions only; no credentials, generated builds or caches."""
+"""Package the known source paths at ZIP root, without credentials or generated files."""
 from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT.parent / "Solaris-iOS-Probe-0.1.0.zip"
+OUTPUT = ROOT.parent / "Solaris-0.3.1.zip"
 SKIP = {".git", "__pycache__", "build", "dist", "node_modules"}
+TOP = {".github", "ios", "receiver", "scripts", "tests", "docs",
+       "README.md", ".gitignore", "UPLOAD_GIT_BASH.sh"}
 
-if OUTPUT.exists():
-    raise SystemExit(f"Already exists; move the old archive before packaging: {OUTPUT}")
-with zipfile.ZipFile(OUTPUT, "x", zipfile.ZIP_DEFLATED) as archive:
+with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(ROOT.rglob("*")):
         relative = path.relative_to(ROOT)
-        if not path.is_file() or path.is_symlink() or SKIP.intersection(relative.parts):
+        if relative.parts[0] not in TOP or not path.is_file() or path.is_symlink() or SKIP.intersection(relative.parts):
             continue
         if any(part.endswith((".xcodeproj", ".xcworkspace")) for part in relative.parts):
             continue
         if path.suffix in {".pyc", ".ipa", ".p12", ".mobileprovision"} or path.name.startswith(".env"):
             continue
-        archive.write(path, Path("Solaris-iOS-Probe") / relative)
+        archive.write(path, relative)
+    archive.write(ROOT / "ios/App/Resources/solaris-p2p.html", "Solaris-Windows-0.3.1.html")
 with zipfile.ZipFile(OUTPUT) as archive:
     assert archive.testzip() is None
+    assert ".github/workflows/build-ios-probe.yml" in archive.namelist()
     print(f"Packaged {len(archive.namelist())} files: {OUTPUT}")
-print(f"Size: {OUTPUT.stat().st_size} bytes")
+receiver = ROOT.parent / "Solaris-Windows-0.3.1.html"
+receiver.write_bytes((ROOT / "ios/App/Resources/solaris-p2p.html").read_bytes())
+print(f"Windows receiver: {receiver}")

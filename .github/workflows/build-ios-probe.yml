@@ -1,7 +1,9 @@
 name: Build Solaris iOS Probe
 
-# Manual only. Uploading source does not automatically trigger a build.
+# One push runs the checks and produces the matching app + Windows receiver.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -21,11 +23,20 @@ jobs:
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen --version
           xcodebuild -version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Validate source and receiver
         run: |
           python3 scripts/check_project.py
           python3 -m unittest discover -s receiver -p 'test_*.py' -v
           node scripts/check_viewer.mjs
+          node --test tests/screen_receiver.test.mjs
+      - name: Test real browser video receiving and restart
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
+          npx playwright install chromium
+          node scripts/screen_browser_test.mjs
       - name: Test shared configuration validation
         run: |
           mkdir -p build
@@ -36,7 +47,10 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: SolarisProbe-resign-required
-          path: dist/SolarisProbe-resign.ipa
+          name: Solaris-0.3.1-app-and-receiver
+          path: |
+            dist/SolarisProbe-resign.ipa
+            dist/Solaris-Windows-0.3.1.html
+            dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

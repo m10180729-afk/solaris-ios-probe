@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 build/
 dist/
+node_modules/
 *.xcodeproj/
 *.xcworkspace/
 *.ipa
@@ -11,4 +12,3 @@ dist/
 .env
 .env.*
 !.env.example
-

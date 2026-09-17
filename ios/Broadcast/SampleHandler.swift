@@ -36,7 +36,8 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                 return
             }
             directory = group.url
-            config = value?.valid == true ? value : nil
+            // Screen broadcasting takes priority; do not also send to a stale LAN receiver.
+            config = p2p?.valid == true ? nil : (value?.valid == true ? value : nil)
             stats = ProbeStats()
             stats.state = "방송 중"
             started = ProcessInfo.processInfo.systemUptime
@@ -55,7 +56,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
             settings.connectionProxyDictionary = [:]
             network = URLSession(configuration: settings, delegate: self, delegateQueue: nil)
             if let p2p, p2p.valid {
-                p2pSender = BroadcastWebRTCSender(config: p2p)
+                p2pSender = BroadcastWebRTCSender(config: p2p, directory: group.url)
                 p2pSender?.start()
             }
             active = true
@@ -77,7 +78,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                     stats.sourceHeight = CVPixelBufferGetHeight(buffer)
                 }
                 let now = ProcessInfo.processInfo.systemUptime
-                if now - lastFrame >= 0.2 {
+                if config != nil, now - lastFrame >= 0.2 {
                     gate.lock()
                     let occupied = busy
                     if !occupied { busy = true }

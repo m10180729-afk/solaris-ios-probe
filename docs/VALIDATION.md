@@ -1,57 +1,43 @@
-# 확인 결과
+# 0.3.1 검사 범위
 
-이 결과는 제공된 Linux 개발 환경의 검사입니다. **Windows 실기기 또는 iOS 실기기 검사로 해석하면 안 됩니다.**
+## 이 작업 환경에서 실행
 
-| 검사 | 결과 | 의미 |
-| --- | --- | --- |
-| Python 수신기 자동 테스트 | 9개 통과 | HTTP 인증·요청 검증·이미지 바이트 전달·상태 관리 |
-| 실제 JPEG 파일 전송·반환 | 바이트 일치 확인 | 로고 원본의 전송 무결성. 브라우저 디코딩/화질 확인은 아님 |
-| Python 문법 검사 | 통과 | 포함된 Python 소스 파싱 |
-| Info.plist / entitlements 검사 | 통과 | XML 파싱, App Group 문자열 및 방송 확장 설정 일관성 |
-| 프로젝트/워크플로 YAML | 파싱·선택 설정 검사 통과 | XcodeGen 생성 또는 GitHub 실행 성공을 뜻하지 않음 |
-| PC 미리보기 JavaScript | 문법 검사 통과 | 브라우저 실행·배치 확인은 아님 |
-| macOS 빌드 스크립트 | Bash 문법 검사 통과 | 실제 빌드/서명은 미실행 |
-| 브라우저 자동 시험 | 미실행 완료 불가 | Playwright 모듈은 있으나 Chromium 실행 파일이 없어서 시작 실패 |
-| Swift 공통 설정 테스트 | 미실행 | 현재 환경에 Swift 컴파일러 없음. macOS 워크플로에 포함 |
-| XcodeGen / iOS 컴파일 / IPA 패키징 | 미실행 | 현재 환경에 macOS/Xcode 없음 |
-| 무료 계정 재서명 / iPadOS 27 설치 | 미실행 | 본인 PC·Apple 계정·기기 필요 |
-| ReplayKit 송출 / 음성 / FPS / 발열 | 미실행 | 실제 기기와 후속 단계 필요 |
+- 수신기 신호·세션·재시작 자동 테스트 12개 통과.
+  초기 ICE, 중복 answer, 잘못된 송신기/세션/프로토콜, 중첩 polling,
+  중단 중 HTTP 응답, POST 실패, 재시작, 스트림 없는 영상 트랙,
+  디코딩 기반 성공 판단, 진단 키 제외, 설정 검증, offer→ICE 순서를 검사합니다.
+- Python 소스/Info.plist/App Group/프로젝트 필수 파일 구조 검사.
+- 기존 LAN 수신기 회귀 검사 9개 통과. 합계 21개 자동 테스트 통과.
+- JavaScript/Bash 문법 검사 통과.
 
-## 수신기 테스트 범위
+## GitHub에서 한 번에 실행하도록 구성
 
-1. 토큰 없는 조회/전송 차단, 미리보기 HTML 제공, 캐시 차단 헤더.
-2. 프레임 전송과 통계 반환, 오래된 화면 비우기.
-3. 잘못된 요청, MIME, 크기, 경로 거부.
-4. 다른 Origin/Host 및 동시에 다른 송출 세션 차단.
-5. LAN/loopback 주소 허용과 외부/와일드카드 바인딩 거부.
-6. 실제 JPEG 파일의 바이트 왕복.
-7. 잘못된 프레임·메타데이터·청크 전송 거부.
-8. 조회가 없어도 오래된 화면 정리, 종료 후 새 송출 세션 허용.
-9. 같은 세션에서 동시 전송 시 상태 일관성.
+- 위 코드 검사와 기존 LAN 수신기 검사.
+- Chromium 두 WebRTC peer 사이에서 합성 영상을 실제 디코딩·재생하고 종료·재시작.
+  신호 서버는 격리된 모의 서버이며 실제 Supabase 키를 사용하지 않습니다.
+- Swift 공통 설정 검증.
+- 실제 Xcode iOS 앱/방송 확장 컴파일.
+- IPA 구조/실행 파일/번들 관계 검사 및 패키징.
 
-일부 테스트는 JPEG 시작/끝 표식만 있는 진단 데이터를 사용하며, 이미지 디코딩 시험이 아닙니다.
+## 아직 실행하지 못한 검사
 
-## 다시 실행하는 명령
+- 이 환경에는 Swift/Xcode가 없어 0.3.1 iOS 컴파일을 실행하지 못했습니다.
+- Chromium 실행 파일이 없고 다운로드 연결이 시간 초과되어 브라우저 영상 시험을 로컬에서 실행하지 못했습니다.
+  해당 시험 스크립트는 문법 검사만 했으며 실제 결과는 GitHub 실행 기록으로 확인해야 합니다.
+- 실제 Supabase 프로젝트 권한/네트워크, AltStore 재서명, iPad 설치 및 ReplayKit 송출은 미검증입니다.
+- 합성 영상 브라우저 시험이 통과해도 iPad 캡처/하드웨어 인코더/확장 메모리를 검증한 것은 아닙니다.
 
-프로젝트 최상위 폴더에서:
+## 개발자 재실행
 
 ```sh
 python3 scripts/check_project.py
 python3 -m unittest discover -s receiver -p 'test_*.py' -v
 node scripts/check_viewer.mjs
+node --test tests/screen_receiver.test.mjs
 bash -n scripts/build_ios.sh
+npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
+npx playwright install chromium
+node scripts/screen_browser_test.mjs
 ```
 
-Windows에서는 Python 명령을 `py -3`로 바꿀 수 있습니다. 수신기 실행에는 Node나 Bash가 필요 없습니다.
-`scripts/browser_smoke.mjs`는 선택적인 개발자용 시험입니다. Playwright와 해당 Chromium이 준비된 환경에서만 실행할 수 있으며 일반 사용자가 이를 설치할 필요는 없습니다.
-
-## 아직 확정하지 않은 사항
-
-- 무료 계정으로 이 App Group 구조와 방송 확장을 설치·실행할 수 있는지.
-- 실제 OS 27, AltStore 버전, Apple 계정별 제약.
-- macOS 러너의 현재 Xcode 버전에서 Swift 소스가 컴파일되는지.
-- iPad 로컬 네트워크 권한과 방송 확장의 전송 동작.
-- 1080p60: 이번 구현에 없고 시험하지도 않았음.
-
-소스·절차 준비와 1단계 실기기 통과는 다릅니다. 위 미검증 항목을 숨기지 않고, 빌드 또는 설치가 실패하면 그 지점부터 수정합니다.
-GitHub 업로드/빌드 실행, 계정 생성, 유료 서비스, 저장소 공개는 수행하지 않았습니다.
+일반 사용자는 이 명령을 하나씩 실행할 필요가 없습니다. GitHub 워크플로가 실행합니다.

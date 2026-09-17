@@ -2,58 +2,73 @@ import Foundation
 import ReplayKit
 import WebRTC
 
+// All mutable state and peer operations are serialized on queue. Capture uses
+// sync so no unbounded queue of retained ReplayKit pixel buffers can accumulate.
 final class BroadcastWebRTCSender: NSObject {
     private let config: P2PBroadcastConfig
+    private let directory: URL
     private let queue = DispatchQueue(label: "org.solaris.probe.webrtc")
     private let factory: RTCPeerConnectionFactory
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
+    private var videoTrack: RTCVideoTrack!
     private var peer: RTCPeerConnection!
-    private var pollTimer: DispatchSourceTimer?
-    private var session: URLSession!
-    private var lastID: Int64 = 0
-    private var remoteDescriptionReady = false
-    private var pendingCandidates: [RTCIceCandidate] = []
+    private var channel: RTCDataChannel?
+    private var timer: DispatchSourceTimer?
+    private var network: URLSession!
+    private var diagnostics = BroadcastDiagnostics()
     private var stopped = false
-    private var handledOffer = false
+    private var polling = false
+    private var lastID: Int64 = 0
+    private var sessionID: String?
+    private var remoteReady = false
+    private var pending: [RTCIceCandidate] = []
+    private var lastFrame = 0.0
+    private var lastWrite = 0.0
+    private var lastSize = ""
+    private var offerPublished = false
+    private var localCandidates: [[String: Any]] = []
+    // Windows must start first; stale offers older than five minutes are ignored.
+    private let earliestOffer = Date().addingTimeInterval(-300)
 
-    init(config: P2PBroadcastConfig) {
+    init(config: P2PBroadcastConfig, directory: URL) {
         self.config = config
+        self.directory = directory
         RTCInitializeSSL()
-        factory = RTCPeerConnectionFactory(
-            encoderFactory: RTCDefaultVideoEncoderFactory(),
-            decoderFactory: RTCDefaultVideoDecoderFactory())
+        factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
+                                           decoderFactory: RTCDefaultVideoDecoderFactory())
         source = factory.videoSource()
         capturer = RTCVideoCapturer(delegate: source)
         super.init()
-
-        let rtcConfig = RTCConfiguration()
-        rtcConfig.sdpSemantics = .unifiedPlan
-        rtcConfig.iceServers = [
-            RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:global.stun.twilio.com:3478"])
-        ]
-        let constraints = RTCMediaConstraints(mandatoryConstraints: nil,
-                                              optionalConstraints: nil)
-        peer = factory.peerConnection(with: rtcConfig, constraints: constraints, delegate: self)
-        let track = factory.videoTrack(with: source, trackId: "solaris-screen")
-        _ = peer.add(track, streamIds: ["solaris-screen-stream"])
-
-        let urlConfig = URLSessionConfiguration.ephemeral
-        urlConfig.timeoutIntervalForRequest = 5
-        urlConfig.timeoutIntervalForResource = 8
-        urlConfig.urlCache = nil
-        urlConfig.httpCookieStorage = nil
-        session = URLSession(configuration: urlConfig)
+        diagnostics.room = config.roomID
+        let rtc = RTCConfiguration()
+        rtc.sdpSemantics = .unifiedPlan
+        rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
+                          RTCIceServer(urlStrings: ["stun:global.stun.twilio.com:3478"])]
+        peer = factory.peerConnection(with: rtc,
+            constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+        videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
+        videoTrack.isEnabled = true
+        _ = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        let settings = URLSessionConfiguration.ephemeral
+        settings.timeoutIntervalForRequest = 6
+        settings.timeoutIntervalForResource = 8
+        settings.urlCache = nil
+        settings.httpCookieStorage = nil
+        network = URLSession(configuration: settings, delegate: ProbeLANDelegate(), delegateQueue: nil)
     }
 
     func start() {
-        queue.async { [weak self] in
-            guard let self, !self.stopped else { return }
+        queue.async {
+            guard !self.stopped, self.timer == nil else { return }
+            self.note("Windows 화면 수신기의 offer 대기")
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
-            timer.schedule(deadline: .now(), repeating: 1.2)
-            timer.setEventHandler { [weak self] in self?.poll() }
-            self.pollTimer = timer
+            timer.schedule(deadline: .now(), repeating: 1)
+            timer.setEventHandler { [weak self] in
+                self?.persist()
+                self?.poll()
+            }
+            self.timer = timer
             timer.resume()
         }
     }
@@ -62,149 +77,257 @@ final class BroadcastWebRTCSender: NSObject {
         queue.sync {
             guard !stopped else { return }
             stopped = true
-            pollTimer?.cancel()
-            pollTimer = nil
+            timer?.cancel()
+            timer = nil
+            channel?.close()
             peer.close()
-            session.invalidateAndCancel()
+            network.invalidateAndCancel()
+            note("방송 종료")
         }
     }
 
-    func capture(_ sampleBuffer: CMSampleBuffer) {
-        guard !stopped, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let timestamp = Int64(CMTimeGetSeconds(presentation) * 1_000_000_000)
-        let buffer = RTCCVPixelBuffer(pixelBuffer: pixel)
-        let frame = RTCVideoFrame(buffer: buffer,
-                                  rotation: rotation(for: sampleBuffer),
-                                  timeStampNs: timestamp)
-        source.capturer(capturer, didCapture: frame)
-    }
-
-    private func rotation(for sampleBuffer: CMSampleBuffer) -> RTCVideoRotation {
-        guard let value = CMGetAttachment(sampleBuffer,
-                                          key: RPVideoSampleOrientationKey as CFString,
-                                          attachmentModeOut: nil) as? NSNumber else { return ._0 }
-        switch value.intValue {
-        case 3: return ._180
-        case 6: return ._90
-        case 8: return ._270
-        default: return ._0
+    func capture(_ sample: CMSampleBuffer) {
+        queue.sync {
+            guard !stopped, let pixel = CMSampleBufferGetImageBuffer(sample) else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - lastFrame >= 1.0 / 15.0 else { return }
+            lastFrame = now
+            let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
+            let size = "\(width)x\(height)"
+            if size != lastSize {
+                let scale = min(1.0, 1280.0 / Double(max(width, height)))
+                let w = max(2, Int(Double(width) * scale) / 2 * 2)
+                let h = max(2, Int(Double(height) * scale) / 2 * 2)
+                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: 15)
+                lastSize = size
+            }
+            let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+            guard seconds.isFinite, seconds >= 0, seconds < Double(Int64.max) / 1_000_000_000 else { return }
+            let orientation = (CMGetAttachment(sample, key: RPVideoSampleOrientationKey as CFString,
+                                                attachmentModeOut: nil) as? NSNumber)?.intValue ?? 1
+            let rotation: RTCVideoRotation
+            switch orientation {
+            case 3: rotation = ._180
+            case 6: rotation = ._90
+            case 8: rotation = ._270
+            default: rotation = ._0
+            }
+            source.capturer(capturer, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixel),
+                rotation: rotation, timeStampNs: Int64(seconds * 1_000_000_000)))
+            diagnostics.framesSubmitted += 1
+            persist()
         }
     }
 
-    private func endpoint(query: [URLQueryItem] = []) -> URL? {
-        guard let root = config.url else { return nil }
-        var parts = URLComponents(url: root.appendingPathComponent("rest/v1/solaris_signals"),
-                                  resolvingAgainstBaseURL: false)
-        parts?.queryItems = query
-        return parts?.url
+    private func note(_ state: String, error: String? = nil) {
+        diagnostics.state = state
+        if let error { diagnostics.lastError = error }
+        persist(force: true)
+    }
+
+    private func persist(force: Bool = false) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard force || now - lastWrite >= 1 else { return }
+        lastWrite = now
+        diagnostics.updatedAt = Date().timeIntervalSince1970
+        do { try ProbeShared.write(diagnostics, name: ProbeShared.diagnosticsName, directory: directory) }
+        catch { NSLog("Solaris diagnostics write failed: %@", error.localizedDescription) }
+        if let channel, channel.readyState == .open,
+           let data = try? JSONEncoder().encode(diagnostics) {
+            _ = channel.sendData(RTCDataBuffer(data: data, isBinary: false))
+        }
+    }
+
+    private func endpoint(_ query: [URLQueryItem] = []) -> URL {
+        var parts = URLComponents(url: config.url!.appendingPathComponent("rest/v1/solaris_signals"),
+                                  resolvingAgainstBaseURL: false)!
+        parts.queryItems = query.isEmpty ? nil : query
+        return parts.url!
     }
 
     private func request(_ url: URL, method: String = "GET") -> URLRequest {
         var result = URLRequest(url: url)
         result.httpMethod = method
         result.setValue(config.publishableKey, forHTTPHeaderField: "apikey")
-        result.setValue("Bearer \(config.publishableKey)", forHTTPHeaderField: "Authorization")
+        // sb_publishable is an API key, not a user JWT. Do not invent Bearer auth.
+        result.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return result
     }
 
     private func poll() {
-        guard !stopped, let url = endpoint(query: [
-            URLQueryItem(name: "select", value: "id,sender,kind,payload"),
-            URLQueryItem(name: "room_id", value: "eq.\(config.roomID)"),
-            URLQueryItem(name: "id", value: "gt.\(lastID)"),
-            URLQueryItem(name: "order", value: "id.asc"),
-            URLQueryItem(name: "limit", value: "100")
-        ]) else { return }
-        session.dataTask(with: request(url)) { [weak self] data, response, _ in
-            guard let self, let data,
-                  (response as? HTTPURLResponse)?.statusCode == 200,
-                  let object = try? JSONSerialization.jsonObject(with: data),
-                  let rows = object as? [[String: Any]] else { return }
+        guard !stopped, !polling else { return }
+        polling = true
+        var query = [URLQueryItem(name: "select", value: "id,kind,payload"),
+                     URLQueryItem(name: "room_id", value: "eq.\(config.signalingRoom)"),
+                     URLQueryItem(name: "sender", value: "eq.caller")]
+        if let sessionID {
+            query += [URLQueryItem(name: "payload->>sessionID", value: "eq.\(sessionID)"),
+                      URLQueryItem(name: "id", value: "gt.\(lastID)"),
+                      URLQueryItem(name: "order", value: "id.asc"),
+                      URLQueryItem(name: "limit", value: "100")]
+        } else {
+            query += [URLQueryItem(name: "kind", value: "eq.offer"),
+                      URLQueryItem(name: "created_at", value: "gte.\(ISO8601DateFormatter().string(from: earliestOffer))"),
+                      URLQueryItem(name: "order", value: "id.desc"),
+                      URLQueryItem(name: "limit", value: "1")]
+        }
+        network.dataTask(with: request(endpoint(query))) { [weak self] data, response, error in
+            guard let self else { return }
             self.queue.async {
+                self.polling = false
+                guard !self.stopped else { return }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard error == nil, status == 200, let data,
+                      let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+                    self.note("신호 조회 실패", error: "HTTP \(status) · \(error?.localizedDescription ?? "키/테이블/RLS 권한 확인")")
+                    return
+                }
                 for row in rows {
-                    if let id = row["id"] as? NSNumber { self.lastID = max(self.lastID, id.int64Value) }
-                    guard row["sender"] as? String == "caller",
-                          let kind = row["kind"] as? String,
+                    if self.sessionID != nil, let id = row["id"] as? NSNumber {
+                        self.lastID = max(self.lastID, id.int64Value)
+                    }
+                    guard let kind = row["kind"] as? String,
                           let payload = row["payload"] as? [String: Any] else { continue }
-                    self.handle(kind: kind, payload: payload)
+                    self.handle(kind, payload)
                 }
             }
         }.resume()
     }
 
-    private func handle(kind: String, payload: [String: Any]) {
-        if kind == "offer", !handledOffer, let sdp = payload["sdp"] as? String {
-            handledOffer = true
-            let remote = RTCSessionDescription(type: .offer, sdp: sdp)
-            peer.setRemoteDescription(remote) { [weak self] error in
-                guard let self, error == nil else { return }
+    private func handle(_ kind: String, _ payload: [String: Any]) {
+        guard payload["protocol"] as? String == "screen-v031",
+              payload["source"] as? String == "windows",
+              let incomingSession = payload["sessionID"] as? String,
+              UUID(uuidString: incomingSession) != nil else { return }
+        if kind == "offer", sessionID == nil, let sdp = payload["sdp"] as? String {
+            guard payload["protocol"] as? String == "screen-v031", sdp.contains("m=video") else {
+                note("수신기 버전 불일치", error: "Windows에서 0.3.1 화면 수신 파일을 여세요.")
+                return
+            }
+            sessionID = incomingSession
+            diagnostics.sessionID = incomingSession
+            diagnostics.lastError = ""
+            note("offer 수신 · 영상 협상 중")
+            peer.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
+                guard let self else { return }
                 self.queue.async {
-                    self.remoteDescriptionReady = true
-                    self.flushCandidates()
-                    self.createAnswer()
+                    guard !self.stopped else { return }
+                    if let error { self.note("offer 적용 실패", error: error.localizedDescription); return }
+                    self.remoteReady = true
+                    self.pending.forEach { self.peer.add($0) }
+                    self.pending.removeAll()
+                    self.answer()
                 }
             }
-        } else if kind == "ice", let candidate = payload["candidate"] as? String {
-            let mid = payload["sdpMid"] as? String
-            let line = (payload["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0
-            let ice = RTCIceCandidate(sdp: candidate, sdpMLineIndex: line, sdpMid: mid)
-            if remoteDescriptionReady { peer.add(ice) }
-            else { pendingCandidates.append(ice) }
+        } else if kind == "ice", incomingSession == sessionID,
+                  let text = payload["candidate"] as? String, !text.isEmpty {
+            let candidate = RTCIceCandidate(sdp: text,
+                sdpMLineIndex: (payload["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0,
+                sdpMid: payload["sdpMid"] as? String)
+            if remoteReady { peer.add(candidate) }
+            else if pending.count < 256 { pending.append(candidate) }
         }
     }
 
-    private func flushCandidates() {
-        pendingCandidates.forEach { peer.add($0) }
-        pendingCandidates.removeAll()
-    }
-
-    private func createAnswer() {
-        let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        peer.answer(for: constraints) { [weak self] description, error in
-            guard let self, let description, error == nil else { return }
-            self.peer.setLocalDescription(description) { [weak self] error in
-                guard let self, error == nil else { return }
-                self.send(kind: "answer", payload: ["type": "answer", "sdp": description.sdp])
+    private func answer() {
+        peer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] answer, error in
+            guard let self else { return }
+            self.queue.async {
+                guard !self.stopped else { return }
+                guard let answer, error == nil else {
+                    self.note("answer 생성 실패", error: error?.localizedDescription ?? "SDP 없음"); return
+                }
+                self.peer.setLocalDescription(answer) { [weak self] error in
+                    guard let self else { return }
+                    self.queue.async {
+                        guard !self.stopped else { return }
+                        if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
+                        self.send("answer", ["type": "answer", "sdp": answer.sdp]) { success in
+                            if success {
+                                self.offerPublished = true
+                                self.note("answer 전송 완료 · ICE 연결 대기")
+                                let candidates = self.localCandidates
+                                self.localCandidates.removeAll()
+                                candidates.forEach { self.send("ice", $0) }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    private func send(kind: String, payload: [String: Any]) {
-        guard !stopped, let url = endpoint() else { return }
-        let body: [String: Any] = [
-            "room_id": config.roomID,
-            "sender": "callee",
-            "kind": kind,
-            "payload": payload
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
-        var outgoing = request(url, method: "POST")
-        outgoing.httpBody = data
-        outgoing.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    private func send(_ kind: String, _ payload: [String: Any], attempt: Int = 0,
+                      completion: ((Bool) -> Void)? = nil) {
+        guard !stopped, let sessionID else { return }
+        var envelope = payload
+        envelope["sessionID"] = sessionID
+        envelope["protocol"] = "screen-v031"
+        envelope["source"] = "replaykit"
+        let body: [String: Any] = ["room_id": config.signalingRoom, "sender": "callee",
+                                   "kind": kind, "payload": envelope]
+        var outgoing = request(endpoint(), method: "POST")
+        outgoing.httpBody = try? JSONSerialization.data(withJSONObject: body)
         outgoing.setValue("return=minimal", forHTTPHeaderField: "Prefer")
-        session.dataTask(with: outgoing).resume()
+        network.dataTask(with: outgoing) { [weak self] _, response, error in
+            guard let self else { return }
+            self.queue.async {
+                guard !self.stopped else { return }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let ok = error == nil && (200...299).contains(status)
+                if !ok, attempt < 2, status == 0 || status == 429 || status >= 500 {
+                    self.queue.asyncAfter(deadline: .now() + 1) {
+                        self.send(kind, payload, attempt: attempt + 1, completion: completion)
+                    }
+                    return
+                }
+                if !ok { self.note("\(kind) 전송 실패", error: "HTTP \(status) · \(error?.localizedDescription ?? "키/RLS 확인")") }
+                completion?(ok)
+            }
+        }.resume()
     }
 }
 
-extension BroadcastWebRTCSender: RTCPeerConnectionDelegate {
+extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        queue.async { [weak self] in
-            let mid: Any = candidate.sdpMid.map { $0 as Any } ?? NSNull()
-            self?.send(kind: "ice", payload: [
-                "candidate": candidate.sdp,
-                "sdpMid": mid,
-                "sdpMLineIndex": candidate.sdpMLineIndex
-            ])
+        queue.async {
+            guard !self.stopped else { return }
+            let payload: [String: Any] = ["candidate": candidate.sdp,
+                "sdpMid": candidate.sdpMid.map { $0 as Any } ?? NSNull(),
+                "sdpMLineIndex": candidate.sdpMLineIndex]
+            if self.offerPublished { self.send("ice", payload) }
+            else if self.localCandidates.count < 256 { self.localCandidates.append(payload) }
         }
     }
-
+    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+        queue.async {
+            guard !self.stopped else { return }
+            self.diagnostics.ice = String(describing: newState)
+            self.note("ICE 상태: \(newState) · 영상 수신 여부는 Windows 프레임 수로 확인")
+        }
+    }
+    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
+        queue.async {
+            guard !self.stopped else { return }
+            self.channel = dataChannel
+            dataChannel.delegate = self
+            self.persist(force: true)
+        }
+    }
+    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
+        queue.async { if !self.stopped { self.persist(force: true) } }
+    }
+    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
+        queue.async {
+            guard !self.stopped, dataChannel.readyState == .open else { return }
+            let reply = Data("ReplayKit 송신기 응답 (0.3.1)".utf8)
+            _ = dataChannel.sendData(RTCDataBuffer(data: reply, isBinary: false))
+        }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
 }
