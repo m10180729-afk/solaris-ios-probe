@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Solaris P2P Probe</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111214;
+      --panel: #1d1f23;
+      --line: #343842;
+      --text: #eceff4;
+      --muted: #aab0bb;
+      --accent: #74b8ff;
+      --ok: #57d68d;
+      --warn: #ffb454;
+      --bad: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 24px clamp(16px, 4vw, 32px) 48px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { color: var(--muted); line-height: 1.5; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    input, select, button, textarea {
+      width: 100%;
+      margin-top: 6px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #14161a;
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+    }
+    video {
+      width: 100%;
+      min-height: 220px;
+      margin-top: 14px;
+      background: #090a0c;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      object-fit: contain;
+    }
+    button {
+      cursor: pointer;
+      background: #253449;
+      border-color: #355071;
+      font-weight: 700;
+    }
+    button.primary { background: #1868b7; border-color: #2d8de8; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #252932;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-height: 180px;
+      max-height: 340px;
+      overflow: auto;
+      background: #0c0d0f;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      color: #d6d9df;
+    }
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+      main { padding-top: 18px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Solaris P2P Screen Probe 3A</h1>
+  <p>
+    Supabase는 연결 정보만 교환합니다. 메시지와 화면 영상은 WebRTC로 iPad와 Windows 사이를 직접 오갑니다.
+    이 버전은 화면 영상 시험이며 음성통화는 아직 포함하지 않습니다.
+  </p>
+
+  <section class="card">
+    <div class="grid">
+      <div>
+        <label for="supabaseUrl">Supabase Project URL</label>
+        <input id="supabaseUrl" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+      </div>
+      <div>
+        <label for="anonKey">Supabase anon public key</label>
+        <input id="anonKey" placeholder="eyJhbGciOi..." autocomplete="off" />
+      </div>
+      <div>
+        <label for="roomId">방 ID</label>
+        <input id="roomId" autocomplete="off" />
+      </div>
+      <div>
+        <label for="role">역할</label>
+        <select id="role">
+          <option value="caller">Windows 또는 먼저 여는 쪽: caller</option>
+          <option value="callee">iPad 또는 나중에 여는 쪽: callee</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid" style="margin-top: 14px;">
+      <button id="saveBtn">설정 저장</button>
+      <button id="startBtn" class="primary">P2P 연결 시작</button>
+    </div>
+    <p>
+      권장: Windows 브라우저는 <b>caller</b>, iPad 앱은 <b>callee</b>. 둘 다 같은 Supabase URL, anon key, 방 ID를 입력하세요.
+    </p>
+  </section>
+
+  <section class="card">
+    <div class="row" style="flex-wrap: wrap;">
+      <span class="pill">Signaling: <b id="signalState">idle</b></span>
+      <span class="pill">ICE: <b id="iceState">idle</b></span>
+      <span class="pill">Peer: <b id="peerState">idle</b></span>
+      <span class="pill">DataChannel: <b id="channelState">idle</b></span>
+    </div>
+    <label for="messageBox">P2P 테스트 메시지</label>
+    <textarea id="messageBox" rows="3">Solaris P2P test</textarea>
+    <button id="sendBtn" disabled>DataChannel로 보내기</button>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <button id="copySqlBtn">Supabase SQL 복사</button>
+      <button id="clearBtn">로그 지우기</button>
+    </div>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SQL = `create table if not exists public.solaris_signals (
+  id bigserial primary key,
+  room_id text not null,
+  sender text not null,
+  kind text not null,
+  payload jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.solaris_signals enable row level security;
+
+drop policy if exists "solaristest_select" on public.solaris_signals;
+drop policy if exists "solaristest_insert" on public.solaris_signals;
+
+create policy "solaristest_select"
+on public.solaris_signals for select
+to anon
+using (created_at > now() - interval '2 hours');
+
+create policy "solaristest_insert"
+on public.solaris_signals for insert
+to anon
+with check (
+  room_id <> ''
+  and sender in ('caller', 'callee')
+  and kind in ('offer', 'answer', 'ice')
+);
+
+create index if not exists solaris_signals_room_id_id_idx
+on public.solaris_signals (room_id, id);`;
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+let client, pc, dc, pollTimer, lastId = 0, started = false;
+let sentCandidates = 0;
+
+function log(message, cls = "") {
+  const time = new Date().toLocaleTimeString();
+  logEl.textContent += `[${time}] ${message}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+  if (cls) console.log(cls, message);
+}
+
+function setText(id, text, state) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = state || "";
+}
+
+function randRoom() {
+  const part = Math.random().toString(36).slice(2, 6);
+  return `solaris-${part}`;
+}
+
+function loadSettings() {
+  $("supabaseUrl").value = localStorage.getItem("solarisp2p.url") || "";
+  $("anonKey").value = localStorage.getItem("solarisp2p.key") || "";
+  $("roomId").value = localStorage.getItem("solarisp2p.room") || randRoom();
+  $("role").value = localStorage.getItem("solarisp2p.role") || "caller";
+}
+
+function saveSettings() {
+  localStorage.setItem("solarisp2p.url", $("supabaseUrl").value.trim());
+  localStorage.setItem("solarisp2p.key", $("anonKey").value.trim());
+  localStorage.setItem("solarisp2p.room", $("roomId").value.trim());
+  localStorage.setItem("solarisp2p.role", $("role").value);
+  log("설정을 이 기기에 저장했습니다.");
+}
+
+function config() {
+  return {
+    url: $("supabaseUrl").value.trim().replace(/\/$/, ""),
+    key: $("anonKey").value.trim(),
+    room: $("roomId").value.trim(),
+    role: $("role").value,
+    other: $("role").value === "caller" ? "callee" : "caller"
+  };
+}
+
+async function sendSignal(kind, payload) {
+  const c = config();
+  const { error } = await client.from("solaris_signals").insert({
+    room_id: c.room,
+    sender: c.role,
+    kind,
+    payload
+  });
+  if (error) throw error;
+  log(`signaling 보냄: ${kind}`);
+}
+
+async function pollSignals() {
+  const c = config();
+  const { data, error } = await client
+    .from("solaris_signals")
+    .select("id,sender,kind,payload")
+    .eq("room_id", c.room)
+    .gt("id", lastId)
+    .order("id", { ascending: true })
+    .limit(100);
+  if (error) {
+    setText("signalState", "error", "bad");
+    log(`signaling 조회 실패: ${error.message}`);
+    return;
+  }
+  for (const row of data || []) {
+    lastId = Math.max(lastId, row.id);
+    if (row.sender === c.role) continue;
+    await handleSignal(row.kind, row.payload);
+  }
+}
+
+async function handleSignal(kind, payload) {
+  log(`signaling 받음: ${kind}`);
+  if (kind === "offer" && config().role === "callee") {
+    await pc.setRemoteDescription(payload);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await sendSignal("answer", pc.localDescription.toJSON());
+  } else if (kind === "answer" && config().role === "caller") {
+    await pc.setRemoteDescription(payload);
+  } else if (kind === "ice" && payload && payload.candidate) {
+    try {
+      await pc.addIceCandidate(payload);
+    } catch (error) {
+      log(`ICE 후보 추가 실패: ${error.message}`);
+    }
+  }
+}
+
+function attachChannel(channel) {
+  dc = channel;
+  dc.onopen = () => {
+    setText("channelState", "open", "ok");
+    $("sendBtn").disabled = false;
+    log("DataChannel 열림. P2P 연결 검증 성공.");
+    dc.send(`hello from ${config().role}`);
+  };
+  dc.onclose = () => {
+    setText("channelState", "closed", "warn");
+    $("sendBtn").disabled = true;
+    log("DataChannel 닫힘.");
+  };
+  dc.onerror = (event) => log(`DataChannel 오류: ${event.message || "unknown"}`);
+  dc.onmessage = (event) => log(`P2P 메시지 받음: ${event.data}`);
+}
+
+function attachRemoteVideo() {
+  pc.ontrack = (event) => {
+    const video = $("remoteVideo");
+    // Some native WebRTC senders do not attach an MSID/MediaStream to the
+    // ontrack event. In that case event.streams is empty even though the
+    // video track is valid, so build a stream from the track itself.
+    const stream = event.streams && event.streams[0]
+      ? event.streams[0]
+      : new MediaStream([event.track]);
+    video.srcObject = stream;
+    video.muted = true;
+    video.play().then(() => {
+      log("원격 영상 트랙을 받았습니다. 화면 재생을 시작했습니다.");
+    }).catch((error) => {
+      log(`원격 영상 재생 대기 중: ${error.message}`);
+    });
+  };
+}
+
+async function start() {
+  if (started) {
+    log("이미 시작했습니다. 새로 시작하려면 페이지를 새로고침하세요.");
+    return;
+  }
+  saveSettings();
+  const c = config();
+  if (!c.url || !c.key || !c.room) {
+    log("Supabase URL, anon key, 방 ID를 모두 입력하세요.");
+    return;
+  }
+  if (!window.supabase) {
+    log("Supabase 스크립트를 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
+    return;
+  }
+  started = true;
+  setText("signalState", "connecting", "warn");
+  client = window.supabase.createClient(c.url, c.key, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" }
+    ]
+  });
+  // 3A 수신 경로: 송신 트랙이 협상되면 이 video 요소에 표시합니다.
+  pc.addTransceiver("video", { direction: "recvonly" });
+  attachRemoteVideo();
+  pc.onicecandidate = async (event) => {
+    if (event.candidate) {
+      sentCandidates++;
+      await sendSignal("ice", event.candidate.toJSON());
+      setText("iceState", `candidates ${sentCandidates}`, "warn");
+    }
+  };
+  pc.oniceconnectionstatechange = () => {
+    const state = pc.iceConnectionState;
+    setText("iceState", state, state === "connected" || state === "completed" ? "ok" : state === "failed" ? "bad" : "warn");
+    log(`ICE 상태: ${state}`);
+  };
+  pc.onconnectionstatechange = () => {
+    const state = pc.connectionState;
+    setText("peerState", state, state === "connected" ? "ok" : state === "failed" ? "bad" : "warn");
+    log(`Peer 상태: ${state}`);
+  };
+  pc.ondatachannel = (event) => attachChannel(event.channel);
+
+  setText("signalState", "polling", "warn");
+  pollTimer = setInterval(pollSignals, 1300);
+
+  if (c.role === "caller") {
+    attachChannel(pc.createDataChannel("solaris-control"));
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendSignal("offer", pc.localDescription.toJSON());
+    log("caller offer 생성 완료. iPad/callee를 시작하세요.");
+  } else {
+    log("callee 대기 중. Windows/caller가 offer를 보내면 answer를 반환합니다.");
+  }
+  await pollSignals();
+}
+
+$("saveBtn").onclick = saveSettings;
+$("startBtn").onclick = () => start().catch((error) => {
+  setText("signalState", "error", "bad");
+  log(`시작 실패: ${error.message}`);
+});
+$("sendBtn").onclick = () => {
+  if (!dc || dc.readyState !== "open") return;
+  const text = $("messageBox").value || "Solaris";
+  dc.send(text);
+  log(`P2P 메시지 보냄: ${text}`);
+};
+$("copySqlBtn").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(SQL);
+    log("Supabase SQL을 클립보드에 복사했습니다.");
+  } catch {
+    log(SQL);
+  }
+};
+$("clearBtn").onclick = () => logEl.textContent = "";
+loadSettings();
+log("준비 완료. Supabase SQL을 먼저 실행한 뒤 caller/callee를 시작하세요.");
+</script>
+</body>
+</html>

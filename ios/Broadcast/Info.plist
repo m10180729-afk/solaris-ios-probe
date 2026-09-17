@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDisplayName</key><string>Solaris 화면 시험</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>NSLocalNetworkUsageDescription</key><string>같은 Wi-Fi의 내 PC로 시험 화면을 보냅니다.</string>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+  <key>SolarisAppGroup</key><string>group.org.solaris.probe</string>
+  <key>NSExtension</key><dict>
+    <key>NSExtensionPointIdentifier</key><string>com.apple.broadcast-services-upload</string>
+    <key>NSExtensionPrincipalClass</key><string>$(PRODUCT_MODULE_NAME).SampleHandler</string>
+    <key>NSExtensionAttributes</key><dict>
+      <key>RPBroadcastProcessMode</key><string>RPBroadcastProcessModeSampleBuffer</string>
+    </dict>
+  </dict>
+</dict></plist>
+

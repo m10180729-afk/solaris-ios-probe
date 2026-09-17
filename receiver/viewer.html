@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solaris · 화면 캡처 시험</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#17191e;color:#e2e5ed}
+body{max-width:1060px;margin:32px auto;padding:0 20px}h1{font-size:28px;margin-bottom:8px}
+.muted{color:#a4adc0}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #485066;background:#252a34;color:inherit}
+input{width:min(520px,85%)}button{cursor:pointer}button.primary{background:#425ca1}
+.notice{padding:16px;border:1px solid #71613a;background:#2b281e;border-radius:12px;line-height:1.6}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.metrics{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+.metric{padding:14px;background:#232732;border-radius:10px;flex:1;min-width:160px}.value{font-size:22px;display:block;margin-top:5px}
+.screen{display:flex;align-items:center;justify-content:center;background:#111318;border:1px solid #353c4b;border-radius:14px;min-height:240px;padding:12px}
+img{max-width:100%;max-height:65vh;object-fit:contain}[hidden]{display:none!important}#status{min-height:24px}small{font-size:14px}
+</style>
+<h1>Solaris <span class="muted">/ Probe 1A</span></h1>
+<p class="muted">iPhone · iPad의 화면 캡처와 PC 전달 경로만 확인합니다.</p>
+<p class="notice">이 미리보기는 <strong>긴 변 최대 720px · 최대 5fps · 음성 없음</strong>입니다.
+캡처 콜백 FPS와 PC 수신 FPS는 서로 다르며, 어느 쪽도 1080p60 WebRTC 성공을 뜻하지 않습니다.<br>
+신뢰하는 집 Wi-Fi에서만 사용하세요. HTTP 시험 전송은 암호화되지 않으며 화면은 파일로 저장하지 않습니다.</p>
+<div class="controls"><input id="token" type="password" autocomplete="off" placeholder="PC 수신기의 임시 토큰" aria-label="임시 토큰">
+<button id="connect" class="primary">미리보기 연결</button><button id="disconnect">보기 중지</button></div>
+<p id="status" role="status">토큰 입력 후 연결하세요. 종료할 때 iPhone/iPad의 방송도 직접 중지하세요.</p>
+<div class="metrics">
+<div class="metric">원본 캡처 크기<span id="source" class="value">—</span></div>
+<div class="metric">미리보기 크기<span id="size" class="value">—</span></div>
+<div class="metric">캡처 콜백 FPS<span id="capture" class="value">—</span></div>
+<div class="metric">PC 수신 FPS<span id="fps" class="value">—</span></div>
+</div>
+<p id="details" class="muted"></p>
+<div class="screen"><img id="screen" alt="iPhone/iPad 시험 화면" hidden><span id="placeholder">화면 대기 중</span></div>
+<script>
+const $=id=>document.getElementById(id);
+let generation=0, token='', objectURL=null, sequence=null, controller=null;
+function clearImage(){ $('screen').hidden=true; $('screen').removeAttribute('src'); $('placeholder').hidden=false;
+  if(objectURL){ URL.revokeObjectURL(objectURL); objectURL=null; } sequence=null; }
+function stop(){ generation++; if(controller)controller.abort(); token='';clearImage();$('status').textContent='보기 중지. 기기의 방송 종료와 PC 터미널 Ctrl+C는 별도로 해주세요.'; }
+async function tick(g){
+ if(g!==generation)return;
+ const activeController=new AbortController();controller=activeController;
+ const timeout=setTimeout(()=>activeController.abort(),4000);
+ const options={headers:{'X-Solaris-Token':token},cache:'no-store',redirect:'error',signal:activeController.signal};
+ try{
+  const r=await fetch('/stats',options);
+  if(r.status===401)throw new Error('토큰이 맞지 않습니다. PC 수신기 재시작 시 토큰이 바뀝니다.');
+  if(!r.ok)throw new Error('PC 수신기 응답 오류: '+r.status);
+  const s=await r.json(); if(g!==generation)return;
+  $('source').textContent=s.source||'—';$('size').textContent=s.preview||'—';
+  $('capture').textContent=s.capture_fps_reported??'—';$('fps').textContent=s.received_fps??'—';
+  $('details').textContent=`수신 프레임 ${s.sequence} · 최근 프레임 ${s.frame_age_seconds??'—'}초 전 · 경과 ${s.duration_seconds}초 (종단 지연 측정 아님)`;
+  $('status').textContent=s.receiving?'화면 수신 중 · 앱 전환과 화면 회전을 확인하세요.':'새 화면이 없습니다. 방송·연결·권한을 확인하세요.';
+  if(!s.receiving){clearImage();return;}
+  if(sequence!==s.sequence){
+   const frame=await fetch('/frame',options);
+   if(frame.status===204){clearImage();return;}
+   if(!frame.ok)throw new Error('화면 수신 오류: '+frame.status);
+   const blob=await frame.blob();if(g!==generation)return;
+   const nextURL=URL.createObjectURL(blob);const previous=objectURL;objectURL=nextURL;
+   $('screen').src=nextURL;$('screen').hidden=false;$('placeholder').hidden=true;
+   if(previous)URL.revokeObjectURL(previous);
+   sequence=Number(frame.headers.get('X-Sequence'));
+  }
+ }catch(e){if(g===generation){clearImage();$('status').textContent=e.name==='AbortError'?'응답 지연 — PC 수신기를 확인하세요.':e.message;}}
+ finally{clearTimeout(timeout);if(g===generation)setTimeout(()=>tick(g),200);}
+}
+$('connect').onclick=()=>{stop();token=$('token').value.trim();if(!/^[0-9a-f]{64}$/.test(token)){$('status').textContent='64자리 소문자 임시 토큰을 입력하세요.';return;}tick(generation);};
+$('disconnect').onclick=stop;
+window.addEventListener('pagehide',stop);
+</script>
+</html>

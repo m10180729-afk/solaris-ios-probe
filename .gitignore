@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+build/
+dist/
+*.xcodeproj/
+*.xcworkspace/
+*.ipa
+*.mobileprovision
+*.p12
+.env
+.env.*
+!.env.example
+
