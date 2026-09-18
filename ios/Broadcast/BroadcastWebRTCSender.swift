@@ -259,12 +259,19 @@ final class BroadcastWebRTCSender: NSObject {
                 guard let answer, error == nil else {
                     self.note("answer 생성 실패", error: error?.localizedDescription ?? "SDP 없음"); return
                 }
-                self.peer.setLocalDescription(answer) { [weak self] error in
+                // ReplayKit/WebRTC may initially ramp from a very conservative
+                // screen bitrate.  Advertise the screen budget in the answer so
+                // the encoder does not spend the first seconds at a 480p-like
+                // bitrate before probing upward.  This does not invent pixels:
+                // the capture path still preserves the native ReplayKit size.
+                let tunedSDP = self.screenAnswerSDP(answer.sdp)
+                let tunedAnswer = RTCSessionDescription(type: .answer, sdp: tunedSDP)
+                self.peer.setLocalDescription(tunedAnswer) { [weak self] error in
                     guard let self else { return }
                     self.queue.async {
                         guard !self.stopped else { return }
                         if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
-                        self.send("answer", ["type": "answer", "sdp": answer.sdp]) { success in
+                        self.send("answer", ["type": "answer", "sdp": tunedSDP]) { success in
                             if success {
                                 self.offerPublished = true
                                 self.note("answer 전송 완료 · ICE 연결 대기")
@@ -277,6 +284,28 @@ final class BroadcastWebRTCSender: NSObject {
                 }
             }
         }
+    }
+
+    private func screenAnswerSDP(_ sdp: String) -> String {
+        let lines = sdp.components(separatedBy: "\r\n")
+        var output: [String] = []
+        var inVideo = false
+        var inserted = false
+
+        for line in lines {
+            if line.hasPrefix("m=") {
+                inVideo = line.hasPrefix("m=video ")
+                inserted = false
+            }
+            output.append(line)
+            // b=AS is expressed in kbit/s.  60 Mbit/s leaves room for the
+            // native 1920x1324 screen while avoiding an unbounded sender.
+            if inVideo && !inserted && line.hasPrefix("c=") {
+                output.append("b=AS:60000")
+                inserted = true
+            }
+        }
+        return output.joined(separator: "\r\n")
     }
 
     private func send(_ kind: String, _ payload: [String: Any], attempt: Int = 0,

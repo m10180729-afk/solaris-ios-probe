@@ -84,6 +84,13 @@ class EmbeddingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             prepare(archive, self.root / "destination")
 
+    def test_sender_advertises_startup_screen_bitrate(self):
+        sender = (Path(__file__).resolve().parents[1] /
+                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        self.assertIn("screenAnswerSDP", sender)
+        self.assertIn('output.append("b=AS:60000")', sender)
+        self.assertIn('sdp: tunedSDP', sender)
+
 
 if __name__ == "__main__":
     unittest.main()
