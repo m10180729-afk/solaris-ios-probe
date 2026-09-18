@@ -34,16 +34,24 @@ def check_sources():
     check_broadcast_info(broadcast_info,
                          "$(PRODUCT_MODULE_NAME).SampleHandler")
     rights = plistlib.loads((ROOT / "ios/Config/Probe.entitlements").read_bytes())
-    assert rights == {"com.apple.security.application-groups": [GROUP]}
+    assert rights == {}, "No-App-Group build must not request shared-container entitlements"
     for path in ("ios/project.yml", "receiver/viewer.html", "tests/ProbeConfigTests.swift",
                  "scripts/build_ios.sh", ".github/workflows/build-ios-probe.yml",
                  "ios/App/Resources/SolarisMark.jpeg",
                  "ios/Broadcast/BroadcastWebRTCSender.swift"):
         assert (ROOT / path).is_file(), path
     project = (ROOT / "ios/project.yml").read_text(encoding="utf-8")
-    assert "https://github.com/stasel/WebRTC.git" in project
-    assert "exactVersion: 153.0.0" in project
-    print("PASS: Python syntax, plist values, App Group consistency, required source files")
+    assert "framework: Vendor/WebRTC.xcframework" in project
+    assert "package: WebRTC" not in project, "Do not copy the SPM product name as a framework"
+    assert "packages:" not in project, "WebRTC is downloaded with the pinned upstream checksum"
+    build_script = (ROOT / "scripts/build_ios.sh").read_text()
+    assert "--entitlements" not in build_script, "Do not restore App Group entitlements during packaging"
+    assert "import WebRTC" in (ROOT / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+    for path in (ROOT / "ios/App").rglob("*.swift"):
+        assert "import WebRTC" not in path.read_text(), "Only the broadcast extension uses WebRTC"
+    app_source = (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
+    assert "ProbeShared.group()" not in app_source, "Broadcast UI must not require App Group storage"
+    print("PASS: Python syntax, plist values, no App Group requirement, real XCFramework dependency")
     print("NOT VERIFIED: Swift/iOS compilation, entitlements on device, capture, FPS, latency")
 
 
@@ -63,7 +71,15 @@ def check_ipa(path):
             assert not any("$(" in str(value) for value in info.values()), "Unexpanded build setting"
             executable = archive.read(folder + info["CFBundleExecutable"])
             assert executable[:4] in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
-    print("PASS: IPA container, app/extension bundle relationship, versions, executable headers")
+        framework_root = extension_root + "Frameworks/WebRTC.framework/"
+        names = set(archive.namelist())
+        assert framework_root + "WebRTC" in names, "Missing extension Frameworks/WebRTC.framework/WebRTC"
+        assert not any(n.startswith(app_root + "Frameworks/WebRTC.framework/") for n in names), "Duplicate host WebRTC framework"
+        info = plistlib.loads(archive.read(framework_root + "Info.plist"))
+        assert info["CFBundleExecutable"] == "WebRTC"
+        assert "iPhoneOS" in info.get("CFBundleSupportedPlatforms", []), "Wrong WebRTC platform"
+        assert archive.read(framework_root + "WebRTC")[:4] in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"), "Invalid WebRTC binary"
+    print("PASS: IPA bundles, ReplayKit mode, versions, executables, extension-local WebRTC.framework")
     print("IPA is only a re-signing candidate. Device installation remains unverified.")
 
 

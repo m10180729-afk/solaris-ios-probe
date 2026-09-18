@@ -8,17 +8,14 @@ settings:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     MARKETING_VERSION: '0.3.2'
-    CURRENT_PROJECT_VERSION: '6'
+    CURRENT_PROJECT_VERSION: '7'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
-packages:
-  WebRTC:
-    url: https://github.com/stasel/WebRTC.git
-    exactVersion: 153.0.0
 targets:
   SolarisProbe:
     type: application
     platform: iOS
+    transitivelyLinkDependencies: false
     sources:
       - path: App
         excludes: [Info.plist]
@@ -44,12 +41,13 @@ targets:
         INFOPLIST_FILE: Broadcast/Info.plist
         APPLICATION_EXTENSION_API_ONLY: 'YES'
         SKIP_INSTALL: 'YES'
+        LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/Frameworks'
     dependencies:
-      - package: WebRTC
-        product: WebRTC
+      # Downloaded and checksum-verified BEFORE XcodeGen by prepare_webrtc.py.
+      # A file reference lets Xcode process the XCFramework's real iOS slice.
+      - framework: Vendor/WebRTC.xcframework
         embed: true
-        copy:
-          destination: frameworks
+        codeSign: false
 schemes:
   SolarisProbe:
     build:

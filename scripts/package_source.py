@@ -3,12 +3,12 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT.parent / "Solaris-0.3.2.zip"
-SKIP = {".git", "__pycache__", "build", "dist", "node_modules"}
+OUTPUT = ROOT.parent / "Solaris-0.3.2-build7-xcframework-fix.zip"
+SKIP = {".git", "__pycache__", "build", "dist", "node_modules", "Vendor"}
 TOP = {".github", "ios", "receiver", "scripts", "tests", "docs",
        "README.md", ".gitignore", "UPLOAD_GIT_BASH.sh"}
 
-with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
+with zipfile.ZipFile(OUTPUT, "x", zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(ROOT.rglob("*")):
         relative = path.relative_to(ROOT)
         if relative.parts[0] not in TOP or not path.is_file() or path.is_symlink() or SKIP.intersection(relative.parts):

@@ -1,62 +1,44 @@
-# Solaris 0.3.2 — 화면 방송과 자동 진단
+# Solaris 0.3.2 build 7 — WebRTC XCFramework 수정 소스
 
-아이패드 ReplayKit 화면을 Windows 브라우저로 받는 시험용 수정 소스입니다.
-**소스 ZIP은 설치용 IPA가 아닙니다.** GitHub에서 한 번 빌드한 뒤 결과 IPA를 AltStore로 재서명해 설치합니다.
-이번 버전의 iOS 빌드·설치·실기기 영상 전송은 아직 확인하지 않았습니다.
+iPad ReplayKit 화면을 Windows HTML 수신기로 보내는 시험 프로젝트입니다.
+**이 ZIP은 소스이며, IPA 빌드 성공이나 실제 화면 송출 성공을 뜻하지 않습니다.**
 
-## 가장 짧은 진행 순서
+이번 변경은 존재하지 않는 `Release-iphoneos/WebRTC`를 복사하던 설정을
+체크섬으로 확인한 실제 `WebRTC.xcframework` 파일 의존성으로 교체합니다.
+앱에 중복 임베드하지 않고 방송 확장의 Frameworks에만 넣습니다.
+남아 있던 App Group 서명과 앱의 공유 설정 저장 조건도 제거했습니다.
+URL·publishable key·방 ID·ReplayKit sample-buffer 모드는 유지했습니다.
 
-1. ZIP을 Windows에서 풀고 그 폴더의 `UPLOAD_GIT_BASH.sh`를 Git Bash로 실행합니다.
-   이 스크립트는 기존 GitHub 저장소를 새 작업 폴더에 복제하고 수정 소스를 일반 push합니다.
-   기존 Downloads 작업 폴더는 건드리지 않습니다. GitHub 로그인 창이 나오면 본인 계정으로 로그인합니다.
-2. GitHub Actions가 자동으로 브라우저 영상 검사 → 코드·Swift 검사 → iOS 빌드를 실행합니다.
-3. 초록색 성공 후 `Solaris-0.3.2-app-and-receiver` 결과물을 내려받아 압축을 풉니다.
-   `SolarisProbe-resign.ipa`를 기존 방식으로 AltStore에 설치합니다. 앱 첫 화면의 **0.3.2**을 확인합니다.
-4. Windows에서 함께 제공한 `Solaris-Windows-0.3.2.html` 또는 소스의
-   `ios/App/Resources/solaris-p2p.html`을 Chrome으로 엽니다.
-5. 양쪽 URL·Publishable key·방 ID를 맞추고, **iPad 설정 저장 → Windows 수신 시작 → iPad 방송 시작**.
-   별도 P2P 테스트나 PC IP/임시 토큰 입력은 없습니다.
+## 실행 순서
 
-새 Windows 수신기는 기존 0.3.0 앱과 연결되지 않습니다. 앱·수신기를 함께 교체하세요.
-자세한 설치 이후 순서는 [화면 방송 안내](docs/STEP3_WEBRTC_SCREEN_KO.md)를 보세요.
+1. 이 ZIP을 **모두 압축 풀기**로 새 폴더에 풉니다.
+2. 그 폴더에서 Git Bash로 `bash UPLOAD_GIT_BASH.sh`를 실행합니다.
+3. GitHub Actions의 **이번 커밋**에서 browser-test와 build 모두 성공했는지 확인합니다.
+4. `Solaris-0.3.2-build7-app-and-receiver` 아티팩트를 다운로드하고 압축을 풉니다.
+5. IPA를 AltStore로 재서명·설치합니다. 방송 확장을 제거하지 마세요.
+6. 앱의 **0.3.2 (build 7)** 표시를 확인합니다.
+7. iPad에 표시된 URL·방 ID와 복사한 publishable key를 Windows 수신기에 입력합니다.
+8. Windows **설정 저장 + 수신 시작** → iPad **Solaris 화면 시험 → 공유 시작**.
+9. Windows 영상 프레임 증가와 실제 화면 재생을 확인합니다.
 
-## 수정 내용
+iPad 설정은 확장 번들에 포함된 값을 사용합니다. 이번 빌드의 방 ID는 `solaristest1`입니다.
+설정 저장이나 App Group 접근을 요구하지 않습니다. 옛 P2P 테스트 화면은 사용하지 않습니다.
 
-### 0.3.2에서 수정한 시작 문제
+## 검사와 결과
 
-- 방송 확장 Info.plist의 `RPBroadcastProcessMode`가 `NSExtensionAttributes` 안에 있던 오류를 수정했습니다.
-  이 값은 `NSExtension` 바로 아래에 있어야 합니다. 이전 소스 검사도 잘못된 위치를 통과시키고 있었습니다.
-- 소스와 빌드된 IPA에 동일한 방송 모드 검사를 적용하고, 잘못된 위치·누락·다른 처리 모드·버전 혼합을 거부하는 회귀 검사를 추가했습니다.
-- 확장 객체 생성과 `broadcastStarted` 진입을 구분해 기록합니다. 진단 쓰기 실패를 더 이상 조용히 무시하지 않습니다.
-- 앱의 진단 복사에 실제 설치된 확장의 처리 모드·클래스·버전·프로파일 그룹·읽기 오류를 포함합니다.
-  앱에서 그룹을 열었다는 사실을 확장 접근 성공으로 간주하지 않습니다.
-- WebRTC 송출에서 사용하지 않는 LAN 이미지 변환기와 네트워크 객체를 만들지 않습니다.
-- 이전에 제외됐던 실제 브라우저 영상 검사를 필수 CI 단계로 복원했습니다. 테스트의 가상 신호 서버가
-  상대 ICE 수집을 기다리며 HTTP 응답을 지연하던 구조를 고쳤고, 실패하면 양쪽 진단을 보관합니다.
-  이 환경에서는 Chromium 다운로드가 막혀 수정된 브라우저 시험의 통과 여부는 확인하지 못했습니다.
+- [이번 변경의 원인·실제 경로·CI 검사·수정 파일](docs/BUILD7_WEBRTC_FIX.md)
+- [실행한 검사와 미실행 검사](docs/BUILD7_VALIDATION.md)
+- [설치 후 사용 순서](docs/STEP3_WEBRTC_SCREEN_KO.md)
 
-이 수정이 현재 기기의 모든 원인을 해결했는지는 아직 확인되지 않았습니다. 재서명 이후의 확장 권한과
-실제 iPad 송출은 GitHub의 소스 검사만으로 검증할 수 없습니다.
+빌드 실패 시 `Solaris-build7-xcode-evidence` 아티팩트의 실제 Xcode 로그와 프로젝트를 확인합니다.
+browser-test는 가상 송신기 시험이며, iOS 컴파일이나 ReplayKit 시험을 대신하지 않습니다.
+프레임워크 다운로드·실제 복사 원본 확인·동적 링크 확인·IPA 구조 검사 중 하나라도 실패하면
+이번 CI는 성공한 IPA를 게시하지 않습니다.
 
-### 기존 화면 수신 기능
+Supabase는 연결 정보를 교환하고 영상은 WebRTC로 전송합니다.
+현재 영상 전용이며 오디오·TURN·제품용 사용자 인증은 포함하지 않습니다.
+일부 네트워크에서는 직접 연결이 실패할 수 있습니다.
+무료 AltStore 재서명 후 설치와 방송 확장 실행은 실기기 확인이 필요합니다.
 
-- 웹 테스트 callee와 방송 확장이 같은 offer에 응답하던 경로 분리.
-- 화면 전용 방 접미사, 연결마다 새 세션 ID, 송신기 출처 검사.
-- SDP 전 도착한 ICE 대기, 중복 answer 무시, 중단한 세션의 늦은 응답 무시.
-- 신호 서버 HTTP 오류, 확장 상태, 입력 프레임, 수신·디코딩 프레임, 재생 상태를 자동 표시.
-- 아이패드 메인 화면에서 설정·방송·진단을 함께 처리. 옛 P2P 테스트와 LAN 입력 제거.
-- Publishable key는 apikey 헤더로 전달. 진단 복사에 설정 키를 포함하지 않음.
-- 캡처 입력 최대 15fps, 긴 변 최대 1280px 목표. 음성·1080p60·TURN·자동 재연결 미포함.
-
-Supabase는 연결 정보만 교환합니다. 영상은 WebRTC로 전달합니다.
-이것은 기존 익명 신호 테이블을 사용하는 개인 시험판이며 사용자 인증/방 접근 제어를 갖춘 배포용 서비스가 아닙니다.
-TURN이 없는 상태에서는 일부 네트워크에서 직접 연결이 실패할 수 있습니다.
-
-## 자동 검사와 실제 확인의 경계
-
-[검사 결과](docs/VALIDATION.md)에 실행한 검사와 실행하지 못한 검사를 나누어 기록했습니다.
-빌드 통과만으로 실제 아이패드 화면 송출을 보장하지 않습니다.
-설치 후 한 번 방송하면 Windows가 여섯 항목을 자동 진단합니다.
-문제가 남으면 같은 설정을 반복하기보다 **진단 한 번에 복사** 결과를 전달하세요.
-
-기존 LAN 수신기와 과거 문서는 개발 참고용으로 남아 있습니다. 이번 사용 절차에는 포함하지 않습니다.
+기존 LAN 수신기와 build 7 이외의 문서는 과거 개발 참고 자료입니다.
+현재 설치 및 검증 기준은 위 세 문서를 우선합니다.
