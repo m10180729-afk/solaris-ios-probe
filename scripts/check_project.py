@@ -25,10 +25,13 @@ def check_sources():
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for name in ("App", "Broadcast"):
         info = plistlib.loads((ROOT / f"ios/{name}/Info.plist").read_bytes())
-        assert info["SolarisAppGroup"] == GROUP
         assert info["NSLocalNetworkUsageDescription"]
         assert info["NSAppTransportSecurity"]["NSAllowsArbitraryLoads"] is True
-    check_broadcast_info(plistlib.loads((ROOT / "ios/Broadcast/Info.plist").read_bytes()),
+    broadcast_info = plistlib.loads((ROOT / "ios/Broadcast/Info.plist").read_bytes())
+    assert broadcast_info["SolarisP2PProjectURL"].startswith("https://")
+    assert broadcast_info["SolarisP2PPublishableKey"].startswith("sb_publishable_")
+    assert broadcast_info["SolarisP2PRoomID"] == "solaristest1"
+    check_broadcast_info(broadcast_info,
                          "$(PRODUCT_MODULE_NAME).SampleHandler")
     rights = plistlib.loads((ROOT / "ios/Config/Probe.entitlements").read_bytes())
     assert rights == {"com.apple.security.application-groups": [GROUP]}

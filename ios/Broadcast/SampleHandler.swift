@@ -22,35 +22,15 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
     override init() {
         super.init()
         NSLog("Solaris broadcast handler initialized (%@)", ProbeShared.appVersion)
-        if let group = ProbeShared.group() {
-            _ = writeLaunchDiagnostic(directory: group.url, state: "확장 객체 초기화 완료 · 방송 시작 콜백 대기")
-        } else {
-            NSLog("Solaris extension App Group unavailable")
-        }
+        NSLog("Solaris broadcast handler uses embedded WebRTC configuration")
     }
 
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         queue.async { [self] in
-            guard let group = ProbeShared.group() else {
-                fail("확장이 App Group을 열지 못했습니다. 재서명된 그룹 권한을 확인하세요.")
-                return
-            }
-            // Write a launch marker before reading configuration or constructing
-            // WebRTC. This makes early extension failures diagnosable from the app.
-            directory = group.url
-            guard writeLaunchDiagnostic(directory: group.url, state: "방송 시작 콜백 실행") else {
-                fail("방송 확장이 진단 파일을 저장하지 못했습니다. App Group 쓰기 권한을 확인하세요.")
-                return
-            }
-            let value = try? ProbeShared.read(ProbeConfig.self,
-                                              name: ProbeShared.configName,
-                                              directory: group.url)
-            let p2p = try? ProbeShared.read(P2PBroadcastConfig.self,
-                                            name: ProbeShared.p2pConfigName,
-                                            directory: group.url)
-            guard value?.valid == true || p2p?.valid == true else {
-                writeLaunchDiagnostic(directory: group.url, state: "설정 없음 또는 설정 형식 오류")
-                fail("LAN 또는 WebRTC 방송 설정을 앱에서 먼저 저장하세요.")
+            let value: ProbeConfig? = nil
+            let p2p = ProbeShared.embeddedP2PConfig()
+            guard p2p?.valid == true else {
+                fail("번들 WebRTC 설정이 없습니다. 앱을 다시 설치하세요.")
                 return
             }
             // Screen broadcasting takes priority; do not also send to a stale LAN receiver.
@@ -76,8 +56,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                 network = URLSession(configuration: settings, delegate: self, delegateQueue: nil)
             }
             if let p2p, p2p.valid {
-                writeLaunchDiagnostic(directory: group.url, state: "WebRTC 송신기 초기화 중")
-                p2pSender = BroadcastWebRTCSender(config: p2p, directory: group.url)
+                p2pSender = BroadcastWebRTCSender(config: p2p, directory: nil)
                 p2pSender?.start()
             }
             active = true

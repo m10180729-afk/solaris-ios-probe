@@ -8,7 +8,7 @@ settings:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     MARKETING_VERSION: '0.3.2'
-    CURRENT_PROJECT_VERSION: '5'
+    CURRENT_PROJECT_VERSION: '6'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
 packages:
@@ -27,7 +27,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.solaris.probe
         INFOPLIST_FILE: App/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Config/Probe.entitlements
     dependencies:
       - target: SolarisBroadcast
         embed: true
@@ -43,11 +42,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.solaris.probe.broadcast
         INFOPLIST_FILE: Broadcast/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Config/Probe.entitlements
         APPLICATION_EXTENSION_API_ONLY: 'YES'
         SKIP_INSTALL: 'YES'
     dependencies:
       - package: WebRTC
+        embed: true
 schemes:
   SolarisProbe:
     build:

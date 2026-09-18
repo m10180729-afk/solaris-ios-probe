@@ -6,7 +6,7 @@ import WebRTC
 // sync so no unbounded queue of retained ReplayKit pixel buffers can accumulate.
 final class BroadcastWebRTCSender: NSObject {
     private let config: P2PBroadcastConfig
-    private let directory: URL
+    private let directory: URL?
     private let queue = DispatchQueue(label: "org.solaris.probe.webrtc")
     private let factory: RTCPeerConnectionFactory
     private let source: RTCVideoSource
@@ -31,7 +31,7 @@ final class BroadcastWebRTCSender: NSObject {
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
-    init(config: P2PBroadcastConfig, directory: URL) {
+    init(config: P2PBroadcastConfig, directory: URL?) {
         self.config = config
         self.directory = directory
         RTCInitializeSSL()
@@ -130,8 +130,10 @@ final class BroadcastWebRTCSender: NSObject {
         guard force || now - lastWrite >= 1 else { return }
         lastWrite = now
         diagnostics.updatedAt = Date().timeIntervalSince1970
-        do { try ProbeShared.write(diagnostics, name: ProbeShared.diagnosticsName, directory: directory) }
-        catch { NSLog("Solaris diagnostics write failed: %@", error.localizedDescription) }
+        if let directory {
+            do { try ProbeShared.write(diagnostics, name: ProbeShared.diagnosticsName, directory: directory) }
+            catch { NSLog("Solaris diagnostics write failed: %@", error.localizedDescription) }
+        }
         if let channel, channel.readyState == .open,
            let data = try? JSONEncoder().encode(diagnostics) {
             _ = channel.sendData(RTCDataBuffer(data: data, isBinary: false))

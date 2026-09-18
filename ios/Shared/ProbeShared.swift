@@ -93,6 +93,16 @@ struct ProbeStats: Codable {
 }
 
 enum ProbeShared {
+    // Free AltStore signing cannot reliably provide a runtime App Group
+    // container to a ReplayKit upload extension. Keep the sender configuration
+    // in the extension bundle so broadcasting does not depend on shared files.
+    static func embeddedP2PConfig() -> P2PBroadcastConfig? {
+        guard let projectURL = Bundle.main.object(forInfoDictionaryKey: "SolarisP2PProjectURL") as? String,
+              let publishableKey = Bundle.main.object(forInfoDictionaryKey: "SolarisP2PPublishableKey") as? String,
+              let roomID = Bundle.main.object(forInfoDictionaryKey: "SolarisP2PRoomID") as? String else { return nil }
+        let config = P2PBroadcastConfig(projectURL: projectURL, publishableKey: publishableKey, roomID: roomID)
+        return config.valid ? config : nil
+    }
     static var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"

@@ -38,11 +38,15 @@ ditto "$SOLARIS_STAGE/DerivedData/Build/Products/Release-iphoneos/SolarisProbe.a
 SOLARIS_APP="$SOLARIS_STAGE/Payload/SolarisProbe.app"
 SOLARIS_EXTENSION="$SOLARIS_APP/PlugIns/SolarisBroadcast.appex"
 test -d "$SOLARIS_EXTENSION"
-# The WebRTC binary framework is embedded inside the broadcast extension.
+# The WebRTC binary framework must be embedded inside the broadcast extension.
+# If it is absent, iOS can terminate the extension before SampleHandler starts,
+# which produces exactly the "Broadcast diagnostics missing" symptom.
 SOLARIS_WEBRTC="$SOLARIS_EXTENSION/Frameworks/WebRTC.framework"
-if [[ -d "$SOLARIS_WEBRTC" ]]; then
-  codesign --force --sign - --timestamp=none "$SOLARIS_WEBRTC"
-fi
+test -d "$SOLARIS_WEBRTC" || {
+  echo "WebRTC.framework is missing from the broadcast extension. Refusing to package an IPA that can crash before ReplayKit starts." >&2
+  exit 1
+}
+codesign --force --sign - --timestamp=none "$SOLARIS_WEBRTC"
 # AltStore can inspect these requested App Group entitlements before local re-signing.
 # An ad-hoc signature does NOT grant them on an iPhone/iPad.
 codesign --force --sign - --timestamp=none --entitlements ios/Config/Probe.entitlements "$SOLARIS_EXTENSION"
