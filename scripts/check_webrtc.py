@@ -49,7 +49,10 @@ def check_project_graph(project, source_root):
                     continue
                 ref = objects[ref_id]
                 ref_name = ref.get("path", ref.get("productName", ref.get("name", "")))
-                if "WebRTC" not in ref_name:
+                # Source files such as BroadcastWebRTCSender.swift contain
+                # "WebRTC" in their names but are not framework references.
+                if not ((ref_name.endswith("WebRTC.xcframework") or ref_name.endswith("WebRTC.framework"))
+                        or ("WebRTC" in ref_name and "productRef" in file)):
                     continue
                 require("productRef" not in file,
                         f"{name}: invalid WebRTC package product reference; reproduces Release-iphoneos/WebRTC copy failure")
