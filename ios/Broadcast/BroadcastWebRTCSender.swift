@@ -31,6 +31,9 @@ final class BroadcastWebRTCSender: NSObject {
     private var localCandidates: [[String: Any]] = []
     private var fpsWindowStart = 0.0
     private var fpsWindowFrames = 0
+    private var callbackWindowStart = 0.0
+    private var callbackWindowFrames = 0
+    private var lastOutputFormat = ""
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
@@ -96,6 +99,13 @@ final class BroadcastWebRTCSender: NSObject {
         queue.sync {
             guard !stopped, let pixel = CMSampleBufferGetImageBuffer(sample) else { return }
             let now = ProcessInfo.processInfo.systemUptime
+            callbackWindowFrames += 1
+            if callbackWindowStart == 0 { callbackWindowStart = now }
+            if now - callbackWindowStart >= 1 {
+                diagnostics.callbackFPS = Double(callbackWindowFrames) / (now - callbackWindowStart)
+                callbackWindowFrames = 0
+                callbackWindowStart = now
+            }
             guard now - lastFrame >= 1.0 / Double(max(1, quality.fps)) else { return }
             lastFrame = now
             let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
@@ -106,6 +116,7 @@ final class BroadcastWebRTCSender: NSObject {
             if fpsWindowStart == 0 { fpsWindowStart = now }
             if now - fpsWindowStart >= 1 {
                 diagnostics.inputFPS = Double(fpsWindowFrames) / (now - fpsWindowStart)
+                diagnostics.submittedFPS = diagnostics.inputFPS
                 fpsWindowFrames = 0
                 fpsWindowStart = now
             }
@@ -113,15 +124,20 @@ final class BroadcastWebRTCSender: NSObject {
             let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
             let w = max(2, Int(Double(width) * scale) / 2 * 2)
             let h = max(2, Int(Double(height) * scale) / 2 * 2)
-            // Re-assert the requested native-preserving format on every
-            // submitted frame so an adaptive startup downscale does not
-            // remain active for the rest of the broadcast.
-            source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
-            if size != lastSize {
+            // Reapplying the format for every frame adds avoidable work and
+            // can lower ReplayKit callback throughput. Apply it only when the
+            // source or requested output format changes.
+            let format = "\(w)x\(h)@\(quality.fps)"
+            if format != lastOutputFormat {
+                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
+                lastOutputFormat = format
+            }
+            if size != lastSize || format != diagnostics.outputFormat {
                 diagnostics.outputWidth = w
                 diagnostics.outputHeight = h
+                diagnostics.outputFormat = format
                 diagnostics.scaling = (w == width && h == height) ? "원본 유지" : "송출 축소"
-                note("원본 (width)x(height) → 출력 (w)x(h), (quality.title)")
+                note("원본 \(width)x\(height) → 출력 \(w)x\(h), \(quality.title)")
                 lastSize = size
             }
             let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
@@ -262,11 +278,9 @@ final class BroadcastWebRTCSender: NSObject {
                 guard let answer, error == nil else {
                     self.note("answer 생성 실패", error: error?.localizedDescription ?? "SDP 없음"); return
                 }
-                // ReplayKit/WebRTC may initially ramp from a very conservative
-                // screen bitrate.  Advertise the screen budget in the answer so
-                // the encoder does not spend the first seconds at a 480p-like
-                // bitrate before probing upward.  This does not invent pixels:
-                // the capture path still preserves the native ReplayKit size.
+                // Keep a generous screen budget in the answer as a fallback.
+                // The receiver offer also carries startup/min/max bitrate
+                // hints, which is the side that controls the receive budget.
                 let tunedSDP = self.screenAnswerSDP(answer.sdp)
                 let tunedAnswer = RTCSessionDescription(type: .answer, sdp: tunedSDP)
                 self.peer.setLocalDescription(tunedAnswer) { [weak self] error in
@@ -305,6 +319,7 @@ final class BroadcastWebRTCSender: NSObject {
             // native 1920x1324 screen while avoiding an unbounded sender.
             if inVideo && !inserted && line.hasPrefix("c=") {
                 output.append("b=AS:60000")
+                output.append("b=TIAS:60000000")
                 inserted = true
             }
         }

@@ -218,14 +218,19 @@ async function start() {
         if(d.version!==BUILD || d.sessionID!==s.id) return;
       const source=(d.sourceWidth&&d.sourceHeight)?`${d.sourceWidth}×${d.sourceHeight}`:'원본 대기';
       const output=(d.outputWidth&&d.outputHeight)?`${d.outputWidth}×${d.outputHeight}`:'출력 대기';
-      const fps=d.inputFPS?`${d.inputFPS.toFixed(1)}fps 입력 / 목표 ${d.targetFPS}fps`: `목표 ${d.targetFPS||'?'}fps`;
+      const fps=d.inputFPS?`${d.inputFPS.toFixed(1)}fps 제출 / 콜백 ${d.callbackFPS?d.callbackFPS.toFixed(1):'?'}fps / 목표 ${d.targetFPS}fps`: `목표 ${d.targetFPS||'?'}fps`;
       const aspect=d.sourceAspect?` / 비율 ${d.sourceAspect}`:'';
       const scaling=d.scaling?` / ${d.scaling}`:'';
       $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output}${aspect}${scaling} / ${fps} / ${d.lastError||'보고된 오류 없음'}`;
         s.senderDiagnostic=d;
       } catch { log('송신기: '+String(event.data).slice(0,200)); }
     };
-    await s.pc.setLocalDescription(await s.pc.createOffer());
+    const rawOffer=await s.pc.createOffer();
+    // Prevent Chrome's conservative startup probe from forcing the native
+    // screen sender through a 480p-like phase. This requests a bitrate budget;
+    // it never upscales the ReplayKit pixels.
+    const tunedOffer={type:rawOffer.type,sdp:tuneScreenOfferSDP(rawOffer.sdp)};
+    await s.pc.setLocalDescription(tunedOffer);
     if(active!==s) return;
     await send(s,'offer',s.pc.localDescription.toJSON());
     if(active!==s) return;
@@ -239,6 +244,35 @@ async function start() {
   } catch(e) {
     if(active===s || !s.pc) { if(active===s) stop(); mark('summary','시작 실패: '+e.message,'bad'); log('시작 실패: '+e.message); }
   }
+}
+function tuneScreenOfferSDP(sdp){
+  const lines=sdp.split('\\r\\n');
+  let inVideo=false, insertedBandwidth=false;
+  const primary=new Set();
+  for(const line of lines){
+    if(line.startsWith('m=')) inVideo=line.startsWith('m=video ');
+    if(inVideo && line.startsWith('a=rtpmap:')){
+      const m=line.match(/^a=rtpmap:(\\d+)\\s+([^/]+)/i);
+      if(m && !/^(rtx|red|ulpfec|flexfec|flexfec-03)$/i.test(m[2])) primary.add(m[1]);
+    }
+  }
+  const out=[];
+  for(const line of lines){
+    if(line.startsWith('m=')){ inVideo=line.startsWith('m=video '); insertedBandwidth=false; }
+    out.push(line);
+    if(inVideo && !insertedBandwidth && line.startsWith('c=')){
+      out.push('b=AS:60000');
+      out.push('b=TIAS:60000000');
+      insertedBandwidth=true;
+    }
+    if(inVideo && line.startsWith('a=fmtp:')){
+      const m=line.match(/^a=fmtp:(\\d+)\\s*(.*)$/i);
+      if(m && primary.has(m[1]) && !/x-google-start-bitrate=/i.test(m[2])){
+        out[out.length-1]=line+';x-google-start-bitrate=60000;x-google-min-bitrate=20000;x-google-max-bitrate=60000';
+      }
+    }
+  }
+  return out.join('\\r\\n');
 }
 function diagnostic() {
   const s=active;

@@ -115,9 +115,12 @@ struct BroadcastDiagnostics: Codable {
     var outputHeight = 0
     var targetFPS = 0
     var inputFPS = 0.0
+    var callbackFPS = 0.0
+    var submittedFPS = 0.0
     var qualityID = ""
     var sourceAspect = ""
     var scaling = ""
+    var outputFormat = ""
     var lastError = ""
 }
 

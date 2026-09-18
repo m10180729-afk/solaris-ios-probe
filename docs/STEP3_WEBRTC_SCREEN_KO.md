@@ -6,7 +6,7 @@ browser-test 성공만으로 iOS 빌드 성공이라고 판단하지 마세요.
 1. ZIP을 다운로드하고 **모두 압축 풀기**로 새 폴더에 풉니다.
 2. 새 폴더의 UPLOAD_GIT_BASH.sh를 Git Bash에서 실행합니다.
 3. GitHub Actions에서 이번 커밋의 browser-test와 build 두 작업이 모두 성공해야 합니다.
-4. 성공한 실행의 Solaris-0.3.2-build7-app-and-receiver 아티팩트를 다운로드합니다.
+4. 성공한 실행의 Solaris-0.3.2-build17-app-and-receiver 아티팩트를 다운로드합니다.
 5. 압축을 푼 SolarisProbe-resign.ipa를 AltStore로 재서명·설치합니다. 확장을 제거하지 마세요.
 6. iPad 첫 화면이 **0.3.2 (build 7)**인지 확인합니다.
 7. iPad에 표시된 Project URL, 방 ID와 ‘Publishable key 복사’의 값을 Windows에 입력합니다.
@@ -20,7 +20,7 @@ browser-test 성공만으로 iOS 빌드 성공이라고 판단하지 마세요.
 실행 중 설정을 수정하는 기능은 이 빌드에 없습니다.
 
 빌드 실패 시 같은 ZIP으로 반복 업로드하지 마세요.
-실패한 실행에서 **Solaris-build7-xcode-evidence** 아티팩트를 받아 전달하면
+실패한 실행에서 **Solaris-build17-xcode-evidence** 아티팩트를 받아 전달하면
 실제 project.pbxproj, dependency.log, generated-project.log, xcodebuild.log,
 생성된 경우 Build.xcresult와 패키징 검사를 확인할 수 있습니다.
 비밀 키나 Apple 계정 비밀번호는 보내지 마세요.

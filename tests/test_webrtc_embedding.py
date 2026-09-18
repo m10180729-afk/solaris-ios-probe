@@ -91,6 +91,21 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn('output.append("b=AS:60000")', sender)
         self.assertIn('sdp: tunedSDP', sender)
 
+    def test_receiver_offer_requests_screen_bitrate_budget(self):
+        receiver = (Path(__file__).resolve().parents[1] /
+                    "ios/App/Resources/solaris-p2p.html").read_text()
+        self.assertIn("tuneScreenOfferSDP", receiver)
+        self.assertIn("x-google-start-bitrate=60000", receiver)
+        self.assertIn("x-google-min-bitrate=20000", receiver)
+        self.assertIn("x-google-max-bitrate=60000", receiver)
+        self.assertIn("b=TIAS:60000000", receiver)
+
+    def test_source_format_is_not_reapplied_on_every_frame(self):
+        sender = (Path(__file__).resolve().parents[1] /
+                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        self.assertIn("lastOutputFormat", sender)
+        self.assertIn("if format != lastOutputFormat", sender)
+
 
 if __name__ == "__main__":
     unittest.main()
