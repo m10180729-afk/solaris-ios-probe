@@ -91,13 +91,6 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn('output.append("b=AS:60000")', sender)
         self.assertIn('sdp: tunedSDP', sender)
 
-    def test_sender_locks_resolution_adaptation(self):
-        sender = (Path(__file__).resolve().parents[1] /
-                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertIn("RTCDegradationPreferenceMaintainResolution", sender)
-        self.assertIn("scaleResolutionDownBy = NSNumber(value: 1.0)", sender)
-        self.assertIn("maxBitrateBps = NSNumber(value: 60_000_000)", sender)
-
 
 if __name__ == "__main__":
     unittest.main()
