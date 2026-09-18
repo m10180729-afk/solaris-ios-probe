@@ -69,6 +69,10 @@ struct ScreenQuality: Codable, Equatable, Identifiable {
     let fps: Int
 
     static let automatic = ScreenQuality(id: "auto", title: "자동", maxLongSide: 1280, fps: 30)
+    // The ReplayKit extension cannot reliably read host-app UserDefaults when
+    // installed through free AltStore signing. Use the highest native-preserving
+    // preset as the extension fallback instead of silently reverting to 1280p.
+    static let extensionDefault = ScreenQuality(id: "1440p60", title: "QHD · 60fps", maxLongSide: 2560, fps: 60)
     static let presets = [
         automatic,
         ScreenQuality(id: "720p30", title: "720p · 30fps", maxLongSide: 1280, fps: 30),
@@ -79,8 +83,8 @@ struct ScreenQuality: Codable, Equatable, Identifiable {
     ]
 
     static func current() -> ScreenQuality {
-        let id = UserDefaults(suiteName: ProbeShared.settingsSuite)?.string(forKey: ProbeShared.qualityKey) ?? "auto"
-        return presets.first(where: { $0.id == id }) ?? automatic
+        let id = UserDefaults(suiteName: ProbeShared.settingsSuite)?.string(forKey: ProbeShared.qualityKey)
+        return presets.first(where: { $0.id == id }) ?? extensionDefault
     }
 }
 
@@ -99,6 +103,8 @@ struct BroadcastDiagnostics: Codable {
     var targetFPS = 0
     var inputFPS = 0.0
     var qualityID = ""
+    var sourceAspect = ""
+    var scaling = ""
     var lastError = ""
 }
 

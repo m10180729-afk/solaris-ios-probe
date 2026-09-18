@@ -101,6 +101,7 @@ final class BroadcastWebRTCSender: NSObject {
             let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
             diagnostics.sourceWidth = width
             diagnostics.sourceHeight = height
+            diagnostics.sourceAspect = String(format: "%.4f", Double(width) / Double(max(1, height)))
             fpsWindowFrames += 1
             if fpsWindowStart == 0 { fpsWindowStart = now }
             if now - fpsWindowStart >= 1 {
@@ -116,6 +117,8 @@ final class BroadcastWebRTCSender: NSObject {
                 source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
                 diagnostics.outputWidth = w
                 diagnostics.outputHeight = h
+                diagnostics.scaling = (w == width && h == height) ? "원본 유지" : "송출 축소"
+                note("원본 (width)x(height) → 출력 (w)x(h), (quality.title)")
                 lastSize = size
             }
             let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
