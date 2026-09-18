@@ -37,7 +37,7 @@ final class BroadcastWebRTCSender: NSObject {
     init(config: P2PBroadcastConfig, directory: URL?) {
         self.config = config
         self.directory = directory
-        self.quality = ScreenQuality.current()
+        self.quality = ScreenQuality.extensionCurrent()
         RTCInitializeSSL()
         factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
                                            decoderFactory: RTCDefaultVideoDecoderFactory())

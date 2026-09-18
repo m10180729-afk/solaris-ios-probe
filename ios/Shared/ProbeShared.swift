@@ -86,6 +86,19 @@ struct ScreenQuality: Codable, Equatable, Identifiable {
         let id = UserDefaults(suiteName: ProbeShared.settingsSuite)?.string(forKey: ProbeShared.qualityKey)
         return presets.first(where: { $0.id == id }) ?? extensionDefault
     }
+
+    // The Broadcast Upload Extension must not fall back to the host app's
+    // "automatic" 1280x30 preset.  Under AltStore/free signing the shared
+    // defaults can be missing or stale, so the extension treats auto/unknown
+    // as native-preserving high quality instead.
+    static func extensionCurrent() -> ScreenQuality {
+        let id = UserDefaults(suiteName: ProbeShared.settingsSuite)?.string(forKey: ProbeShared.qualityKey)
+        guard let id, id != automatic.id,
+              let selected = presets.first(where: { $0.id == id }) else {
+            return extensionDefault
+        }
+        return selected
+    }
 }
 
 struct BroadcastDiagnostics: Codable {
