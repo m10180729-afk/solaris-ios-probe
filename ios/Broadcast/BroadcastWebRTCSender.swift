@@ -56,12 +56,38 @@ final class BroadcastWebRTCSender: NSObject {
         videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
         videoTrack.isEnabled = true
         _ = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        configureScreenSender()
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
         settings.timeoutIntervalForResource = 8
         settings.urlCache = nil
         settings.httpCookieStorage = nil
         network = URLSession(configuration: settings, delegate: ProbeLANDelegate(), delegateQueue: nil)
+    }
+
+    private func configureScreenSender() {
+        guard let sender = peer.senders.first(where: { $0.track?.trackId == "solaris-screen" }) else {
+            NSLog("Solaris: screen RTP sender was not found")
+            return
+        }
+        let parameters = sender.parameters
+        parameters.degradationPreference = NSNumber(
+            value: RTCDegradationPreferenceMaintainResolution.rawValue)
+        let encodings = parameters.encodings.isEmpty
+            ? [RTCRtpEncodingParameters()]
+            : parameters.encodings
+        encodings.forEach { encoding in
+            encoding.isActive = true
+            encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
+            encoding.maxBitrateBps = NSNumber(value: 60_000_000)
+            encoding.minBitrateBps = NSNumber(value: 8_000_000)
+            encoding.maxFramerate = NSNumber(value: quality.fps)
+            encoding.bitratePriority = 2.0
+            encoding.networkPriority = .high
+        }
+        parameters.encodings = encodings
+        sender.parameters = parameters
+        note("송신 인코더 고정 · 해상도 유지 · 최대 60Mbps")
     }
 
     func start() {
