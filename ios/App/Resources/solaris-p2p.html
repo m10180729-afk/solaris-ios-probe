@@ -216,7 +216,10 @@ async function start() {
       try {
         const d=JSON.parse(event.data);
         if(d.version!==BUILD || d.sessionID!==s.id) return;
-        $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 입력 ${d.framesSubmitted}프레임 / ${d.lastError||'보고된 오류 없음'}`;
+      const source=(d.sourceWidth&&d.sourceHeight)?`${d.sourceWidth}×${d.sourceHeight}`:'원본 대기';
+      const output=(d.outputWidth&&d.outputHeight)?`${d.outputWidth}×${d.outputHeight}`:'출력 대기';
+      const fps=d.inputFPS?`${d.inputFPS.toFixed(1)}fps 입력 / 목표 ${d.targetFPS}fps`: `목표 ${d.targetFPS||'?'}fps`;
+      $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output} / ${fps} / ${d.lastError||'보고된 오류 없음'}`;
         s.senderDiagnostic=d;
       } catch { log('송신기: '+String(event.data).slice(0,200)); }
     };

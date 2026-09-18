@@ -92,6 +92,13 @@ struct BroadcastDiagnostics: Codable {
     var state = "방송 시작 대기"
     var ice = "new"
     var framesSubmitted = 0
+    var sourceWidth = 0
+    var sourceHeight = 0
+    var outputWidth = 0
+    var outputHeight = 0
+    var targetFPS = 0
+    var inputFPS = 0.0
+    var qualityID = ""
     var lastError = ""
 }
 

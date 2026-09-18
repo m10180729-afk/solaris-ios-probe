@@ -29,6 +29,8 @@ final class BroadcastWebRTCSender: NSObject {
     private var lastSize = ""
     private var offerPublished = false
     private var localCandidates: [[String: Any]] = []
+    private var fpsWindowStart = 0.0
+    private var fpsWindowFrames = 0
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
@@ -43,6 +45,8 @@ final class BroadcastWebRTCSender: NSObject {
         capturer = RTCVideoCapturer(delegate: source)
         super.init()
         diagnostics.room = config.roomID
+        diagnostics.qualityID = quality.id
+        diagnostics.targetFPS = quality.fps
         let rtc = RTCConfiguration()
         rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
@@ -95,12 +99,23 @@ final class BroadcastWebRTCSender: NSObject {
             guard now - lastFrame >= 1.0 / Double(max(1, quality.fps)) else { return }
             lastFrame = now
             let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
+            diagnostics.sourceWidth = width
+            diagnostics.sourceHeight = height
+            fpsWindowFrames += 1
+            if fpsWindowStart == 0 { fpsWindowStart = now }
+            if now - fpsWindowStart >= 1 {
+                diagnostics.inputFPS = Double(fpsWindowFrames) / (now - fpsWindowStart)
+                fpsWindowFrames = 0
+                fpsWindowStart = now
+            }
             let size = "\(width)x\(height)"
             if size != lastSize {
                 let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
                 let w = max(2, Int(Double(width) * scale) / 2 * 2)
                 let h = max(2, Int(Double(height) * scale) / 2 * 2)
                 source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
+                diagnostics.outputWidth = w
+                diagnostics.outputHeight = h
                 lastSize = size
             }
             let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
