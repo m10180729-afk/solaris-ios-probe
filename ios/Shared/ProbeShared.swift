@@ -62,6 +62,28 @@ struct P2PBroadcastConfig: Codable {
     }
 }
 
+struct ScreenQuality: Codable, Equatable, Identifiable {
+    let id: String
+    let title: String
+    let maxLongSide: Int
+    let fps: Int
+
+    static let automatic = ScreenQuality(id: "auto", title: "자동", maxLongSide: 1280, fps: 30)
+    static let presets = [
+        automatic,
+        ScreenQuality(id: "720p30", title: "720p · 30fps", maxLongSide: 1280, fps: 30),
+        ScreenQuality(id: "1080p30", title: "1080p · 30fps", maxLongSide: 1920, fps: 30),
+        ScreenQuality(id: "1080p60", title: "1080p · 60fps", maxLongSide: 1920, fps: 60),
+        ScreenQuality(id: "1440p30", title: "QHD · 30fps", maxLongSide: 2560, fps: 30),
+        ScreenQuality(id: "1440p60", title: "QHD · 60fps", maxLongSide: 2560, fps: 60)
+    ]
+
+    static func current() -> ScreenQuality {
+        let id = UserDefaults(suiteName: ProbeShared.settingsSuite)?.string(forKey: ProbeShared.qualityKey) ?? "auto"
+        return presets.first(where: { $0.id == id }) ?? automatic
+    }
+}
+
 struct BroadcastDiagnostics: Codable {
     var version = "0.3.2"
     var updatedAt = Date().timeIntervalSince1970
@@ -93,6 +115,12 @@ struct ProbeStats: Codable {
 }
 
 enum ProbeShared {
+    static let settingsSuite = "group.org.solaris.probe.GS98RPL583"
+    static let qualityKey = "screenQuality"
+
+    static func saveQuality(_ quality: ScreenQuality) {
+        UserDefaults(suiteName: settingsSuite)?.set(quality.id, forKey: qualityKey)
+    }
     // Bundle configuration avoids any runtime dependency on App Group access.
     // The host reads the embedded extension bundle; the extension reads itself.
     static func embeddedP2PConfig(in bundle: Bundle = .main) -> P2PBroadcastConfig? {

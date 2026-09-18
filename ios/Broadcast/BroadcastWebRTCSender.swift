@@ -11,6 +11,7 @@ final class BroadcastWebRTCSender: NSObject {
     private let factory: RTCPeerConnectionFactory
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
+    private let quality: ScreenQuality
     private var videoTrack: RTCVideoTrack!
     private var peer: RTCPeerConnection!
     private var channel: RTCDataChannel?
@@ -34,6 +35,7 @@ final class BroadcastWebRTCSender: NSObject {
     init(config: P2PBroadcastConfig, directory: URL?) {
         self.config = config
         self.directory = directory
+        self.quality = ScreenQuality.current()
         RTCInitializeSSL()
         factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
                                            decoderFactory: RTCDefaultVideoDecoderFactory())
@@ -90,15 +92,15 @@ final class BroadcastWebRTCSender: NSObject {
         queue.sync {
             guard !stopped, let pixel = CMSampleBufferGetImageBuffer(sample) else { return }
             let now = ProcessInfo.processInfo.systemUptime
-            guard now - lastFrame >= 1.0 / 15.0 else { return }
+            guard now - lastFrame >= 1.0 / Double(max(1, quality.fps)) else { return }
             lastFrame = now
             let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
             let size = "\(width)x\(height)"
             if size != lastSize {
-                let scale = min(1.0, 1280.0 / Double(max(width, height)))
+                let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
                 let w = max(2, Int(Double(width) * scale) / 2 * 2)
                 let h = max(2, Int(Double(height) * scale) / 2 * 2)
-                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: 15)
+                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
                 lastSize = size
             }
             let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))

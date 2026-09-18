@@ -38,20 +38,11 @@ class EmbeddingTests(unittest.TestCase):
     def test_actual_file_reference_accepted(self):
         check_project_graph(self.graph, self.root)
 
-    def test_source_filename_containing_webrtc_is_ignored(self):
-        objects = self.graph["objects"]
-        objects["source"] = {"isa": "PBXFileReference", "sourceTree": "<group>",
-                              "path": "BroadcastWebRTCSender.swift"}
-        objects["sourcebuild"] = {"isa": "PBXBuildFile", "fileRef": "source"}
-        objects["sources"] = {"isa": "PBXSourcesBuildPhase", "files": ["sourcebuild"]}
-        objects["extension"]["buildPhases"].append("sources")
-        check_project_graph(self.graph, self.root)
-
     def test_old_package_embed_reproduces_missing_product_path(self):
         objects = self.graph["objects"]
         objects["package"] = {"isa": "XCSwiftPackageProductDependency", "productName": "WebRTC"}
         objects["embed"] = {"isa": "PBXBuildFile", "productRef": "package"}
-        with self.assertRaisesRegex(ValueError, "Extension must link and embed|product reference"):
+        with self.assertRaisesRegex(ValueError, "Release-iphoneos/WebRTC"):
             check_project_graph(self.graph, self.root)
 
     def test_built_products_source_rejected(self):

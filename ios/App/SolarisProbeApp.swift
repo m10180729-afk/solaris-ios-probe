@@ -24,6 +24,7 @@ struct ProbeView: View {
         return ProbeShared.embeddedP2PConfig(in: bundle)
     }
     @State private var copied = false
+    @State private var qualityID = ScreenQuality.current().id
 
     var body: some View {
         NavigationStack {
@@ -31,7 +32,21 @@ struct ProbeView: View {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
                     Text("아이패드 화면 → Windows")
-                    Text("긴 변 최대 1280px · 최대 15fps 목표 · 음성 없음")
+                    Text("화면 품질은 아래 설정에서 선택 · 음성 없음")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("화면 품질") {
+                    Picker("송출 품질", selection: $qualityID) {
+                        ForEach(ScreenQuality.presets) { quality in
+                            Text(quality.title).tag(quality.id)
+                        }
+                    }
+                    .onChange(of: qualityID) { _, value in
+                        if let quality = ScreenQuality.presets.first(where: { $0.id == value }) {
+                            ProbeShared.saveQuality(quality)
+                        }
+                    }
+                    Text("QHD·60fps는 iPad 성능과 네트워크에 따라 실제 프레임이 낮아질 수 있습니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("1 · Windows에 입력할 방송 설정") {
