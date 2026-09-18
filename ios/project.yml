@@ -46,7 +46,10 @@ targets:
         SKIP_INSTALL: 'YES'
     dependencies:
       - package: WebRTC
+        product: WebRTC
         embed: true
+        copy:
+          destination: frameworks
 schemes:
   SolarisProbe:
     build:
