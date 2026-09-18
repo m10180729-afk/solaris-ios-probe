@@ -110,11 +110,14 @@ final class BroadcastWebRTCSender: NSObject {
                 fpsWindowStart = now
             }
             let size = "\(width)x\(height)"
+            let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
+            let w = max(2, Int(Double(width) * scale) / 2 * 2)
+            let h = max(2, Int(Double(height) * scale) / 2 * 2)
+            // Re-assert the requested native-preserving format on every
+            // submitted frame so an adaptive startup downscale does not
+            // remain active for the rest of the broadcast.
+            source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
             if size != lastSize {
-                let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
-                let w = max(2, Int(Double(width) * scale) / 2 * 2)
-                let h = max(2, Int(Double(height) * scale) / 2 * 2)
-                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
                 diagnostics.outputWidth = w
                 diagnostics.outputHeight = h
                 diagnostics.scaling = (w == width && h == height) ? "원본 유지" : "송출 축소"
