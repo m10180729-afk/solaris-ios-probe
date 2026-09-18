@@ -135,7 +135,7 @@ async function measure(s) {
   try {
     const report=await s.pc.getStats();
     if(active!==s) return;
-    let frames=0,bytes=0,inWidth=0,inHeight=0,inFPS=0,inBitrate=0;
+    let frames=0,bytes=0,inWidth=0,inHeight=0,inFPS=0,packetsLost=0,codecId='';
     report.forEach(r => {
       if(r.type==='inbound-rtp' && (r.kind==='video'||r.mediaType==='video')) {
         frames+=r.framesDecoded||0;
@@ -143,9 +143,20 @@ async function measure(s) {
         inWidth=Math.max(inWidth,r.frameWidth||0);
         inHeight=Math.max(inHeight,r.frameHeight||0);
         inFPS=Math.max(inFPS,r.framesPerSecond||0);
-        inBitrate=Math.max(inBitrate,r.bytesReceived||0);
+        packetsLost+=Math.max(0,r.packetsLost||0);
+        codecId=codecId||r.codecId||'';
       }
     });
+    const codecReport=codecId&&typeof report.get==='function'?report.get(codecId):null;
+    const codec=(codecReport?.mimeType||'').replace(/^video\//i,'')||'확인 중';
+    const statsNow=Date.now();
+    let receiveMbps=0;
+    if(s.lastStatsAt && bytes>=s.lastBytes && statsNow>s.lastStatsAt) {
+      receiveMbps=(bytes-s.lastBytes)*8/((statsNow-s.lastStatsAt)/1000)/1000000;
+    }
+    s.lastBytes=bytes;
+    s.lastStatsAt=statsNow;
+    s.inboundStats={width:inWidth,height:inHeight,fps:inFPS,receiveMbps,codec,packetsLost};
     const inboundSize=inWidth&&inHeight?`${inWidth}×${inHeight}`:'대기';
     if(s.lastInboundSize && s.lastInboundSize!==inboundSize && inboundSize!=='대기') {
       log(`수신 인코딩 해상도 변화: ${s.lastInboundSize} → ${inboundSize}`);
@@ -158,7 +169,7 @@ async function measure(s) {
     const video=$('remoteVideo');
     const playing=video.readyState>=2 && !video.paused && video.videoWidth>0;
     const playbackSize=playing?`${video.videoWidth}×${video.videoHeight}`:'영상 대기';
-    const statsSuffix=inboundSize!=='대기'?` · RTP ${inboundSize}${inFPS?` · ${inFPS.toFixed(1)}fps`:''}`:'';
+    const statsSuffix=inboundSize!=='대기'?` · RTP ${inboundSize}${inFPS?` · ${inFPS.toFixed(1)}fps`:''} · ${codec}${receiveMbps?` · ${receiveMbps.toFixed(1)}Mbps`:''}`:'';
     mark('playState',playing?playbackSize+statsSuffix:playbackSize,playing?'ok':'warn');
     if(frames>0 && playing && Date.now()-s.lastProgress<6000) {
       mark('summary','화면 수신 확인 · 프레임 디코딩 및 재생 중','ok');
@@ -198,7 +209,8 @@ async function start() {
   } catch { log('저장 공간 사용 불가: 이번 연결은 계속 진행합니다.'); }
     const s={id:crypto.randomUUID(),config:c,controllers:new Set(),pending:[],outgoing:[],
     polling:false,measuring:false,lastID:0,accepted:false,accepting:false,published:false,
-    frames:0,bytes:0,lastProgress:0,started:Date.now(),track:false,lastInboundSize:''};
+    frames:0,bytes:0,lastBytes:0,lastStatsAt:0,lastProgress:0,started:Date.now(),track:false,
+    lastInboundSize:'',inboundStats:null,codecPreference:'default'};
   try {
     s.pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]});
     active=s; lock(true);
@@ -206,7 +218,9 @@ async function start() {
     mark('frameState','0프레임');
     $('senderDetails').textContent='아이패드 방송 응답 대기';
     log(`Solaris ${BUILD} · 새 화면 세션 ${s.id}`);
-    s.pc.addTransceiver('video',{direction:'recvonly'});
+    const videoTransceiver=s.pc.addTransceiver('video',{direction:'recvonly'});
+    s.codecPreference=preferH264(videoTransceiver)?'H264':'browser default';
+    log(`영상 코덱 요청: ${s.codecPreference}`);
     s.pc.ontrack=event=>{
       if(active!==s || event.track.kind!=='video') return;
       s.track=true; mark('trackState','수신','ok'); log('영상 트랙 수신');
@@ -238,14 +252,15 @@ async function start() {
       const aspect=d.sourceAspect?` / 비율 ${d.sourceAspect}`:'';
       const scaling=d.scaling?` / ${d.scaling}`:'';
       const policy=d.encoderPolicy?` / 정책 ${d.encoderPolicy}`:'';
-      $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output}${aspect}${scaling} / ${fps}${policy} / ${d.lastError||'보고된 오류 없음'}`;
+      const queueDrops=Number.isFinite(d.senderQueueDrops)?` / 송신 큐 교체 ${d.senderQueueDrops}프레임`:'';
+      $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output}${aspect}${scaling} / ${fps}${queueDrops}${policy} / ${d.lastError||'보고된 오류 없음'}`;
         s.senderDiagnostic=d;
       } catch { log('송신기: '+String(event.data).slice(0,200)); }
     };
     const rawOffer=await s.pc.createOffer();
-    // Prevent Chrome's conservative startup probe from forcing the native
-    // screen sender through a 480p-like phase. This requests a bitrate budget;
-    // it never upscales the ReplayKit pixels.
+    // Give the hardware H264 path a realistic startup budget. Starting at the
+    // previous 60 Mbps ceiling can create a burst and packet queue before
+    // congestion control has measured this path.
     const tunedOffer={type:rawOffer.type,sdp:tuneScreenOfferSDP(rawOffer.sdp)};
     await s.pc.setLocalDescription(tunedOffer);
     if(active!==s) return;
@@ -285,17 +300,33 @@ function tuneScreenOfferSDP(sdp){
     if(inVideo && line.startsWith('a=fmtp:')){
       const m=line.match(/^a=fmtp:(\\d+)\\s*(.*)$/i);
       if(m && primary.has(m[1]) && !/x-google-start-bitrate=/i.test(m[2])){
-        out[out.length-1]=line+';x-google-start-bitrate=60000;x-google-min-bitrate=20000;x-google-max-bitrate=60000';
+        out[out.length-1]=line+';x-google-start-bitrate=20000;x-google-min-bitrate=6000;x-google-max-bitrate=60000';
       }
     }
   }
   return out.join('\\r\\n');
+}
+function preferH264(transceiver){
+  try {
+    if(!transceiver || typeof transceiver.setCodecPreferences!=='function' ||
+       typeof RTCRtpReceiver==='undefined' || typeof RTCRtpReceiver.getCapabilities!=='function') return false;
+    const codecs=RTCRtpReceiver.getCapabilities('video')?.codecs||[];
+    const h264=codecs.filter(c=>(c.mimeType||'').toLowerCase()==='video/h264');
+    if(!h264.length) return false;
+    const recovery=codecs.filter(c=>/video\/(rtx|red|ulpfec|flexfec)/i.test(c.mimeType||''));
+    transceiver.setCodecPreferences([...h264,...recovery]);
+    return true;
+  } catch(e) {
+    log(`H264 우선 설정 실패: ${e.message}`);
+    return false;
+  }
 }
 function diagnostic() {
   const s=active;
   return JSON.stringify({build:BUILD,protocol:PROTOCOL,room:s?.config.room,session:s?.id,
     peer:s?.pc.connectionState,ice:s?.pc.iceConnectionState,signaling:s?.pc.signalingState,
     answer:s?.accepted,track:s?.track,framesDecoded:s?.frames,bytesReceived:s?.bytes,
+    codecPreference:s?.codecPreference,inbound:s?.inboundStats,
     sender:s?.senderDiagnostic,video:{width:$('remoteVideo').videoWidth,height:$('remoteVideo').videoHeight,
       readyState:$('remoteVideo').readyState,paused:$('remoteVideo').paused},log:$('log').textContent},null,2);
 }

@@ -95,8 +95,8 @@ class EmbeddingTests(unittest.TestCase):
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("tuneScreenOfferSDP", receiver)
-        self.assertIn("x-google-start-bitrate=60000", receiver)
-        self.assertIn("x-google-min-bitrate=20000", receiver)
+        self.assertIn("x-google-start-bitrate=20000", receiver)
+        self.assertIn("x-google-min-bitrate=6000", receiver)
         self.assertIn("x-google-max-bitrate=60000", receiver)
         self.assertIn("b=TIAS:60000000", receiver)
 
@@ -116,13 +116,34 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
         self.assertIn("encoderPolicy", sender)
 
+    def test_sender_prefers_hardware_friendly_h264(self):
+        sender = (Path(__file__).resolve().parents[1] /
+                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        receiver = (Path(__file__).resolve().parents[1] /
+                    "ios/App/Resources/solaris-p2p.html").read_text()
+        self.assertIn("kRTCH264CodecName", sender)
+        self.assertIn("encoderFactory.preferredCodec", sender)
+        self.assertIn("preferH264(videoTransceiver)", receiver)
+        self.assertIn("setCodecPreferences", receiver)
+
+    def test_sixty_fps_does_not_use_exact_interval_gate(self):
+        sender = (Path(__file__).resolve().parents[1] /
+                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        self.assertIn("if quality.fps < 60", sender)
+        self.assertIn("submit every ReplayKit callback", sender)
+        self.assertIn("pendingFrame", sender)
+        self.assertNotIn("guard now - lastFrame >= 1.0 / Double(max(1, quality.fps))", sender)
+
     def test_receiver_reports_actual_rtp_dimensions_and_changes(self):
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("r.frameWidth", receiver)
         self.assertIn("r.frameHeight", receiver)
+        self.assertIn("receiveMbps", receiver)
+        self.assertIn("codecReport", receiver)
         self.assertIn("수신 인코딩 해상도 변화", receiver)
         self.assertIn("RTP ${inboundSize}", receiver)
+        self.assertIn("senderQueueDrops", receiver)
 
 
 if __name__ == "__main__":

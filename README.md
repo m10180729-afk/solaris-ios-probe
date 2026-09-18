@@ -1,4 +1,4 @@
-# Solaris 0.3.2 build 18 — WebRTC screen sender quality 수정 소스
+# Solaris 0.3.2 build 19 — WebRTC native quality/FPS 수정 소스
 
 iPad ReplayKit 화면을 Windows HTML 수신기로 보내는 시험 프로젝트입니다.
 **이 ZIP은 소스이며, IPA 빌드 성공이나 실제 화면 송출 성공을 뜻하지 않습니다.**
@@ -14,9 +14,9 @@ URL·publishable key·방 ID·ReplayKit sample-buffer 모드는 유지했습니�
 1. 이 ZIP을 **모두 압축 풀기**로 새 폴더에 풉니다.
 2. 그 폴더에서 Git Bash로 `bash UPLOAD_GIT_BASH.sh`를 실행합니다.
 3. GitHub Actions의 **이번 커밋**에서 browser-test와 build 모두 성공했는지 확인합니다.
-4. `Solaris-0.3.2-build18-app-and-receiver` 아티팩트를 다운로드하고 압축을 풉니다.
+4. `Solaris-0.3.2-build19-app-and-receiver` 아티팩트를 다운로드하고 압축을 풉니다.
 5. IPA를 AltStore로 재서명·설치합니다. 방송 확장을 제거하지 마세요.
-6. 앱의 **0.3.2 (build 18)** 표시를 확인합니다.
+6. 앱의 **0.3.2 (build 19)** 표시를 확인합니다.
 7. iPad에 표시된 URL·방 ID와 복사한 publishable key를 Windows 수신기에 입력합니다.
 8. Windows **설정 저장 + 수신 시작** → iPad **Solaris 화면 시험 → 공유 시작**.
 9. Windows 영상 프레임 증가와 실제 화면 재생을 확인합니다.
@@ -30,7 +30,7 @@ iPad 설정은 확장 번들에 포함된 값을 사용합니다. 이번 빌드�
 - [실행한 검사와 미실행 검사](docs/BUILD7_VALIDATION.md)
 - [설치 후 사용 순서](docs/STEP3_WEBRTC_SCREEN_KO.md)
 
-빌드 실패 시 `Solaris-build18-xcode-evidence` 아티팩트의 실제 Xcode 로그와 프로젝트를 확인합니다.
+빌드 실패 시 `Solaris-build19-xcode-evidence` 아티팩트의 실제 Xcode 로그와 프로젝트를 확인합니다.
 browser-test는 가상 송신기 시험이며, iOS 컴파일이나 ReplayKit 시험을 대신하지 않습니다.
 프레임워크 다운로드·실제 복사 원본 확인·동적 링크 확인·IPA 구조 검사 중 하나라도 실패하면
 이번 CI는 성공한 IPA를 게시하지 않습니다.

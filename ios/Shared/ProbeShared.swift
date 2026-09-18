@@ -122,6 +122,8 @@ struct BroadcastDiagnostics: Codable {
     var scaling = ""
     var outputFormat = ""
     var encoderPolicy = ""
+    var requestedCodec = ""
+    var senderQueueDrops = 0
     var lastError = ""
 }
 
