@@ -135,15 +135,31 @@ async function measure(s) {
   try {
     const report=await s.pc.getStats();
     if(active!==s) return;
-    let frames=0,bytes=0;
-    report.forEach(r => { if(r.type==='inbound-rtp' && (r.kind==='video'||r.mediaType==='video')) { frames+=r.framesDecoded||0; bytes+=r.bytesReceived||0; } });
+    let frames=0,bytes=0,inWidth=0,inHeight=0,inFPS=0,inBitrate=0;
+    report.forEach(r => {
+      if(r.type==='inbound-rtp' && (r.kind==='video'||r.mediaType==='video')) {
+        frames+=r.framesDecoded||0;
+        bytes+=r.bytesReceived||0;
+        inWidth=Math.max(inWidth,r.frameWidth||0);
+        inHeight=Math.max(inHeight,r.frameHeight||0);
+        inFPS=Math.max(inFPS,r.framesPerSecond||0);
+        inBitrate=Math.max(inBitrate,r.bytesReceived||0);
+      }
+    });
+    const inboundSize=inWidth&&inHeight?`${inWidth}×${inHeight}`:'대기';
+    if(s.lastInboundSize && s.lastInboundSize!==inboundSize && inboundSize!=='대기') {
+      log(`수신 인코딩 해상도 변화: ${s.lastInboundSize} → ${inboundSize}`);
+    }
+    if(inboundSize!=='대기') s.lastInboundSize=inboundSize;
     const progressing=frames>s.frames;
     if(progressing) s.lastProgress=Date.now();
     s.frames=frames; s.bytes=bytes;
     mark('frameState',`${frames}프레임 · ${bytes}바이트`,frames>0?'ok':'warn');
     const video=$('remoteVideo');
     const playing=video.readyState>=2 && !video.paused && video.videoWidth>0;
-    mark('playState',playing?`${video.videoWidth}×${video.videoHeight}`:'영상 대기',playing?'ok':'warn');
+    const playbackSize=playing?`${video.videoWidth}×${video.videoHeight}`:'영상 대기';
+    const statsSuffix=inboundSize!=='대기'?` · RTP ${inboundSize}${inFPS?` · ${inFPS.toFixed(1)}fps`:''}`:'';
+    mark('playState',playing?playbackSize+statsSuffix:playbackSize,playing?'ok':'warn');
     if(frames>0 && playing && Date.now()-s.lastProgress<6000) {
       mark('summary','화면 수신 확인 · 프레임 디코딩 및 재생 중','ok');
     } else if(frames>0 && Date.now()-s.lastProgress>=6000) {
@@ -180,9 +196,9 @@ async function start() {
   try {
     localStorage.setItem('solarisp2p.url',c.url); localStorage.setItem('solarisp2p.key',c.key); localStorage.setItem('solarisp2p.room',c.room);
   } catch { log('저장 공간 사용 불가: 이번 연결은 계속 진행합니다.'); }
-  const s={id:crypto.randomUUID(),config:c,controllers:new Set(),pending:[],outgoing:[],
+    const s={id:crypto.randomUUID(),config:c,controllers:new Set(),pending:[],outgoing:[],
     polling:false,measuring:false,lastID:0,accepted:false,accepting:false,published:false,
-    frames:0,bytes:0,lastProgress:0,started:Date.now(),track:false};
+    frames:0,bytes:0,lastProgress:0,started:Date.now(),track:false,lastInboundSize:''};
   try {
     s.pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]});
     active=s; lock(true);
@@ -221,7 +237,8 @@ async function start() {
       const fps=d.inputFPS?`${d.inputFPS.toFixed(1)}fps 제출 / 콜백 ${d.callbackFPS?d.callbackFPS.toFixed(1):'?'}fps / 목표 ${d.targetFPS}fps`: `목표 ${d.targetFPS||'?'}fps`;
       const aspect=d.sourceAspect?` / 비율 ${d.sourceAspect}`:'';
       const scaling=d.scaling?` / ${d.scaling}`:'';
-      $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output}${aspect}${scaling} / ${fps} / ${d.lastError||'보고된 오류 없음'}`;
+      const policy=d.encoderPolicy?` / 정책 ${d.encoderPolicy}`:'';
+      $('senderDetails').textContent=`iPad ${d.version}: ${d.state} / 원본 ${source} → 출력 ${output}${aspect}${scaling} / ${fps}${policy} / ${d.lastError||'보고된 오류 없음'}`;
         s.senderDiagnostic=d;
       } catch { log('송신기: '+String(event.data).slice(0,200)); }
     };

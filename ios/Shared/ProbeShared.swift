@@ -121,6 +121,7 @@ struct BroadcastDiagnostics: Codable {
     var sourceAspect = ""
     var scaling = ""
     var outputFormat = ""
+    var encoderPolicy = ""
     var lastError = ""
 }
 

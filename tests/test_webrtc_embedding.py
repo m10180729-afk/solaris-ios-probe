@@ -106,6 +106,24 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("lastOutputFormat", sender)
         self.assertIn("if format != lastOutputFormat", sender)
 
+    def test_sender_uses_screen_cast_source_and_rtp_policy(self):
+        sender = (Path(__file__).resolve().parents[1] /
+                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        self.assertIn("videoSource(forScreenCast: true)", sender)
+        self.assertIn("RTCRtpSender", sender)
+        self.assertIn("maxBitrateBps = NSNumber(value: 60_000_000)", sender)
+        self.assertIn("scaleResolutionDownBy = NSNumber(value: 1.0)", sender)
+        self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
+        self.assertIn("encoderPolicy", sender)
+
+    def test_receiver_reports_actual_rtp_dimensions_and_changes(self):
+        receiver = (Path(__file__).resolve().parents[1] /
+                    "ios/App/Resources/solaris-p2p.html").read_text()
+        self.assertIn("r.frameWidth", receiver)
+        self.assertIn("r.frameHeight", receiver)
+        self.assertIn("수신 인코딩 해상도 변화", receiver)
+        self.assertIn("RTP ${inboundSize}", receiver)
+
 
 if __name__ == "__main__":
     unittest.main()

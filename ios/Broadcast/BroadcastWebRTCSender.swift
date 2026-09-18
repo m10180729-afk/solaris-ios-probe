@@ -13,6 +13,7 @@ final class BroadcastWebRTCSender: NSObject {
     private let capturer: RTCVideoCapturer
     private let quality: ScreenQuality
     private var videoTrack: RTCVideoTrack!
+    private var videoSender: RTCRtpSender?
     private var peer: RTCPeerConnection!
     private var channel: RTCDataChannel?
     private var timer: DispatchSourceTimer?
@@ -44,7 +45,12 @@ final class BroadcastWebRTCSender: NSObject {
         RTCInitializeSSL()
         factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
                                            decoderFactory: RTCDefaultVideoDecoderFactory())
-        source = factory.videoSource()
+        // Mark this as a screen-cast source.  A generic video source lets
+        // WebRTC's camera-oriented adaptation logic resize the track when it
+        // sees bandwidth pressure.  The native WebRTC 153 API has a separate
+        // screen-cast source specifically so the encoder can preserve text
+        // and the requested dimensions.
+        source = factory.videoSource(forScreenCast: true)
         capturer = RTCVideoCapturer(delegate: source)
         super.init()
         diagnostics.room = config.roomID
@@ -58,7 +64,8 @@ final class BroadcastWebRTCSender: NSObject {
             constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
         videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
         videoTrack.isEnabled = true
-        _ = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        videoSender = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        applyVideoSenderPolicy()
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
         settings.timeoutIntervalForResource = 8
@@ -156,6 +163,38 @@ final class BroadcastWebRTCSender: NSObject {
             diagnostics.framesSubmitted += 1
             persist()
         }
+    }
+
+    private func applyVideoSenderPolicy() {
+        guard let videoSender else {
+            diagnostics.lastError = "RTCRtpSender 생성 실패"
+            return
+        }
+
+        // WebRTC 153 exposes the real encoder controls through the sender's
+        // RTP parameters.  SDP b= lines are only hints; they do not prevent
+        // the native encoder from entering a low-resolution adaptation phase.
+        let parameters = videoSender.parameters
+        var encodings = parameters.encodings
+        if encodings.isEmpty {
+            encodings = [RTCRtpEncodingParameters()]
+        }
+        for encoding in encodings {
+            encoding.isActive = true
+            encoding.maxBitrateBps = NSNumber(value: 60_000_000)
+            encoding.minBitrateBps = NSNumber(value: 8_000_000)
+            encoding.maxFramerate = NSNumber(value: quality.fps)
+            encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
+            encoding.bitratePriority = 2.0
+        }
+        parameters.encodings = encodings
+        // Prefer preserving the native screen dimensions.  This is the
+        // sender-side control that SDP alone cannot provide.
+        parameters.degradationPreference = NSNumber(
+            value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
+        )
+        videoSender.parameters = parameters
+        diagnostics.encoderPolicy = "screenCast · native resolution · max 60Mbps · no scale-down"
     }
 
     private func note(_ state: String, error: String? = nil) {
@@ -288,6 +327,7 @@ final class BroadcastWebRTCSender: NSObject {
                     self.queue.async {
                         guard !self.stopped else { return }
                         if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
+                        self.applyVideoSenderPolicy()
                         self.send("answer", ["type": "answer", "sdp": tunedSDP]) { success in
                             if success {
                                 self.offerPublished = true
