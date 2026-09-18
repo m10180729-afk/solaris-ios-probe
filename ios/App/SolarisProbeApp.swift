@@ -41,7 +41,7 @@ struct ProbeView: View {
                             Text(quality.title).tag(quality.id)
                         }
                     }
-                    .onChange(of: qualityID) { _, value in
+                    .onChange(of: qualityID) { value in
                         if let quality = ScreenQuality.presets.first(where: { $0.id == value }) {
                             ProbeShared.saveQuality(quality)
                         }
