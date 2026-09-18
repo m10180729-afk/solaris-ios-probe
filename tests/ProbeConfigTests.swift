@@ -37,7 +37,7 @@ struct ProbeConfigTests {
         precondition(screen.signalingRoom == "same-room-screen-v031")
         let report = BroadcastDiagnostics()
         let encoded = try! JSONEncoder().encode(report)
-        precondition(try! JSONDecoder().decode(BroadcastDiagnostics.self, from: encoded).version == "0.3.1")
+        precondition(try! JSONDecoder().decode(BroadcastDiagnostics.self, from: encoded).version == "0.3.2")
         precondition(!String(data: encoded, encoding: .utf8)!.contains(key))
         print("PASS: shared Swift LAN and P2P configuration validation (not an iOS device test)")
     }

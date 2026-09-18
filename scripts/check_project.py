@@ -9,6 +9,16 @@ ROOT = Path(__file__).resolve().parents[1]
 GROUP = "group.org.solaris.probe"
 
 
+def check_broadcast_info(info, principal):
+    extension = info["NSExtension"]
+    assert extension["NSExtensionPointIdentifier"] == "com.apple.broadcast-services-upload"
+    assert extension["NSExtensionPrincipalClass"] == principal
+    assert extension.get("RPBroadcastProcessMode") == "RPBroadcastProcessModeSampleBuffer", \
+        "RPBroadcastProcessMode must be directly inside NSExtension, NOT NSExtensionAttributes"
+    assert "RPBroadcastProcessMode" not in extension.get("NSExtensionAttributes", {}), \
+        "Remove misplaced RPBroadcastProcessMode"
+
+
 def check_sources():
     for path in sorted(ROOT.rglob("*.py")):
         if not {"build", "dist", "__pycache__", "node_modules"}.intersection(path.relative_to(ROOT).parts):
@@ -18,10 +28,8 @@ def check_sources():
         assert info["SolarisAppGroup"] == GROUP
         assert info["NSLocalNetworkUsageDescription"]
         assert info["NSAppTransportSecurity"]["NSAllowsArbitraryLoads"] is True
-    extension = plistlib.loads((ROOT / "ios/Broadcast/Info.plist").read_bytes())["NSExtension"]
-    assert extension["NSExtensionPointIdentifier"] == "com.apple.broadcast-services-upload"
-    assert extension["NSExtensionPrincipalClass"] == "$(PRODUCT_MODULE_NAME).SampleHandler"
-    assert extension["NSExtensionAttributes"]["RPBroadcastProcessMode"] == "RPBroadcastProcessModeSampleBuffer"
+    check_broadcast_info(plistlib.loads((ROOT / "ios/Broadcast/Info.plist").read_bytes()),
+                         "$(PRODUCT_MODULE_NAME).SampleHandler")
     rights = plistlib.loads((ROOT / "ios/Config/Probe.entitlements").read_bytes())
     assert rights == {"com.apple.security.application-groups": [GROUP]}
     for path in ("ios/project.yml", "receiver/viewer.html", "tests/ProbeConfigTests.swift",
@@ -47,8 +55,7 @@ def check_ipa(path):
         assert ext["CFBundleIdentifier"].startswith(app["CFBundleIdentifier"] + ".")
         assert app["CFBundleShortVersionString"] == ext["CFBundleShortVersionString"]
         assert app["CFBundleVersion"] == ext["CFBundleVersion"]
-        assert ext["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.broadcast-services-upload"
-        assert ext["NSExtension"]["NSExtensionPrincipalClass"] == "SolarisBroadcast.SampleHandler"
+        check_broadcast_info(ext, "SolarisBroadcast.SampleHandler")
         for folder, info in ((app_root, app), (extension_root, ext)):
             assert not any("$(" in str(value) for value in info.values()), "Unexpanded build setting"
             executable = archive.read(folder + info["CFBundleExecutable"])

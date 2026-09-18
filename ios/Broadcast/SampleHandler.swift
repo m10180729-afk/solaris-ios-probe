@@ -19,10 +19,27 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
     private var network: URLSession?
     private var p2pSender: BroadcastWebRTCSender?
 
+    override init() {
+        super.init()
+        NSLog("Solaris broadcast handler initialized (%@)", ProbeShared.appVersion)
+        if let group = ProbeShared.group() {
+            _ = writeLaunchDiagnostic(directory: group.url, state: "확장 객체 초기화 완료 · 방송 시작 콜백 대기")
+        } else {
+            NSLog("Solaris extension App Group unavailable")
+        }
+    }
+
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         queue.async { [self] in
             guard let group = ProbeShared.group() else {
                 fail("확장이 App Group을 열지 못했습니다. 재서명된 그룹 권한을 확인하세요.")
+                return
+            }
+            // Write a launch marker before reading configuration or constructing
+            // WebRTC. This makes early extension failures diagnosable from the app.
+            directory = group.url
+            guard writeLaunchDiagnostic(directory: group.url, state: "방송 시작 콜백 실행") else {
+                fail("방송 확장이 진단 파일을 저장하지 못했습니다. App Group 쓰기 권한을 확인하세요.")
                 return
             }
             let value = try? ProbeShared.read(ProbeConfig.self,
@@ -32,10 +49,10 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                                             name: ProbeShared.p2pConfigName,
                                             directory: group.url)
             guard value?.valid == true || p2p?.valid == true else {
+                writeLaunchDiagnostic(directory: group.url, state: "설정 없음 또는 설정 형식 오류")
                 fail("LAN 또는 WebRTC 방송 설정을 앱에서 먼저 저장하세요.")
                 return
             }
-            directory = group.url
             // Screen broadcasting takes priority; do not also send to a stale LAN receiver.
             config = p2p?.valid == true ? nil : (value?.valid == true ? value : nil)
             stats = ProbeStats()
@@ -46,21 +63,40 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
             releaseFrame()
             lastFrame = 0
             lastStats = 0
-            context = CIContext(options: [.cacheIntermediates: false])
-            let settings = URLSessionConfiguration.ephemeral
-            settings.timeoutIntervalForRequest = 3
-            settings.timeoutIntervalForResource = 4
-            settings.httpMaximumConnectionsPerHost = 1
-            settings.urlCache = nil
-            settings.httpCookieStorage = nil
-            settings.connectionProxyDictionary = [:]
-            network = URLSession(configuration: settings, delegate: self, delegateQueue: nil)
+            if config != nil {
+                // Do not allocate a second image-processing/network path for WebRTC.
+                context = CIContext(options: [.cacheIntermediates: false])
+                let settings = URLSessionConfiguration.ephemeral
+                settings.timeoutIntervalForRequest = 3
+                settings.timeoutIntervalForResource = 4
+                settings.httpMaximumConnectionsPerHost = 1
+                settings.urlCache = nil
+                settings.httpCookieStorage = nil
+                settings.connectionProxyDictionary = [:]
+                network = URLSession(configuration: settings, delegate: self, delegateQueue: nil)
+            }
             if let p2p, p2p.valid {
+                writeLaunchDiagnostic(directory: group.url, state: "WebRTC 송신기 초기화 중")
                 p2pSender = BroadcastWebRTCSender(config: p2p, directory: group.url)
                 p2pSender?.start()
             }
             active = true
             saveStats(force: true)
+        }
+    }
+
+    @discardableResult
+    private func writeLaunchDiagnostic(directory: URL, state: String) -> Bool {
+        var d = BroadcastDiagnostics()
+        d.state = state
+        d.updatedAt = Date().timeIntervalSince1970
+        do {
+            try ProbeShared.write(d, name: ProbeShared.diagnosticsName, directory: directory)
+            return true
+        } catch {
+            let e = error as NSError
+            NSLog("Solaris launch diagnostic write failed: %@ / %ld", e.domain, e.code)
+            return false
         }
     }
 

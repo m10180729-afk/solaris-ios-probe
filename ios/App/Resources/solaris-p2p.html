@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris 화면 수신 · 0.3.1</title>
+<title>Solaris 화면 수신 · 0.3.2</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11151c;color:#eef3ff}body{margin:0}main{max-width:960px;margin:auto;padding:24px}h1{font-size:26px}p{line-height:1.6;color:#b5c3d8}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:18px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;font-size:14px;color:#b5c3d8}input,button{box-sizing:border-box;width:100%;padding:13px;margin-top:8px;border:1px solid #465878;border-radius:8px;background:#111a28;color:inherit;font:inherit}button{cursor:pointer;background:#20406a;font-weight:650}button.primary{background:#1471c9}button:disabled{opacity:.5;cursor:default}video{width:100%;background:#05080d;max-height:60vh;min-height:240px}.checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}.checks div{padding:12px;background:#111a28;border-radius:8px}.ok{color:#65e6a9}.warn{color:#ffd082}.bad{color:#ff9696}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;font-size:12px}#diagnosticText{width:100%;box-sizing:border-box;min-height:120px}small{color:#b5c3d8}@media(max-width:640px){.grid,.checks{grid-template-columns:1fr}main{padding:12px}}
 </style></head><body><main>
-<h1>Solaris 화면 수신 · 0.3.1</h1>
-<p>Windows 전용 수신기 · 아이패드에서도 <b>0.3.1</b> 앱을 사용하세요.<br>아이패드는 메인 화면의 <b>3A 설정 저장 → Solaris 화면 시험 방송 시작</b>만 합니다. P2P 테스트 화면은 열지 마세요.</p>
+<h1>Solaris 화면 수신 · 0.3.2</h1>
+<p>Windows 전용 수신기 · 아이패드에서도 <b>0.3.2</b> 앱을 사용하세요.<br>아이패드는 메인 화면의 <b>3A 설정 저장 → Solaris 화면 시험 방송 시작</b>만 합니다. P2P 테스트 화면은 열지 마세요.</p>
 <section class="card"><div class="grid">
 <label>Supabase Project URL<input id="supabaseUrl" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
 <label>Publishable key (Secret key 금지)<input id="anonKey" type="password" placeholder="sb_publishable_..." autocomplete="off"></label>
@@ -27,7 +27,7 @@
 <section class="card"><button id="copyBtn">진단 한 번에 복사 (키 제외)</button><pre id="log"></pre><textarea id="diagnosticText" hidden readonly aria-label="복사할 진단"></textarea></section>
 </main><script>
 'use strict';
-const BUILD = '0.3.1';
+const BUILD = '0.3.2';
 const PROTOCOL = 'screen-v031';
 const $ = id => document.getElementById(id);
 let active = null;
@@ -97,7 +97,7 @@ async function handle(s, row) {
       await s.pc.setRemoteDescription({type:'answer',sdp:p.sdp});
       if(active!==s) return;
       s.accepted = true;
-      mark('senderState','ReplayKit 0.3.1 응답','ok');
+      mark('senderState','ReplayKit 0.3.2 응답','ok');
       log('아이패드 화면 방송 확장 answer 확인');
       await flushICE(s);
     } finally { s.accepting = false; }
@@ -149,7 +149,7 @@ async function measure(s) {
     } else if(frames>0 && Date.now()-s.lastProgress>=6000) {
       mark('summary','영상 프레임 증가가 멈췄습니다. 아이패드 화면을 움직여 확인하세요.','warn');
     } else if(Date.now()-s.started>15000) {
-      const message=!s.accepted ? '아이패드 방송 응답 없음: 앱 0.3.1 / 3A 방 ID / 방송 시작 확인'
+      const message=!s.accepted ? '아이패드 방송 응답 없음: 앱 0.3.2 / 3A 방 ID / 방송 시작 확인'
         : !s.track ? '방송 응답은 왔지만 영상 트랙 없음: 진단을 복사해 보내주세요.'
         : '영상 트랙은 있으나 디코딩 프레임 없음: 아이패드 송신 진단 확인';
       mark('summary',message,'warn');
@@ -257,5 +257,5 @@ $('forgetBtn').onclick=()=>{
 };
 window.addEventListener('beforeunload',stop);
 loadSettings();
-log('0.3.1 준비 완료 · Windows 화면 수신 전용 · 기존 SQL 테이블 사용');
+log('0.3.2 준비 완료 · Windows 화면 수신 전용 · 기존 SQL 테이블 사용');
 </script></body></html>

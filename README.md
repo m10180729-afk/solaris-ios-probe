@@ -1,4 +1,4 @@
-# Solaris 0.3.1 — 화면 방송과 자동 진단
+# Solaris 0.3.2 — 화면 방송과 자동 진단
 
 아이패드 ReplayKit 화면을 Windows 브라우저로 받는 시험용 수정 소스입니다.
 **소스 ZIP은 설치용 IPA가 아닙니다.** GitHub에서 한 번 빌드한 뒤 결과 IPA를 AltStore로 재서명해 설치합니다.
@@ -9,10 +9,10 @@
 1. ZIP을 Windows에서 풀고 그 폴더의 `UPLOAD_GIT_BASH.sh`를 Git Bash로 실행합니다.
    이 스크립트는 기존 GitHub 저장소를 새 작업 폴더에 복제하고 수정 소스를 일반 push합니다.
    기존 Downloads 작업 폴더는 건드리지 않습니다. GitHub 로그인 창이 나오면 본인 계정으로 로그인합니다.
-2. GitHub Actions가 자동으로 코드 검사 → Swift 검사 → iOS 빌드를 실행합니다.
-3. 초록색 성공 후 `Solaris-0.3.1-app-and-receiver` 결과물을 내려받아 압축을 풉니다.
-   `SolarisProbe-resign.ipa`를 기존 방식으로 AltStore에 설치합니다. 앱 첫 화면의 **0.3.1**을 확인합니다.
-4. Windows에서 함께 제공한 `Solaris-Windows-0.3.1.html` 또는 소스의
+2. GitHub Actions가 자동으로 브라우저 영상 검사 → 코드·Swift 검사 → iOS 빌드를 실행합니다.
+3. 초록색 성공 후 `Solaris-0.3.2-app-and-receiver` 결과물을 내려받아 압축을 풉니다.
+   `SolarisProbe-resign.ipa`를 기존 방식으로 AltStore에 설치합니다. 앱 첫 화면의 **0.3.2**을 확인합니다.
+4. Windows에서 함께 제공한 `Solaris-Windows-0.3.2.html` 또는 소스의
    `ios/App/Resources/solaris-p2p.html`을 Chrome으로 엽니다.
 5. 양쪽 URL·Publishable key·방 ID를 맞추고, **iPad 설정 저장 → Windows 수신 시작 → iPad 방송 시작**.
    별도 P2P 테스트나 PC IP/임시 토큰 입력은 없습니다.
@@ -21,6 +21,24 @@
 자세한 설치 이후 순서는 [화면 방송 안내](docs/STEP3_WEBRTC_SCREEN_KO.md)를 보세요.
 
 ## 수정 내용
+
+### 0.3.2에서 수정한 시작 문제
+
+- 방송 확장 Info.plist의 `RPBroadcastProcessMode`가 `NSExtensionAttributes` 안에 있던 오류를 수정했습니다.
+  이 값은 `NSExtension` 바로 아래에 있어야 합니다. 이전 소스 검사도 잘못된 위치를 통과시키고 있었습니다.
+- 소스와 빌드된 IPA에 동일한 방송 모드 검사를 적용하고, 잘못된 위치·누락·다른 처리 모드·버전 혼합을 거부하는 회귀 검사를 추가했습니다.
+- 확장 객체 생성과 `broadcastStarted` 진입을 구분해 기록합니다. 진단 쓰기 실패를 더 이상 조용히 무시하지 않습니다.
+- 앱의 진단 복사에 실제 설치된 확장의 처리 모드·클래스·버전·프로파일 그룹·읽기 오류를 포함합니다.
+  앱에서 그룹을 열었다는 사실을 확장 접근 성공으로 간주하지 않습니다.
+- WebRTC 송출에서 사용하지 않는 LAN 이미지 변환기와 네트워크 객체를 만들지 않습니다.
+- 이전에 제외됐던 실제 브라우저 영상 검사를 필수 CI 단계로 복원했습니다. 테스트의 가상 신호 서버가
+  상대 ICE 수집을 기다리며 HTTP 응답을 지연하던 구조를 고쳤고, 실패하면 양쪽 진단을 보관합니다.
+  이 환경에서는 Chromium 다운로드가 막혀 수정된 브라우저 시험의 통과 여부는 확인하지 못했습니다.
+
+이 수정이 현재 기기의 모든 원인을 해결했는지는 아직 확인되지 않았습니다. 재서명 이후의 확장 권한과
+실제 iPad 송출은 GitHub의 소스 검사만으로 검증할 수 없습니다.
+
+### 기존 화면 수신 기능
 
 - 웹 테스트 callee와 방송 확장이 같은 offer에 응답하던 경로 분리.
 - 화면 전용 방 접미사, 연결마다 새 세션 ID, 송신기 출처 검사.

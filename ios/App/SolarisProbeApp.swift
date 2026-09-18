@@ -26,6 +26,7 @@ struct ProbeView: View {
     @State private var message = "Windows와 같은 URL, Publishable key, 방 ID를 입력하고 저장하세요."
     @State private var groupStatus = "확인 중"
     @State private var diagnostics: BroadcastDiagnostics?
+    @State private var diagnosticReadStatus = "진단 확인 중"
     @State private var stats: ProbeStats?
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -44,7 +45,7 @@ struct ProbeView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Solaris 0.3.1").font(.title2.bold())
+                    Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
                     Text("아이패드 화면 → Windows · 자동 진단")
                     Text("긴 변 최대 1280px · 최대 15fps 목표 · 음성 없음")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -60,7 +61,7 @@ struct ProbeView: View {
                     Text(message).font(.footnote)
                 }
                 Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.1.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                         .font(.callout)
                     if ready, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 방송 시작")
@@ -79,7 +80,7 @@ struct ProbeView: View {
                         Text("캡처 → WebRTC 입력: \(d.framesSubmitted)프레임")
                         if !d.lastError.isEmpty { Text(d.lastError).foregroundStyle(.orange) }
                     } else {
-                        Text("방송 시작 후 자동 표시됩니다. 방송 중에도 기록이 없다면 확장 실행 또는 공유 저장소 확인이 필요합니다.")
+                        Text(diagnosticReadStatus).foregroundStyle(.orange)
                     }
                     Text("최종 성공 여부는 Windows의 ‘영상 수신’과 ‘화면 재생’으로 확인합니다.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -88,6 +89,7 @@ struct ProbeView: View {
                 Section {
                     DisclosureGroup("설치·확장 세부 정보") {
                         Text(groupStatus).font(.footnote).textSelection(.enabled)
+                        Text(ProbeShared.extensionReport()).font(.footnote).textSelection(.enabled)
                         Text("확장: \(ProbeShared.extensionID() ?? "없음 — 확장을 포함해 다시 설치하세요")")
                             .font(.footnote).textSelection(.enabled)
                         if let s = stats {
@@ -130,12 +132,24 @@ struct ProbeView: View {
         } catch { savedConfig = nil; message = "저장 실패: \(error.localizedDescription)" }
     }
     private func refresh() {
-        guard let group = ProbeShared.group() else { return }
-        diagnostics = try? ProbeShared.read(BroadcastDiagnostics.self, name: ProbeShared.diagnosticsName, directory: group.url)
+        guard let group = ProbeShared.group() else {
+            diagnostics = nil
+            diagnosticReadStatus = "앱의 App Group 접근 실패. 확장 권한은 별도로 확인해야 합니다."
+            return
+        }
+        do {
+            diagnostics = try ProbeShared.read(BroadcastDiagnostics.self, name: ProbeShared.diagnosticsName, directory: group.url)
+            diagnosticReadStatus = "진단 읽기 성공"
+        } catch {
+            diagnostics = nil
+            let e = error as NSError
+            diagnosticReadStatus = "방송 진단 읽기 실패: \(e.domain) / \(e.code). 방송 중이면 확장 초기화·공유 그룹·파일 형식을 확인해야 합니다."
+        }
         stats = try? ProbeShared.read(ProbeStats.self, name: ProbeShared.statsName, directory: group.url)
     }
     private func copyDiagnostics() {
-        var report = "Solaris app 0.3.1\n\(groupStatus)\nextension=\(ProbeShared.extensionID() ?? "missing")"
+        refresh()
+        var report = "Solaris app \(ProbeShared.appVersion)\n\(groupStatus)\n\(ProbeShared.extensionReport())\n\(diagnosticReadStatus)"
         if let d = diagnostics, let data = try? JSONEncoder().encode(d), let text = String(data: data, encoding: .utf8) {
             report += "\n" + text
         } else { report += "\nBroadcast diagnostics missing" }

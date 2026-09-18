@@ -63,7 +63,7 @@ struct P2PBroadcastConfig: Codable {
 }
 
 struct BroadcastDiagnostics: Codable {
-    var version = "0.3.1"
+    var version = "0.3.2"
     var updatedAt = Date().timeIntervalSince1970
     var room = ""
     var sessionID = ""
@@ -93,6 +93,11 @@ struct ProbeStats: Codable {
 }
 
 enum ProbeShared {
+    static var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        return "\(version) (build \(build))"
+    }
     static let configName = "probe-config.json"
     static let p2pConfigName = "p2p-broadcast-config.json"
     static let statsName = "probe-stats.json"
@@ -100,8 +105,15 @@ enum ProbeShared {
     // AltStore may rewrite App Group identifiers. Prefer the actual profile's
     // entitlements, not a hard-coded Team ID. A profile is NOT proof that access works.
     static func groupCandidates() -> [String] {
-        var result: [String] = []
-        if let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+        var result = profileGroups(in: .main).filter { $0.lowercased().contains("solaris") }
+        if let hint = Bundle.main.object(forInfoDictionaryKey: "SolarisAppGroup") as? String,
+           !result.contains(hint) { result.append(hint) }
+        return result
+    }
+
+    // Profile metadata is useful evidence, NOT proof of runtime container access.
+    static func profileGroups(in bundle: Bundle) -> [String] {
+        if let profile = bundle.url(forResource: "embedded", withExtension: "mobileprovision"),
            let data = try? Data(contentsOf: profile),
            let start = data.range(of: Data("<?xml".utf8)),
            let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
@@ -110,11 +122,9 @@ enum ProbeShared {
            let dictionary = plist as? [String: Any],
            let rights = dictionary["Entitlements"] as? [String: Any],
            let groups = rights["com.apple.security.application-groups"] as? [String] {
-            result.append(contentsOf: groups.filter { $0.lowercased().contains("solaris") })
+            return groups
         }
-        if let hint = Bundle.main.object(forInfoDictionaryKey: "SolarisAppGroup") as? String,
-           !result.contains(hint) { result.append(hint) }
-        return result
+        return []
     }
 
     static func group() -> (id: String, url: URL)? {
@@ -136,9 +146,32 @@ enum ProbeShared {
     }
 
     static func extensionID() -> String? {
+        broadcastBundle()?.bundleIdentifier
+    }
+
+    static func broadcastBundle() -> Bundle? {
         guard let folder = Bundle.main.builtInPlugInsURL,
               let urls = try? FileManager.default.contentsOfDirectory(
                 at: folder, includingPropertiesForKeys: nil) else { return nil }
-        return urls.first(where: { $0.pathExtension == "appex" }).flatMap { Bundle(url: $0)?.bundleIdentifier }
+        return urls.compactMap { Bundle(url: $0) }.first {
+            ($0.object(forInfoDictionaryKey: "NSExtension") as? [String: Any])?["NSExtensionPointIdentifier"] as? String
+                == "com.apple.broadcast-services-upload"
+        }
+    }
+
+    static func extensionReport() -> String {
+        guard let bundle = broadcastBundle() else { return "Broadcast extension missing" }
+        let ext = bundle.object(forInfoDictionaryKey: "NSExtension") as? [String: Any] ?? [:]
+        let mode = ext["RPBroadcastProcessMode"] as? String ?? "MISSING / wrong nesting"
+        let principal = ext["NSExtensionPrincipalClass"] as? String ?? "MISSING"
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        let appGroups = profileGroups(in: .main)
+        let extensionGroups = profileGroups(in: bundle)
+        return "extension=\(bundle.bundleIdentifier ?? "missing") version=\(version) build=\(build)\n" +
+            "processMode=\(mode)\nprincipalClass=\(principal)\n" +
+            "appProfileGroups=\(appGroups)\nextensionProfileGroups=\(extensionGroups)\n" +
+            "commonProfileGroups=\(appGroups.filter { extensionGroups.contains($0) })\n" +
+            "Profile metadata does not prove extension runtime access."
     }
 }

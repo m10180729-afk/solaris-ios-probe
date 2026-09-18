@@ -50,7 +50,7 @@ codesign --force --sign - --timestamp=none --entitlements ios/Config/Probe.entit
 codesign --verify --deep --strict "$SOLARIS_APP"
 ditto -c -k --keepParent "$SOLARIS_STAGE/Payload" "$SOLARIS_OUTPUT"
 python3 scripts/check_project.py --ipa "$SOLARIS_OUTPUT"
-cp ios/App/Resources/solaris-p2p.html dist/Solaris-Windows-0.3.1.html
+cp ios/App/Resources/solaris-p2p.html dist/Solaris-Windows-0.3.2.html
 cp docs/STEP3_WEBRTC_SCREEN_KO.md dist/START_HERE_KO.md
 echo "Packaged: $SOLARIS_OUTPUT"
 echo "RE-SIGNING AND PHYSICAL-DEVICE TEST REQUIRED. No install/capture success is claimed."

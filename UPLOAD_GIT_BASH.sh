@@ -21,7 +21,7 @@ if git diff --cached --quiet; then
 else
   git config user.name >/dev/null || git config user.name "Solaris local build"
   git config user.email >/dev/null || git config user.email "solaris-build@localhost"
-  git commit -m "Fix screen broadcast signaling and add integrated diagnostics (0.3.1)"
+  git commit -m "Fix screen broadcast signaling and add integrated diagnostics (0.3.2)"
   git push origin HEAD:main
   echo "Uploaded. GitHub Actions will run the checks and build automatically."
 fi

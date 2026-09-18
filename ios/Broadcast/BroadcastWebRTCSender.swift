@@ -201,7 +201,7 @@ final class BroadcastWebRTCSender: NSObject {
               UUID(uuidString: incomingSession) != nil else { return }
         if kind == "offer", sessionID == nil, let sdp = payload["sdp"] as? String {
             guard payload["protocol"] as? String == "screen-v031", sdp.contains("m=video") else {
-                note("수신기 버전 불일치", error: "Windows에서 0.3.1 화면 수신 파일을 여세요.")
+                note("수신기 버전 불일치", error: "Windows에서 0.3.2 화면 수신 파일을 여세요.")
                 return
             }
             sessionID = incomingSession
@@ -320,7 +320,7 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
         queue.async {
             guard !self.stopped, dataChannel.readyState == .open else { return }
-            let reply = Data("ReplayKit 송신기 응답 (0.3.1)".utf8)
+            let reply = Data("ReplayKit 송신기 응답 (0.3.2)".utf8)
             _ = dataChannel.sendData(RTCDataBuffer(data: reply, isBinary: false))
         }
     }

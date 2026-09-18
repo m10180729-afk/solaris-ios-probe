@@ -1,7 +1,7 @@
 // Real browser video/ICE/decoder integration against an isolated mock signal server.
 // The sender is a canvas WebRTC peer, NOT ReplayKit. No real credentials are used.
 import {createServer} from 'node:http';
-import {readFileSync} from 'node:fs';
+import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.url);
@@ -14,14 +14,27 @@ catch {
 const html=readFileSync(new URL('../ios/App/Resources/solaris-p2p.html',import.meta.url),'utf8');
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(html);});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-let browser;
+let browser, page, sender;
+const errors=[];
+let work=Promise.resolve();
 try {
-  browser=await chromium.launch({headless:true});
+  browser=await chromium.launch({headless:true,args:[
+    '--disable-background-timer-throttling','--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows','--disable-features=WebRtcHideLocalIpsWithMdns']});
   const context=await browser.newContext();
-  const page=await context.newPage();
-  const sender=await context.newPage();
-  const errors=[];
+  // Both peers use local host candidates only; this test needs no public STUN.
+  // This override affects the fixture context, never the shipped receiver.
+  await context.addInitScript(()=>{
+    const RealPeer=window.RTCPeerConnection;
+    window.RTCPeerConnection=class extends RealPeer {
+      constructor(config){super({...config,iceServers:[]});}
+    };
+  });
+  page=await context.newPage();
+  sender=await context.newPage();
+  await sender.goto('http://127.0.0.1:'+server.address().port+'/synthetic-sender');
   page.on('pageerror',e=>errors.push(e.message));
+  sender.on('pageerror',e=>errors.push('sender: '+e.message));
   let inbox=[],sequence=0;
   await page.route('https://test.supabase.co/rest/v1/solaris_signals**',async route=>{
     const request=route.request(),url=new URL(request.url());
@@ -30,23 +43,32 @@ try {
     if(request.method()==='OPTIONS') { await route.fulfill({status:204,headers,body:''});return; }
     if(request.method()==='POST') {
       const row=request.postDataJSON();
+      // A real signaling server ACKs storage, it doesn't wait for the remote
+      // peer's ICE gathering. The previous fixture held POST open against the
+      // receiver's 8-second HTTP timeout. Serialize sender work after the ACK.
+      await route.fulfill({status:201,headers,body:''});
+      work=work.then(async()=>{
       if(row.kind==='offer') {
         const results=await sender.evaluate(async envelope=>{
           if(window.peer) window.peer.close();
+          window.stream?.getTracks().forEach(t=>t.stop());
           if(window.drawTimer) clearInterval(window.drawTimer);
+          document.body.replaceChildren();
           const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
           document.body.append(canvas);
           const ctx=canvas.getContext('2d');let frame=0;
-          window.drawTimer=setInterval(()=>{
+          const draw=()=>{
             ctx.fillStyle=++frame%2?'#187dd1':'#139878';ctx.fillRect(0,0,640,360);
             ctx.fillStyle='white';ctx.font='32px sans-serif';ctx.fillText('Solaris test '+frame,40,180);
-          },66);
+          };
+          draw();
+          window.drawTimer=setInterval(draw,66);
           window.stream=canvas.captureStream(15);
           const peer=new RTCPeerConnection({iceServers:[]});window.peer=peer;
           peer.addTrack(window.stream.getVideoTracks()[0],window.stream);
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.1',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
           };
           const candidates=[];
@@ -75,7 +97,7 @@ try {
         await sender.evaluate(c=>window.peer.addIceCandidate(c),{
           candidate:row.payload.candidate,sdpMid:row.payload.sdpMid,sdpMLineIndex:row.payload.sdpMLineIndex});
       }
-      await route.fulfill({status:201,headers,body:''});
+      }).catch(e=>{errors.push('fixture: '+e.stack);console.error(e);});
     } else {
       const cursor=Number((url.searchParams.get('id')||'gt.0').slice(3));
       const session=(url.searchParams.get('payload->>sessionID')||'eq.').slice(3);
@@ -98,8 +120,24 @@ try {
     console.log('PASS: real Chromium video decoded and played; run',run+1,'frames',report.framesDecoded);
     await page.click('#stopBtn');
   }
+  await work;
   assert.deepEqual(errors,[]);
   await context.close();
+} catch(error) {
+  mkdirSync('build/browser-diagnostics',{recursive:true});
+  const report={error:String(error),errors};
+  if(page) {
+    report.receiver=await page.evaluate(()=>typeof diagnostic==='function'?diagnostic():document.body.innerText).catch(String);
+    await page.screenshot({path:'build/browser-diagnostics/receiver.png',fullPage:true}).catch(()=>{});
+  }
+  if(sender) report.sender=await sender.evaluate(async()=>({
+    connection:window.peer?.connectionState,ice:window.peer?.iceConnectionState,
+    signaling:window.peer?.signalingState,
+    stats:window.peer?Array.from((await window.peer.getStats()).values()):[]
+  })).catch(String);
+  writeFileSync('build/browser-diagnostics/report.json',JSON.stringify(report,null,2));
+  console.error(JSON.stringify(report,null,2));
+  throw error;
 } finally {
   if(browser) await browser.close();
   await new Promise(resolve=>server.close(resolve));

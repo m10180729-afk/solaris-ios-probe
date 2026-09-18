@@ -1,7 +1,7 @@
 # 2단계: iPad-Windows P2P WebRTC 연결 검증
 
-> 이전 버전의 개발 기록입니다. 0.3.1에서는 아래 callee 절차를 사용하지 않습니다.
-> 현재 절차는 [0.3.1 화면 방송 안내](STEP3_WEBRTC_SCREEN_KO.md)를 따르세요.
+> 이전 버전의 개발 기록입니다. 0.3.2에서는 아래 callee 절차를 사용하지 않습니다.
+> 현재 절차는 [0.3.2 화면 방송 안내](STEP3_WEBRTC_SCREEN_KO.md)를 따르세요.
 
 목표는 화면공유가 아니라 **WebRTC 직접 연결이 되는지** 확인하는 것입니다.
 성공 기준은 Windows와 iPad 사이의 `DataChannel`이 `open`이 되고, 테스트 메시지가 서로 오가는 것입니다.
