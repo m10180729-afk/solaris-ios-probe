@@ -125,8 +125,10 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("selectCodecs(videoTransceiver", receiver)
         self.assertIn("recoverVideo", receiver)
         self.assertIn("setCodecPreferences", receiver)
-        self.assertIn("H264 hardware preferred", receiver)
+        self.assertIn("H264 only (hardware required)", receiver)
         self.assertIn("automatic VP8 fallback disabled", receiver)
+        self.assertIn("setCodecPreferences([...preferred,...repair])", receiver)
+        self.assertNotIn("...codecs.filter(c=>!preferred.includes(c))", receiver)
 
     def test_sixty_fps_does_not_use_exact_interval_gate(self):
         sender = (Path(__file__).resolve().parents[1] /
@@ -175,13 +177,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build22_labels_are_consistent(self):
+    def test_build23_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '22'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '23'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build22-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build22.html", workflow)
-        self.assertIn("Solaris-0.3.2-build22-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build23-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build23.html", workflow)
+        self.assertIn("Solaris-0.3.2-build23-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

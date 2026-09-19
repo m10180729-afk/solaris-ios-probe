@@ -164,18 +164,19 @@ test('real CRLF SDP changes only video bandwidth, is idempotent and keeps fmtp i
   assert.equal(h.api.tuneScreenOfferSDP(input.replace(/\r\n/g,'\n')),result);
   assert.equal(h.api.firstVideoCodec(result),'H264');
 });
-test('default prefers H264 hardware; explicit VP8 never removes other supported codecs',async()=>{
+test('default offers H264 only; explicit VP8 offers VP8 only plus repair codecs',async()=>{
   const h=harness();await h.api.start();const s=h.api.active;
   assert.equal(s.pc.transceiver.codecs[0].mimeType,'video/H264');
+  assert.equal(s.pc.transceiver.codecs.filter(c=>/^video\/(H264|VP8|VP9)$/i.test(c.mimeType)).map(c=>c.mimeType).join(','),'video/H264');
   h.api.selectCodecs(s.pc.transceiver,'vp8');
   assert.equal(s.pc.transceiver.codecs[0].mimeType,'video/VP8');
-  assert.equal(s.pc.transceiver.codecs.length,h.codecs.length);
-  for(const codec of h.codecs) assert.ok(s.pc.transceiver.codecs.includes(codec));
+  assert.equal(s.pc.transceiver.codecs.filter(c=>/^video\/(H264|VP8|VP9)$/i.test(c.mimeType)).map(c=>c.mimeType).join(','),'video/VP8');
+  assert.ok(s.pc.transceiver.codecs.some(c=>c.mimeType==='video/rtx'));
   h.api.stop();
 });
-test('missing codec API keeps browser defaults and starts normally',async()=>{
+test('missing codec API refuses silent browser-default negotiation',async()=>{
   const h=harness({noCapabilities:true});await h.api.start();
-  assert.equal(h.api.active.codecPreference,'browser default');h.api.stop();
+  assert.equal(h.api.active,null);assert.match(h.element('summary').textContent,/코덱 고정을 지원하지 않습니다/);
 });
 test('connected H264 with zero frames reports failure without hidden VP8 downgrade',async()=>{
   const h=harness();await h.api.start();const s=h.api.active,session=s.id;
@@ -184,7 +185,7 @@ test('connected H264 with zero frames reports failure without hidden VP8 downgra
   s.senderDiagnostic={build:'21',framesSubmitted:60};
   await h.api.measure(s);
   assert.equal(s.revision,0);assert.equal(s.id,session);
-  assert.equal(s.recoveryAttempted,true);assert.equal(s.codecPreference,'H264 hardware preferred');
+  assert.equal(s.recoveryAttempted,true);assert.equal(s.codecPreference,'H264 only (hardware required)');
   const offers=h.requests.filter(r=>r.method==='POST'&&JSON.parse(r.body).kind==='offer');
   assert.equal(offers.length,1);
   assert.match(h.element('summary').textContent,/자동 저하하지 않았습니다/);
@@ -211,7 +212,7 @@ test('quality is saved and acknowledged by request ID, not merely by local selec
   assert.equal(offer.payload.qualityID,'720p30');
   h.api.applyQuality();assert.match(h.element('qualityState').textContent,/확인 대기/);
   const request=s.dc.sent.at(-1);
-  const diagnostic={version:'0.3.2',build:'22',sessionID:s.id,qualityID:'720p30',targetFPS:30};
+  const diagnostic={version:'0.3.2',build:'23',sessionID:s.id,qualityID:'720p30',targetFPS:30};
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:'old'})});
   assert.doesNotMatch(h.element('qualityState').textContent,/송신기 적용 확인:/);
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:request.requestID})});
