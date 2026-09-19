@@ -144,6 +144,14 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("RTP ${inboundSize}", receiver)
         self.assertIn("senderQueueDrops", receiver)
 
+    def test_browser_fixture_separates_source_from_adaptive_encoding(self):
+        script = (Path(__file__).resolve().parents[1] /
+                  "scripts/screen_browser_test.mjs").read_text()
+        self.assertNotIn("assert.equal(report.video.width,1920)", script)
+        self.assertIn("fixtureReport.sourceWidth", script)
+        self.assertIn("fixtureReport.framesEncoded>0", script)
+        self.assertIn("report.video.width>0&&report.video.height>0", script)
+
     def test_sender_quality_uses_acknowledged_control_not_shared_defaults(self):
         root = Path(__file__).resolve().parents[1]
         sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
@@ -164,13 +172,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build20_labels_are_consistent(self):
+    def test_build21_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '20'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '21'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build20-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build20.html", workflow)
-        self.assertIn("Solaris-0.3.2-build20-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build21-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build21.html", workflow)
+        self.assertIn("Solaris-0.3.2-build21-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

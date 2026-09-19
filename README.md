@@ -1,4 +1,4 @@
-# Solaris 0.3.2 build20
+# Solaris 0.3.2 build21
 
 iPad ReplayKit → WebRTC → Windows HTML. 무료 AltStore 재서명용 소스입니다.
 Supabase 설정·기존 테이블·방 ID·ReplayKit sample-buffer 모드는 변경하지 않았습니다.
@@ -7,7 +7,7 @@ Supabase 설정·기존 테이블·방 ID·ReplayKit sample-buffer 모드는 변
 H.264-only 협상 회귀를 제거하고 대체 코덱을 복구했습니다. 영상만으로 인코더 내부의
 실패 원인(프로파일·픽셀 포맷·드라이버 등)을 확정할 수는 없습니다.
 
-## build20 변경
+## build20~21 변경
 
 - 자동 모드에서 VP8 우선, 지원하는 다른 코덱은 모두 유지.
 - H.264 경로에서 첫 영상이 오지 않으면 같은 세션 내 VP8 우선 1회 재협상.
@@ -22,8 +22,8 @@ H.264-only 협상 회귀를 제거하고 대체 코덱을 복구했습니다. �
 
 소스를 압축 해제하고 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 GitHub Actions의 browser-test와 build 모두 성공 후
-Solaris-0.3.2-build20-app-and-receiver를 다운로드합니다.
-Solaris-0.3.2-build20-resign.ipa와 Solaris-Windows-0.3.2-build20.html을 함께 사용합니다.
+Solaris-0.3.2-build21-app-and-receiver를 다운로드합니다.
+Solaris-0.3.2-build21-resign.ipa와 Solaris-Windows-0.3.2-build21.html을 함께 사용합니다.
 
 [설치 안내](docs/STEP3_WEBRTC_SCREEN_KO.md) · [원인과 검증 범위](docs/BUILD20_VALIDATION.md)
 
