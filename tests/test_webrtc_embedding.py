@@ -98,6 +98,8 @@ class EmbeddingTests(unittest.TestCase):
         self.assertNotIn("x-google-min-bitrate=", receiver)
         self.assertNotIn("x-google-start-bitrate=", receiver)
         self.assertIn("b=TIAS:60000000", receiver)
+        self.assertIn("profile-level-id=${prefix}33", receiver)
+        self.assertIn("9,960 macroblocks/frame", receiver)
 
     def test_source_format_is_not_reapplied_on_every_frame(self):
         sender = (Path(__file__).resolve().parents[1] /
@@ -177,13 +179,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build23_labels_are_consistent(self):
+    def test_build24_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '23'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '24'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build23-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build23.html", workflow)
-        self.assertIn("Solaris-0.3.2-build23-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build24-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build24.html", workflow)
+        self.assertIn("Solaris-0.3.2-build24-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

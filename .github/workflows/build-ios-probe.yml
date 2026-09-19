@@ -71,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build23-xcode-evidence
+          name: Solaris-build24-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -80,10 +80,10 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build23-app-and-receiver
+          name: Solaris-0.3.2-build24-app-and-receiver
           path: |
-            dist/Solaris-0.3.2-build23-resign.ipa
-            dist/Solaris-Windows-0.3.2-build23.html
+            dist/Solaris-0.3.2-build24-resign.ipa
+            dist/Solaris-Windows-0.3.2-build24.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

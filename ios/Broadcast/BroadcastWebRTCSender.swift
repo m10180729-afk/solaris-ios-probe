@@ -70,8 +70,16 @@ final class BroadcastWebRTCSender: NSObject {
         // iOS H.264 implementation so VideoToolbox can perform the hardware
         // encode path.  VP8 remains available only when the Windows receiver
         // explicitly asks for the compatibility mode.
-        if let h264 = encoderFactory.supportedCodecs().first(where: {
-            $0.name.uppercased() == "H264" && $0.parameters["packetization-mode"] == "1"
+        let h264Codecs = encoderFactory.supportedCodecs().filter {
+            $0.name.uppercased() == "H264" &&
+            $0.parameters["packetization-mode"] == "1" &&
+            ($0.parameters["profile-level-id"] ?? "").lowercased().hasPrefix("42e0")
+        }
+        // Match Chromium's constrained-baseline profile, but prefer the
+        // highest level the current iPad says its VideoToolbox can encode.
+        if let h264 = h264Codecs.max(by: {
+            ($0.parameters["profile-level-id"] ?? "") <
+            ($1.parameters["profile-level-id"] ?? "")
         }) {
             encoderFactory.preferredCodec = h264
         }
@@ -273,7 +281,7 @@ final class BroadcastWebRTCSender: NSObject {
             value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
         )
         videoSender.parameters = parameters
-        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox preferred · 8–60Mbps"
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 requested · 8–60Mbps"
     }
 
     private func applyQuality(_ id: String, requestID: String = "") {
