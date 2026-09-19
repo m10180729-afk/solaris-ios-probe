@@ -54,11 +54,11 @@ try {
           window.stream?.getTracks().forEach(t=>t.stop());
           if(window.drawTimer) clearInterval(window.drawTimer);
           document.body.replaceChildren();
-          const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
+          const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1324;
           document.body.append(canvas);
           const ctx=canvas.getContext('2d');let frame=0;
           const draw=()=>{
-            ctx.fillStyle=++frame%2?'#187dd1':'#139878';ctx.fillRect(0,0,640,360);
+            ctx.fillStyle=++frame%2?'#187dd1':'#139878';ctx.fillRect(0,0,canvas.width,canvas.height);
             ctx.fillStyle='white';ctx.font='32px sans-serif';ctx.fillText('Solaris test '+frame,40,180);
           };
           draw();
@@ -68,8 +68,21 @@ try {
           peer.addTrack(window.stream.getVideoTracks()[0],window.stream);
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'20',sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
+            dc.onmessage=async event=>{
+              const request=JSON.parse(event.data);
+              if(request.type!=='quality'||request.sessionID!==envelope.sessionID) return;
+              const limit=request.qualityID==='720p30'?1280:1920;
+              // Synthetic sender implements the quality command by resizing
+              // its canvas. This tests the data channel and real decoder,
+              // not ReplayKit's or iOS's quality controls.
+              canvas.width=limit;canvas.height=Math.floor(limit*1324/1920/2)*2;
+              draw();
+              dc.send(JSON.stringify({version:'0.3.2',build:'20',sessionID:envelope.sessionID,
+                state:'synthetic quality acknowledgement',qualityID:request.qualityID,
+                settingsRequestID:request.requestID,targetFPS:request.qualityID==='720p30'?30:60}));
+            };
           };
           const candidates=[];
           peer.onicecandidate=e=>{if(e.candidate)candidates.push(e.candidate.toJSON());};
@@ -110,14 +123,20 @@ try {
   await page.fill('#anonKey','sb_publishable_TEST_ONLY');
   await page.fill('#roomId','browser-test');
   for(let run=0;run<2;run++) {
+    await page.selectOption('#qualityPreset','native60');
     await page.click('#startBtn');
     await page.waitForFunction(()=>document.getElementById('summary').textContent.includes('화면 수신 확인'),null,{timeout:30000});
     const report=await page.evaluate(()=>JSON.parse(diagnostic()));
     assert.ok(report.framesDecoded>0);
-    assert.equal(report.video.width,640);
+    assert.equal(report.video.width,1920);
     assert.equal(report.answer,true);
     assert.doesNotMatch(JSON.stringify(report),/sb_publishable_TEST_ONLY/);
     console.log('PASS: real Chromium video decoded and played; run',run+1,'frames',report.framesDecoded);
+    await page.selectOption('#qualityPreset','720p30');
+    await page.click('#applyQualityBtn');
+    await page.waitForFunction(()=>document.getElementById('qualityState').textContent.includes('송신기 적용 확인: 720p30'),null,{timeout:10000});
+    await page.waitForFunction(()=>document.getElementById('remoteVideo').videoWidth<=1280,null,{timeout:15000});
+    console.log('PASS: real data-channel quality request acknowledged; receiver width <=1280');
     await page.click('#stopBtn');
   }
   await work;

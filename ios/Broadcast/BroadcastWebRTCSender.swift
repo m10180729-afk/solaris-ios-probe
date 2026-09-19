@@ -19,7 +19,7 @@ final class BroadcastWebRTCSender: NSObject {
     private let factory: RTCPeerConnectionFactory
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
-    private let quality: ScreenQuality
+    private var quality: ScreenQuality
     private var videoTrack: RTCVideoTrack!
     private var videoSender: RTCRtpSender?
     private var peer: RTCPeerConnection!
@@ -48,20 +48,23 @@ final class BroadcastWebRTCSender: NSObject {
     private var frameInputClosed = false
     private var senderQueueDrops = 0
     private var lastOutputFormat = ""
+    private var negotiationRevision = -1
+    private var statsPending = false
+    private var previousStatsTime = 0.0
+    private var previousEncoded: Int64 = 0
+    private var previousBytes: Int64 = 0
+    private var previousEncodeTime = 0.0
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
     init(config: P2PBroadcastConfig, directory: URL?) {
         self.config = config
         self.directory = directory
-        self.quality = ScreenQuality.extensionCurrent()
+        // No App Group entitlement: host defaults are NOT a settings channel.
+        // The receiver sends the selected preset in its offer and over the DC.
+        self.quality = ScreenQuality.extensionDefault
         RTCInitializeSSL()
         let encoderFactory = RTCDefaultVideoEncoderFactory()
-        if let h264 = RTCDefaultVideoEncoderFactory.supportedCodecs().first(where: {
-            $0.name.caseInsensitiveCompare(kRTCH264CodecName) == .orderedSame
-        }) {
-            encoderFactory.preferredCodec = h264
-        }
         factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory,
                                            decoderFactory: RTCDefaultVideoDecoderFactory())
         // Mark this as a screen-cast source.  A generic video source lets
@@ -75,7 +78,7 @@ final class BroadcastWebRTCSender: NSObject {
         diagnostics.room = config.roomID
         diagnostics.qualityID = quality.id
         diagnostics.targetFPS = quality.fps
-        diagnostics.requestedCodec = "H264"
+        diagnostics.requestedCodec = "auto"
         let rtc = RTCConfiguration()
         rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
@@ -102,6 +105,7 @@ final class BroadcastWebRTCSender: NSObject {
             timer.schedule(deadline: .now(), repeating: 1)
             timer.setEventHandler { [weak self] in
                 self?.persist()
+                self?.collectStats()
                 self?.poll()
             }
             self.timer = timer
@@ -180,16 +184,9 @@ final class BroadcastWebRTCSender: NSObject {
 
         guard !stopped else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        // A 60fps target means "submit every ReplayKit callback". Comparing
-        // 60Hz callback intervals against an exact 1/60 threshold previously
-        // discarded alternating frames because of normal timer jitter.
-        if quality.fps < 60 {
-            let minimumInterval = 1.0 / Double(max(1, quality.fps))
-            if now - lastFrame < minimumInterval {
-                queue.async { [weak self] in self?.processNextFrame() }
-                return
-            }
-        }
+        // Submit every ReplayKit callback that survives the bounded pump.
+        // RTCVideoSource enforces the selected FPS using frame timestamps;
+        // a second wall-clock gate caused 60Hz/30Hz jitter to discard frames.
         lastFrame = now
         diagnostics.callbackFPS = frame.callbackFPS
         diagnostics.senderQueueDrops = dropped
@@ -244,14 +241,16 @@ final class BroadcastWebRTCSender: NSObject {
         // RTP parameters.  SDP b= lines are only hints; they do not prevent
         // the native encoder from entering a low-resolution adaptation phase.
         let parameters = videoSender.parameters
-        var encodings = parameters.encodings
-        if encodings.isEmpty {
-            encodings = [RTCRtpEncodingParameters()]
-        }
+        let encodings = parameters.encodings
+        // getParameters -> modify existing encodings -> setParameters. Adding
+        // an encoding before SDP negotiation is not a valid transaction.
+        guard !encodings.isEmpty else { return }
         for encoding in encodings {
             encoding.isActive = true
             encoding.maxBitrateBps = NSNumber(value: 60_000_000)
-            encoding.minBitrateBps = NSNumber(value: 6_000_000)
+            // An upper bound is not a guaranteed throughput. Do not force
+            // multi-megabit padding onto a congested Wi-Fi link.
+            encoding.minBitrateBps = nil
             encoding.maxFramerate = NSNumber(value: quality.fps)
             encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
             encoding.bitratePriority = 2.0
@@ -263,7 +262,62 @@ final class BroadcastWebRTCSender: NSObject {
             value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
         )
         videoSender.parameters = parameters
-        diagnostics.encoderPolicy = "H264 · screenCast · native resolution · 6–60Mbps"
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · max 60Mbps · no forced minimum"
+    }
+
+    private func applyQuality(_ id: String, requestID: String = "") {
+        guard let selected = ScreenQuality.presets.first(where: { $0.id == id }) else { return }
+        quality = selected
+        lastOutputFormat = ""
+        lastFrame = 0
+        diagnostics.qualityID = selected.id
+        diagnostics.targetFPS = selected.fps
+        diagnostics.settingsRequestID = requestID
+        applyVideoSenderPolicy()
+        persist(force: true)
+    }
+
+    private func collectStats() {
+        guard !stopped, !statsPending, remoteReady else { return }
+        statsPending = true
+        peer.statistics { [weak self] report in
+            guard let self else { return }
+            self.queue.async {
+                self.statsPending = false
+                guard !self.stopped else { return }
+                let now = ProcessInfo.processInfo.systemUptime
+                for stat in report.statistics.values where stat.type == "outbound-rtp" {
+                    let v = stat.values
+                    guard (v["kind"] as? String ?? v["mediaType"] as? String) == "video" else { continue }
+                    let encoded = (v["framesEncoded"] as? NSNumber)?.int64Value ?? 0
+                    let bytes = (v["bytesSent"] as? NSNumber)?.int64Value ?? 0
+                    let encodeTime = (v["totalEncodeTime"] as? NSNumber)?.doubleValue ?? 0
+                    let elapsed = now - self.previousStatsTime
+                    if self.previousStatsTime > 0, elapsed > 0, encoded >= self.previousEncoded, bytes >= self.previousBytes {
+                        let frames = encoded - self.previousEncoded
+                        self.diagnostics.encodedFPS = Double(frames) / elapsed
+                        self.diagnostics.sendMbps = Double(bytes - self.previousBytes) * 8 / elapsed / 1_000_000
+                        self.diagnostics.encodeMilliseconds = frames > 0 ? max(0, encodeTime - self.previousEncodeTime) * 1000 / Double(frames) : 0
+                    }
+                    self.previousStatsTime = now
+                    self.previousEncoded = encoded
+                    self.previousBytes = bytes
+                    self.previousEncodeTime = encodeTime
+                    self.diagnostics.encodedFrames = encoded
+                    self.diagnostics.sentBytes = bytes
+                    self.diagnostics.encodedWidth = (v["frameWidth"] as? NSNumber)?.intValue ?? 0
+                    self.diagnostics.encodedHeight = (v["frameHeight"] as? NSNumber)?.intValue ?? 0
+                    self.diagnostics.qualityLimitationReason = v["qualityLimitationReason"] as? String ?? "unknown"
+                    self.diagnostics.encoderImplementation = v["encoderImplementation"] as? String ?? "not exposed"
+                    if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] {
+                        self.diagnostics.negotiatedCodec = codec.values["mimeType"] as? String ?? ""
+                        self.diagnostics.codecParameters = codec.values["sdpFmtpLine"] as? String ?? ""
+                    }
+                }
+                self.diagnostics.statsUpdatedAt = Date().timeIntervalSince1970
+                self.persist(force: true)
+            }
+        }
     }
 
     private func note(_ state: String, error: String? = nil) {
@@ -348,24 +402,30 @@ final class BroadcastWebRTCSender: NSObject {
               payload["source"] as? String == "windows",
               let incomingSession = payload["sessionID"] as? String,
               UUID(uuidString: incomingSession) != nil else { return }
-        if kind == "offer", sessionID == nil, let sdp = payload["sdp"] as? String {
+        if kind == "offer", (sessionID == nil || sessionID == incomingSession), let sdp = payload["sdp"] as? String {
+            let revision = (payload["revision"] as? NSNumber)?.intValue ?? 0
+            guard revision > negotiationRevision, peer.signalingState == .stable else { return }
             guard payload["protocol"] as? String == "screen-v031", sdp.contains("m=video") else {
                 note("수신기 버전 불일치", error: "Windows에서 0.3.2 화면 수신 파일을 여세요.")
                 return
             }
             sessionID = incomingSession
+            negotiationRevision = revision
+            remoteReady = false
+            diagnostics.requestedCodec = payload["codecRequest"] as? String ?? "auto"
+            if let qualityID = payload["qualityID"] as? String { applyQuality(qualityID) }
             diagnostics.sessionID = incomingSession
             diagnostics.lastError = ""
             note("offer 수신 · 영상 협상 중")
             peer.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
                 guard let self else { return }
                 self.queue.async {
-                    guard !self.stopped else { return }
+                    guard !self.stopped, self.negotiationRevision == revision else { return }
                     if let error { self.note("offer 적용 실패", error: error.localizedDescription); return }
                     self.remoteReady = true
                     self.pending.forEach { self.peer.add($0) }
                     self.pending.removeAll()
-                    self.answer()
+                    self.answer(revision: revision)
                 }
             }
         } else if kind == "ice", incomingSession == sessionID,
@@ -378,26 +438,25 @@ final class BroadcastWebRTCSender: NSObject {
         }
     }
 
-    private func answer() {
+    private func answer(revision: Int) {
         peer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] answer, error in
             guard let self else { return }
             self.queue.async {
-                guard !self.stopped else { return }
+                guard !self.stopped, self.negotiationRevision == revision else { return }
                 guard let answer, error == nil else {
                     self.note("answer 생성 실패", error: error?.localizedDescription ?? "SDP 없음"); return
                 }
-                // Keep a generous screen budget in the answer as a fallback.
-                // The receiver offer also carries startup/min/max bitrate
-                // hints, which is the side that controls the receive budget.
+                // Keep only an upper budget; do not force a startup/minimum
+                // bandwidth or rewrite codec profile/level parameters.
                 let tunedSDP = self.screenAnswerSDP(answer.sdp)
                 let tunedAnswer = RTCSessionDescription(type: .answer, sdp: tunedSDP)
                 self.peer.setLocalDescription(tunedAnswer) { [weak self] error in
                     guard let self else { return }
                     self.queue.async {
-                        guard !self.stopped else { return }
+                        guard !self.stopped, self.negotiationRevision == revision else { return }
                         if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
                         self.applyVideoSenderPolicy()
-                        self.send("answer", ["type": "answer", "sdp": tunedSDP]) { success in
+                        self.send("answer", ["type": "answer", "sdp": tunedSDP, "revision": revision]) { success in
                             if success {
                                 self.offerPublished = true
                                 self.note("answer 전송 완료 · ICE 연결 대기")
@@ -423,6 +482,7 @@ final class BroadcastWebRTCSender: NSObject {
                 inVideo = line.hasPrefix("m=video ")
                 inserted = false
             }
+            if inVideo && (line.hasPrefix("b=AS:") || line.hasPrefix("b=TIAS:")) { continue }
             output.append(line)
             // b=AS is expressed in kbit/s.  60 Mbit/s leaves room for the
             // native 1920x1324 screen while avoiding an unbounded sender.
@@ -498,6 +558,14 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
         queue.async {
             guard !self.stopped, dataChannel.readyState == .open else { return }
+            if buffer.data.count <= 4096,
+               let payload = (try? JSONSerialization.jsonObject(with: buffer.data)) as? [String: Any],
+               payload["type"] as? String == "quality", payload["sessionID"] as? String == self.sessionID,
+               let id = payload["qualityID"] as? String,
+               let requestID = payload["requestID"] as? String, requestID.count <= 64 {
+                self.applyQuality(id, requestID: requestID)
+                return
+            }
             let reply = Data("ReplayKit 송신기 응답 (0.3.2)".utf8)
             _ = dataChannel.sendData(RTCDataBuffer(data: reply, isBinary: false))
         }

@@ -95,9 +95,8 @@ class EmbeddingTests(unittest.TestCase):
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("tuneScreenOfferSDP", receiver)
-        self.assertIn("x-google-start-bitrate=20000", receiver)
-        self.assertIn("x-google-min-bitrate=6000", receiver)
-        self.assertIn("x-google-max-bitrate=60000", receiver)
+        self.assertNotIn("x-google-min-bitrate=", receiver)
+        self.assertNotIn("x-google-start-bitrate=", receiver)
         self.assertIn("b=TIAS:60000000", receiver)
 
     def test_source_format_is_not_reapplied_on_every_frame(self):
@@ -116,21 +115,21 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
         self.assertIn("encoderPolicy", sender)
 
-    def test_sender_prefers_hardware_friendly_h264(self):
+    def test_sender_keeps_codec_fallbacks_instead_of_forcing_h264(self):
         sender = (Path(__file__).resolve().parents[1] /
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("kRTCH264CodecName", sender)
-        self.assertIn("encoderFactory.preferredCodec", sender)
-        self.assertIn("preferH264(videoTransceiver)", receiver)
+        self.assertNotIn("encoderFactory.preferredCodec", sender)
+        self.assertIn("selectCodecs(videoTransceiver", receiver)
+        self.assertIn("recoverVideo", receiver)
         self.assertIn("setCodecPreferences", receiver)
 
     def test_sixty_fps_does_not_use_exact_interval_gate(self):
         sender = (Path(__file__).resolve().parents[1] /
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertIn("if quality.fps < 60", sender)
-        self.assertIn("submit every ReplayKit callback", sender)
+        self.assertNotIn("if quality.fps < 60", sender)
+        self.assertIn("Submit every ReplayKit callback", sender)
         self.assertIn("pendingFrame", sender)
         self.assertNotIn("guard now - lastFrame >= 1.0 / Double(max(1, quality.fps))", sender)
 
@@ -144,6 +143,34 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("수신 인코딩 해상도 변화", receiver)
         self.assertIn("RTP ${inboundSize}", receiver)
         self.assertIn("senderQueueDrops", receiver)
+
+    def test_sender_quality_uses_acknowledged_control_not_shared_defaults(self):
+        root = Path(__file__).resolve().parents[1]
+        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        app = (root / "ios/App/SolarisProbeApp.swift").read_text()
+        self.assertNotIn("ScreenQuality.extensionCurrent()", sender)
+        self.assertNotIn("ProbeShared.saveQuality", app)
+        self.assertIn('payload["sessionID"] as? String == self.sessionID', sender)
+        self.assertIn("diagnostics.settingsRequestID = requestID", sender)
+        self.assertIn("ScreenQuality.presets.first(where:", sender)
+
+    def test_sender_reports_encoder_stats_and_guards_revisions(self):
+        root = Path(__file__).resolve().parents[1]
+        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        self.assertIn("peer.statistics", sender)
+        self.assertIn('v["framesEncoded"]', sender)
+        self.assertIn('v["bytesSent"]', sender)
+        self.assertIn('v["qualityLimitationReason"]', sender)
+        self.assertIn("revision > negotiationRevision", sender)
+        self.assertIn("self.negotiationRevision == revision", sender)
+
+    def test_build20_labels_are_consistent(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertIn("CURRENT_PROJECT_VERSION: '20'", (root / "ios/project.yml").read_text())
+        workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
+        self.assertIn("Solaris-0.3.2-build20-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build20.html", workflow)
+        self.assertIn("Solaris-0.3.2-build20-resign.ipa", workflow)
 
 
 if __name__ == "__main__":
