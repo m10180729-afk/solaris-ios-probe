@@ -65,6 +65,16 @@ final class BroadcastWebRTCSender: NSObject {
         self.quality = ScreenQuality.extensionDefault
         RTCInitializeSSL()
         let encoderFactory = RTCDefaultVideoEncoderFactory()
+        // The build21 diagnostic proved that automatic negotiation selected
+        // VP8/libvpx (software) and took ~85ms per encoded frame.  Prefer the
+        // iOS H.264 implementation so VideoToolbox can perform the hardware
+        // encode path.  VP8 remains available only when the Windows receiver
+        // explicitly asks for the compatibility mode.
+        if let h264 = encoderFactory.supportedCodecs().first(where: {
+            $0.name.uppercased() == "H264" && $0.parameters["packetization-mode"] == "1"
+        }) {
+            encoderFactory.preferredCodec = h264
+        }
         factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory,
                                            decoderFactory: RTCDefaultVideoDecoderFactory())
         // Mark this as a screen-cast source.  A generic video source lets
@@ -248,9 +258,10 @@ final class BroadcastWebRTCSender: NSObject {
         for encoding in encodings {
             encoding.isActive = true
             encoding.maxBitrateBps = NSNumber(value: 60_000_000)
-            // An upper bound is not a guaranteed throughput. Do not force
-            // multi-megabit padding onto a congested Wi-Fi link.
-            encoding.minBitrateBps = nil
+            // Keep the hardware encoder out of its very-low-bitrate startup
+            // mode. This is a floor request, not a guarantee; congestion
+            // control may still lower it when the network cannot carry it.
+            encoding.minBitrateBps = NSNumber(value: 8_000_000)
             encoding.maxFramerate = NSNumber(value: quality.fps)
             encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
             encoding.bitratePriority = 2.0
@@ -262,7 +273,7 @@ final class BroadcastWebRTCSender: NSObject {
             value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
         )
         videoSender.parameters = parameters
-        diagnostics.encoderPolicy = "screenCast · \(quality.title) · max 60Mbps · no forced minimum"
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox preferred · 8–60Mbps"
     }
 
     private func applyQuality(_ id: String, requestID: String = "") {

@@ -111,19 +111,22 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("videoSource(forScreenCast: true)", sender)
         self.assertIn("RTCRtpSender", sender)
         self.assertIn("maxBitrateBps = NSNumber(value: 60_000_000)", sender)
+        self.assertIn("minBitrateBps = NSNumber(value: 8_000_000)", sender)
         self.assertIn("scaleResolutionDownBy = NSNumber(value: 1.0)", sender)
         self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
         self.assertIn("encoderPolicy", sender)
 
-    def test_sender_keeps_codec_fallbacks_instead_of_forcing_h264(self):
+    def test_sender_prefers_h264_hardware_without_hidden_vp8_downgrade(self):
         sender = (Path(__file__).resolve().parents[1] /
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertNotIn("encoderFactory.preferredCodec", sender)
+        self.assertIn("encoderFactory.preferredCodec = h264", sender)
         self.assertIn("selectCodecs(videoTransceiver", receiver)
         self.assertIn("recoverVideo", receiver)
         self.assertIn("setCodecPreferences", receiver)
+        self.assertIn("H264 hardware preferred", receiver)
+        self.assertIn("automatic VP8 fallback disabled", receiver)
 
     def test_sixty_fps_does_not_use_exact_interval_gate(self):
         sender = (Path(__file__).resolve().parents[1] /
@@ -172,13 +175,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build21_labels_are_consistent(self):
+    def test_build22_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '21'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '22'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build21-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build21.html", workflow)
-        self.assertIn("Solaris-0.3.2-build21-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build22-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build22.html", workflow)
+        self.assertIn("Solaris-0.3.2-build22-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

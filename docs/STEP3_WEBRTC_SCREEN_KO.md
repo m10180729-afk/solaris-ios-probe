@@ -1,15 +1,15 @@
-# Solaris 0.3.2 build21 — 설치와 확인
+# Solaris 0.3.2 build22 — 설치와 확인
 
-이 파일은 build21용입니다. 이전 build7/build19/build20 HTML이나 IPA와 섞지 마세요.
+이 파일은 build22용입니다. 이전 build7/build19/build20 HTML이나 IPA와 섞지 마세요.
 검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
 
-1. 소스 ZIP을 Solaris-0.3.2-build21-source 폴더에 모두 압축 해제합니다.
+1. 소스 ZIP을 Solaris-0.3.2-build22-source 폴더에 모두 압축 해제합니다.
 2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build21-app-and-receiver 아티팩트를 다운로드하고 압축 해제합니다.
-5. Solaris-0.3.2-build21-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
-6. iPad 앱에 0.3.2 (build 21)이 표시되는지 확인합니다.
-7. 같은 아티팩트의 Solaris-Windows-0.3.2-build21.html을 Windows에서 엽니다.
+4. Solaris-0.3.2-build22-app-and-receiver 아티팩트를 다운로드하고 압축 해제합니다.
+5. Solaris-0.3.2-build22-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
+6. iPad 앱에 0.3.2 (build 22)이 표시되는지 확인합니다.
+7. 같은 아티팩트의 Solaris-Windows-0.3.2-build22.html을 Windows에서 엽니다.
 8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
 9. 처음에는 품질 ‘원본 해상도 · 최대 60fps’, 코덱 ‘자동 · 호환성 우선’을 사용합니다.
 10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
@@ -42,5 +42,5 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 - 요청 출력: 지정한 목표 크기로 실제 인코딩 결과와 구분합니다.
 
 문제가 남으면 ‘진단 한 번에 복사 (키 제외)’에 전체 단계 통계가 포함됩니다.
-빌드 실패 시 Solaris-build21-xcode-evidence의 Xcode 로그가 필요합니다.
+빌드 실패 시 Solaris-build22-xcode-evidence의 Xcode 로그가 필요합니다.
 Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.
