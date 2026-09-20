@@ -2,17 +2,30 @@ import Foundation
 import ReplayKit
 import WebRTC
 
-// All mutable state and peer operations are serialized on queue. Capture uses
-// sync so no unbounded queue of retained ReplayKit pixel buffers can accumulate.
+// Peer operations are serialized on queue. ReplayKit callbacks never wait for
+// the encoder: capture keeps one newest pending frame behind a small lock.
 final class BroadcastWebRTCSender: NSObject {
+    private struct PendingVideoFrame {
+        let pixel: CVPixelBuffer
+        let rotation: RTCVideoRotation
+        let timeStampNs: Int64
+        let callbackFPS: Double
+    }
+
     private let config: P2PBroadcastConfig
     private let directory: URL?
     private let queue = DispatchQueue(label: "org.solaris.probe.webrtc")
+    private let frameGate = NSLock()
     private let factory: RTCPeerConnectionFactory
+    private let appAudioDevice: SolarisReplayKitAudioDevice
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
-    private let quality: ScreenQuality
+    private var quality: ScreenQuality
+    private var bitrateProfile: BroadcastBitrateProfile
     private var videoTrack: RTCVideoTrack!
+    private var videoSender: RTCRtpSender?
+    private var audioTrack: RTCAudioTrack!
+    private var audioSender: RTCRtpSender?
     private var peer: RTCPeerConnection!
     private var channel: RTCDataChannel?
     private var timer: DispatchSourceTimer?
@@ -33,23 +46,72 @@ final class BroadcastWebRTCSender: NSObject {
     private var fpsWindowFrames = 0
     private var callbackWindowStart = 0.0
     private var callbackWindowFrames = 0
+    private var latestCallbackFPS = 0.0
+    private var pendingFrame: PendingVideoFrame?
+    private var framePumpRunning = false
+    private var frameInputClosed = false
+    private var senderQueueDrops = 0
     private var lastOutputFormat = ""
+    private var negotiationRevision = -1
+    private var statsPending = false
+    private var previousStatsTime = 0.0
+    private var previousEncoded: Int64 = 0
+    private var previousBytes: Int64 = 0
+    private var previousEncodeTime = 0.0
+    private var previousAudioStatsTime = 0.0
+    private var previousAudioBytes: Int64 = 0
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
     init(config: P2PBroadcastConfig, directory: URL?) {
         self.config = config
         self.directory = directory
-        self.quality = ScreenQuality.extensionCurrent()
+        // No App Group entitlement: host defaults are NOT a settings channel.
+        // The receiver sends the selected preset in its offer and over the DC.
+        self.quality = ScreenQuality.extensionDefault
+        self.bitrateProfile = BroadcastBitrateProfile.maximum
         RTCInitializeSSL()
-        factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
-                                           decoderFactory: RTCDefaultVideoDecoderFactory())
-        source = factory.videoSource()
+        let encoderFactory = RTCDefaultVideoEncoderFactory()
+        // The build21 diagnostic proved that automatic negotiation selected
+        // VP8/libvpx (software) and took ~85ms per encoded frame.  Prefer the
+        // iOS H.264 implementation so VideoToolbox can perform the hardware
+        // encode path.  VP8 remains available only when the Windows receiver
+        // explicitly asks for the compatibility mode.
+        let h264Codecs = encoderFactory.supportedCodecs().filter {
+            $0.name.uppercased() == "H264" &&
+            $0.parameters["packetization-mode"] == "1" &&
+            ($0.parameters["profile-level-id"] ?? "").lowercased().hasPrefix("42e0")
+        }
+        // Match Chromium's constrained-baseline profile, but prefer the
+        // highest level the current iPad says its VideoToolbox can encode.
+        if let h264 = h264Codecs.max(by: {
+            ($0.parameters["profile-level-id"] ?? "") <
+            ($1.parameters["profile-level-id"] ?? "")
+        }) {
+            encoderFactory.preferredCodec = h264
+        }
+        // The stock iOS ADM captures the microphone.  Screen sharing must use
+        // ReplayKit's .audioApp buffers instead, so install the dedicated
+        // source before creating the peer connection factory.
+        appAudioDevice = SolarisReplayKitAudioDevice()
+        factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory,
+                                           decoderFactory: RTCDefaultVideoDecoderFactory(),
+                                           audioDevice: appAudioDevice)
+        // Mark this as a screen-cast source.  A generic video source lets
+        // WebRTC's camera-oriented adaptation logic resize the track when it
+        // sees bandwidth pressure.  The native WebRTC 153 API has a separate
+        // screen-cast source specifically so the encoder can preserve text
+        // and the requested dimensions.
+        source = factory.videoSource(forScreenCast: true)
         capturer = RTCVideoCapturer(delegate: source)
         super.init()
         diagnostics.room = config.roomID
         diagnostics.qualityID = quality.id
+        diagnostics.bitrateID = bitrateProfile.id
+        diagnostics.requestedMinMbps = Double(bitrateProfile.minBitrateBps) / 1_000_000
+        diagnostics.requestedMaxMbps = Double(bitrateProfile.maxBitrateBps) / 1_000_000
         diagnostics.targetFPS = quality.fps
+        diagnostics.requestedCodec = "auto"
         let rtc = RTCConfiguration()
         rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
@@ -58,7 +120,22 @@ final class BroadcastWebRTCSender: NSObject {
             constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
         videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
         videoTrack.isEnabled = true
-        _ = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        videoSender = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        let audioConstraints = RTCMediaConstraints(
+            mandatoryConstraints: [
+                "googEchoCancellation": "false",
+                "googAutoGainControl": "false",
+                "googNoiseSuppression": "false",
+                "googHighpassFilter": "false"
+            ], optionalConstraints: nil)
+        let audioSource = factory.audioSource(with: audioConstraints)
+        audioTrack = factory.audioTrack(with: audioSource, trackId: "solaris-app-audio")
+        audioTrack.isEnabled = true
+        // Same stream ID makes the browser render image and app sound together.
+        audioSender = peer.add(audioTrack, streamIds: ["solaris-screen-stream"])
+        applyVideoSenderPolicy()
+        applyAudioSenderPolicy()
+        diagnostics.audioTrackEnabled = true
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
         settings.timeoutIntervalForResource = 8
@@ -75,6 +152,7 @@ final class BroadcastWebRTCSender: NSObject {
             timer.schedule(deadline: .now(), repeating: 1)
             timer.setEventHandler { [weak self] in
                 self?.persist()
+                self?.collectStats()
                 self?.poll()
             }
             self.timer = timer
@@ -83,78 +161,302 @@ final class BroadcastWebRTCSender: NSObject {
     }
 
     func stop() {
+        frameGate.lock()
+        frameInputClosed = true
+        pendingFrame = nil
+        frameGate.unlock()
         queue.sync {
             guard !stopped else { return }
             stopped = true
             timer?.cancel()
             timer = nil
             channel?.close()
+            audioTrack.isEnabled = false
+            appAudioDevice.stop()
             peer.close()
             network.invalidateAndCancel()
             note("방송 종료")
         }
     }
 
+    func captureApplicationAudio(_ sample: CMSampleBuffer) {
+        // This is intentionally the only audio ingress.  SampleHandler never
+        // passes .audioMic, so an ordinary screen broadcast cannot transmit a
+        // microphone recording by accident.
+        appAudioDevice.appendApplicationAudioSampleBuffer(sample)
+        diagnostics.appAudioSampleBuffers = appAudioDevice.appSampleBuffers
+        diagnostics.appAudioFrames = appAudioDevice.submittedFrames
+        diagnostics.appAudioDroppedFrames = appAudioDevice.droppedFrames
+        diagnostics.appAudioUnderruns = appAudioDevice.underrunCount
+        diagnostics.appAudioOverruns = appAudioDevice.overrunCount
+        diagnostics.appAudioBufferedMilliseconds = appAudioDevice.bufferedMilliseconds
+        diagnostics.appAudioDeliveryCallbacks = appAudioDevice.deliveryCallbacks
+        diagnostics.appAudioConverterResets = appAudioDevice.converterResetCount
+        diagnostics.appAudioMaxDeliveryGapMilliseconds = appAudioDevice.maxDeliveryGapMilliseconds
+        diagnostics.appAudioFormat = appAudioDevice.inputDescription
+    }
+
     func capture(_ sample: CMSampleBuffer) {
-        queue.sync {
-            guard !stopped, let pixel = CMSampleBufferGetImageBuffer(sample) else { return }
-            let now = ProcessInfo.processInfo.systemUptime
-            callbackWindowFrames += 1
-            if callbackWindowStart == 0 { callbackWindowStart = now }
-            if now - callbackWindowStart >= 1 {
-                diagnostics.callbackFPS = Double(callbackWindowFrames) / (now - callbackWindowStart)
-                callbackWindowFrames = 0
-                callbackWindowStart = now
+        guard let pixel = CMSampleBufferGetImageBuffer(sample) else { return }
+        let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+        guard seconds.isFinite, seconds >= 0,
+              seconds < Double(Int64.max) / 1_000_000_000 else { return }
+        let orientation = (CMGetAttachment(sample, key: RPVideoSampleOrientationKey as CFString,
+                                            attachmentModeOut: nil) as? NSNumber)?.intValue ?? 1
+        let rotation: RTCVideoRotation
+        switch orientation {
+        case 3: rotation = ._180
+        case 6: rotation = ._90
+        case 8: rotation = ._270
+        default: rotation = ._0
+        }
+
+        // ReplayKit must never wait for the encoder. Keep exactly one pending
+        // pixel buffer and replace it with the newest frame if WebRTC is busy.
+        // This avoids both an unbounded extension-memory queue and the old
+        // synchronous back-pressure that reduced ReplayKit callbacks to ~30.
+        let now = ProcessInfo.processInfo.systemUptime
+        frameGate.lock()
+        guard !frameInputClosed else { frameGate.unlock(); return }
+        callbackWindowFrames += 1
+        if callbackWindowStart == 0 { callbackWindowStart = now }
+        if now - callbackWindowStart >= 1 {
+            latestCallbackFPS = Double(callbackWindowFrames) / (now - callbackWindowStart)
+            callbackWindowFrames = 0
+            callbackWindowStart = now
+        }
+        if pendingFrame != nil { senderQueueDrops += 1 }
+        pendingFrame = PendingVideoFrame(pixel: pixel, rotation: rotation,
+            timeStampNs: Int64(seconds * 1_000_000_000), callbackFPS: latestCallbackFPS)
+        let shouldStartPump = !framePumpRunning
+        if shouldStartPump { framePumpRunning = true }
+        frameGate.unlock()
+        if shouldStartPump {
+            queue.async { [weak self] in self?.processNextFrame() }
+        }
+    }
+
+    private func processNextFrame() {
+        frameGate.lock()
+        guard let frame = pendingFrame, !frameInputClosed else {
+            pendingFrame = nil
+            framePumpRunning = false
+            frameGate.unlock()
+            return
+        }
+        pendingFrame = nil
+        let dropped = senderQueueDrops
+        frameGate.unlock()
+
+        guard !stopped else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        // Submit every ReplayKit callback that survives the bounded pump.
+        // RTCVideoSource enforces the selected FPS using frame timestamps;
+        // a second wall-clock gate caused 60Hz/30Hz jitter to discard frames.
+        lastFrame = now
+        diagnostics.callbackFPS = frame.callbackFPS
+        diagnostics.senderQueueDrops = dropped
+
+        let width = CVPixelBufferGetWidth(frame.pixel)
+        let height = CVPixelBufferGetHeight(frame.pixel)
+        diagnostics.sourceWidth = width
+        diagnostics.sourceHeight = height
+        diagnostics.sourceAspect = String(format: "%.4f", Double(width) / Double(max(1, height)))
+        fpsWindowFrames += 1
+        if fpsWindowStart == 0 { fpsWindowStart = now }
+        if now - fpsWindowStart >= 1 {
+            diagnostics.inputFPS = Double(fpsWindowFrames) / (now - fpsWindowStart)
+            diagnostics.submittedFPS = diagnostics.inputFPS
+            fpsWindowFrames = 0
+            fpsWindowStart = now
+        }
+
+        let size = "\(width)x\(height)"
+        let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
+        let w = max(2, Int(Double(width) * scale) / 2 * 2)
+        let h = max(2, Int(Double(height) * scale) / 2 * 2)
+        let format = "\(w)x\(h)@\(quality.fps)"
+        if format != lastOutputFormat {
+            source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
+            lastOutputFormat = format
+        }
+        if size != lastSize || format != diagnostics.outputFormat {
+            diagnostics.outputWidth = w
+            diagnostics.outputHeight = h
+            diagnostics.outputFormat = format
+            diagnostics.scaling = (w == width && h == height) ? "원본 유지" : "송출 축소"
+            note("원본 \(width)x\(height) → 출력 \(w)x\(h), \(quality.title)")
+            lastSize = size
+        }
+        source.capturer(capturer, didCapture: RTCVideoFrame(
+            buffer: RTCCVPixelBuffer(pixelBuffer: frame.pixel),
+            rotation: frame.rotation,
+            timeStampNs: frame.timeStampNs))
+        diagnostics.framesSubmitted += 1
+        persist()
+        queue.async { [weak self] in self?.processNextFrame() }
+    }
+
+    private func applyVideoSenderPolicy() {
+        guard let videoSender else {
+            diagnostics.lastError = "RTCRtpSender 생성 실패"
+            return
+        }
+
+        // WebRTC 153 exposes the real encoder controls through the sender's
+        // RTP parameters.  SDP b= lines are only hints; they do not prevent
+        // the native encoder from entering a low-resolution adaptation phase.
+        let parameters = videoSender.parameters
+        let encodings = parameters.encodings
+        // getParameters -> modify existing encodings -> setParameters. Adding
+        // an encoding before SDP negotiation is not a valid transaction.
+        guard !encodings.isEmpty else { return }
+        for encoding in encodings {
+            encoding.isActive = true
+            encoding.maxBitrateBps = NSNumber(value: bitrateProfile.maxBitrateBps)
+            // Quality-first viewing profile. This is still a request to the
+            // WebRTC congestion controller, not a promise of constant RTP
+            // traffic. Static screens naturally use fewer bits.
+            encoding.minBitrateBps = NSNumber(value: bitrateProfile.minBitrateBps)
+            encoding.maxFramerate = NSNumber(value: quality.fps)
+            encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
+            encoding.bitratePriority = 4.0
+        }
+        parameters.encodings = encodings
+        // Disable WebRTC's automatic frame-rate/resolution degradation. The
+        // bounded newest-frame pump above remains the overload safety valve.
+        parameters.degradationPreference = NSNumber(
+            value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
+        )
+        videoSender.parameters = parameters
+        diagnostics.bitrateID = bitrateProfile.id
+        diagnostics.requestedMinMbps = Double(bitrateProfile.minBitrateBps) / 1_000_000
+        diagnostics.requestedMaxMbps = Double(bitrateProfile.maxBitrateBps) / 1_000_000
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · \(bitrateProfile.title)"
+    }
+
+    private func applyAudioSenderPolicy() {
+        guard let audioSender else {
+            diagnostics.lastError = "오디오 RTCRtpSender 생성 실패"
+            return
+        }
+        let parameters = audioSender.parameters
+        let encodings = parameters.encodings
+        guard !encodings.isEmpty else { return }
+        for encoding in encodings {
+            encoding.isActive = true
+            // Opus stereo at 48 kHz.  This preserves normal app/game audio
+            // while remaining tiny beside the 28–60 Mbps video budget.
+            encoding.minBitrateBps = NSNumber(value: 160_000)
+            encoding.maxBitrateBps = NSNumber(value: 256_000)
+            encoding.bitratePriority = 2.0
+        }
+        parameters.encodings = encodings
+        audioSender.parameters = parameters
+    }
+
+    private func applyQuality(_ id: String, bitrateID: String? = nil, requestID: String = "") {
+        guard let selected = ScreenQuality.presets.first(where: { $0.id == id }) else { return }
+        quality = selected
+        if let bitrateID,
+           let selectedBitrate = BroadcastBitrateProfile.profiles.first(where: { $0.id == bitrateID }) {
+            bitrateProfile = selectedBitrate
+        }
+        lastOutputFormat = ""
+        lastFrame = 0
+        diagnostics.qualityID = selected.id
+        diagnostics.targetFPS = selected.fps
+        diagnostics.settingsRequestID = requestID
+        applyVideoSenderPolicy()
+        persist(force: true)
+    }
+
+    private func collectStats() {
+        guard !stopped, !statsPending, remoteReady else { return }
+        statsPending = true
+        peer.statistics { [weak self] report in
+            guard let self else { return }
+            self.queue.async {
+                self.statsPending = false
+                guard !self.stopped else { return }
+                let now = ProcessInfo.processInfo.systemUptime
+                for stat in report.statistics.values where stat.type == "outbound-rtp" {
+                    let v = stat.values
+                    let kind = v["kind"] as? String ?? v["mediaType"] as? String
+                    if kind == "audio" {
+                        let bytes = (v["bytesSent"] as? NSNumber)?.int64Value ?? 0
+                        let audioElapsed = now - self.previousAudioStatsTime
+                        if self.previousAudioStatsTime > 0, audioElapsed > 0, bytes >= self.previousAudioBytes {
+                            self.diagnostics.audioSendKbps = Double(bytes - self.previousAudioBytes) * 8 / audioElapsed / 1_000
+                        }
+                        self.previousAudioStatsTime = now
+                        self.previousAudioBytes = bytes
+                        self.diagnostics.audioSentBytes = bytes
+                        if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] {
+                            self.diagnostics.audioCodec = codec.values["mimeType"] as? String ?? ""
+                        }
+                        continue
+                    }
+                    guard kind == "video" else { continue }
+                    let encoded = (v["framesEncoded"] as? NSNumber)?.int64Value ?? 0
+                    let bytes = (v["bytesSent"] as? NSNumber)?.int64Value ?? 0
+                    let encodeTime = (v["totalEncodeTime"] as? NSNumber)?.doubleValue ?? 0
+                    let elapsed = now - self.previousStatsTime
+                    if self.previousStatsTime > 0, elapsed > 0, encoded >= self.previousEncoded, bytes >= self.previousBytes {
+                        let frames = encoded - self.previousEncoded
+                        self.diagnostics.encodedFPS = Double(frames) / elapsed
+                        self.diagnostics.sendMbps = Double(bytes - self.previousBytes) * 8 / elapsed / 1_000_000
+                        self.diagnostics.encodeMilliseconds = frames > 0 ? max(0, encodeTime - self.previousEncodeTime) * 1000 / Double(frames) : 0
+                    }
+                    self.previousStatsTime = now
+                    self.previousEncoded = encoded
+                    self.previousBytes = bytes
+                    self.previousEncodeTime = encodeTime
+                    self.diagnostics.encodedFrames = encoded
+                    self.diagnostics.sentBytes = bytes
+                    self.diagnostics.encodedWidth = (v["frameWidth"] as? NSNumber)?.intValue ?? 0
+                    self.diagnostics.encodedHeight = (v["frameHeight"] as? NSNumber)?.intValue ?? 0
+                    self.diagnostics.qualityLimitationReason = v["qualityLimitationReason"] as? String ?? "unknown"
+                    self.diagnostics.encoderImplementation = v["encoderImplementation"] as? String ?? "not exposed"
+                    if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] {
+                        self.diagnostics.negotiatedCodec = codec.values["mimeType"] as? String ?? ""
+                        self.diagnostics.codecParameters = codec.values["sdpFmtpLine"] as? String ?? ""
+                    }
+                }
+                for stat in report.statistics.values where stat.type == "candidate-pair" {
+                    let v = stat.values
+                    let selected = (v["selected"] as? NSNumber)?.boolValue ??
+                        ((v["nominated"] as? NSNumber)?.boolValue ?? false)
+                    guard selected || v["state"] as? String == "succeeded" else { continue }
+                    if let available = (v["availableOutgoingBitrate"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.availableOutgoingMbps = available / 1_000_000
+                    }
+                    if let rtt = (v["currentRoundTripTime"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.roundTripMilliseconds = rtt * 1_000
+                    }
+                }
+                for stat in report.statistics.values where stat.type == "remote-inbound-rtp" {
+                    let v = stat.values
+                    guard (v["kind"] as? String ?? v["mediaType"] as? String) == "video" else { continue }
+                    self.diagnostics.remotePacketsLost =
+                        (v["packetsLost"] as? NSNumber)?.int64Value ?? 0
+                    if let rtt = (v["roundTripTime"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.roundTripMilliseconds = rtt * 1_000
+                    }
+                }
+                self.diagnostics.appAudioSampleBuffers = self.appAudioDevice.appSampleBuffers
+                self.diagnostics.appAudioFrames = self.appAudioDevice.submittedFrames
+                self.diagnostics.appAudioDroppedFrames = self.appAudioDevice.droppedFrames
+                self.diagnostics.appAudioUnderruns = self.appAudioDevice.underrunCount
+                self.diagnostics.appAudioOverruns = self.appAudioDevice.overrunCount
+                self.diagnostics.appAudioBufferedMilliseconds = self.appAudioDevice.bufferedMilliseconds
+                self.diagnostics.appAudioDeliveryCallbacks = self.appAudioDevice.deliveryCallbacks
+                self.diagnostics.appAudioConverterResets = self.appAudioDevice.converterResetCount
+                self.diagnostics.appAudioMaxDeliveryGapMilliseconds = self.appAudioDevice.maxDeliveryGapMilliseconds
+                self.diagnostics.appAudioFormat = self.appAudioDevice.inputDescription
+                self.diagnostics.statsUpdatedAt = Date().timeIntervalSince1970
+                self.persist(force: true)
             }
-            guard now - lastFrame >= 1.0 / Double(max(1, quality.fps)) else { return }
-            lastFrame = now
-            let width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel)
-            diagnostics.sourceWidth = width
-            diagnostics.sourceHeight = height
-            diagnostics.sourceAspect = String(format: "%.4f", Double(width) / Double(max(1, height)))
-            fpsWindowFrames += 1
-            if fpsWindowStart == 0 { fpsWindowStart = now }
-            if now - fpsWindowStart >= 1 {
-                diagnostics.inputFPS = Double(fpsWindowFrames) / (now - fpsWindowStart)
-                diagnostics.submittedFPS = diagnostics.inputFPS
-                fpsWindowFrames = 0
-                fpsWindowStart = now
-            }
-            let size = "\(width)x\(height)"
-            let scale = min(1.0, Double(quality.maxLongSide) / Double(max(width, height)))
-            let w = max(2, Int(Double(width) * scale) / 2 * 2)
-            let h = max(2, Int(Double(height) * scale) / 2 * 2)
-            // Reapplying the format for every frame adds avoidable work and
-            // can lower ReplayKit callback throughput. Apply it only when the
-            // source or requested output format changes.
-            let format = "\(w)x\(h)@\(quality.fps)"
-            if format != lastOutputFormat {
-                source.adaptOutputFormat(toWidth: Int32(w), height: Int32(h), fps: Int32(quality.fps))
-                lastOutputFormat = format
-            }
-            if size != lastSize || format != diagnostics.outputFormat {
-                diagnostics.outputWidth = w
-                diagnostics.outputHeight = h
-                diagnostics.outputFormat = format
-                diagnostics.scaling = (w == width && h == height) ? "원본 유지" : "송출 축소"
-                note("원본 \(width)x\(height) → 출력 \(w)x\(h), \(quality.title)")
-                lastSize = size
-            }
-            let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
-            guard seconds.isFinite, seconds >= 0, seconds < Double(Int64.max) / 1_000_000_000 else { return }
-            let orientation = (CMGetAttachment(sample, key: RPVideoSampleOrientationKey as CFString,
-                                                attachmentModeOut: nil) as? NSNumber)?.intValue ?? 1
-            let rotation: RTCVideoRotation
-            switch orientation {
-            case 3: rotation = ._180
-            case 6: rotation = ._90
-            case 8: rotation = ._270
-            default: rotation = ._0
-            }
-            source.capturer(capturer, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixel),
-                rotation: rotation, timeStampNs: Int64(seconds * 1_000_000_000)))
-            diagnostics.framesSubmitted += 1
-            persist()
         }
     }
 
@@ -240,24 +542,32 @@ final class BroadcastWebRTCSender: NSObject {
               payload["source"] as? String == "windows",
               let incomingSession = payload["sessionID"] as? String,
               UUID(uuidString: incomingSession) != nil else { return }
-        if kind == "offer", sessionID == nil, let sdp = payload["sdp"] as? String {
+        if kind == "offer", (sessionID == nil || sessionID == incomingSession), let sdp = payload["sdp"] as? String {
+            let revision = (payload["revision"] as? NSNumber)?.intValue ?? 0
+            guard revision > negotiationRevision, peer.signalingState == .stable else { return }
             guard payload["protocol"] as? String == "screen-v031", sdp.contains("m=video") else {
                 note("수신기 버전 불일치", error: "Windows에서 0.3.2 화면 수신 파일을 여세요.")
                 return
             }
             sessionID = incomingSession
+            negotiationRevision = revision
+            remoteReady = false
+            diagnostics.requestedCodec = payload["codecRequest"] as? String ?? "auto"
+            if let qualityID = payload["qualityID"] as? String {
+                applyQuality(qualityID, bitrateID: payload["bitrateID"] as? String)
+            }
             diagnostics.sessionID = incomingSession
             diagnostics.lastError = ""
             note("offer 수신 · 영상 협상 중")
             peer.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
                 guard let self else { return }
                 self.queue.async {
-                    guard !self.stopped else { return }
+                    guard !self.stopped, self.negotiationRevision == revision else { return }
                     if let error { self.note("offer 적용 실패", error: error.localizedDescription); return }
                     self.remoteReady = true
                     self.pending.forEach { self.peer.add($0) }
                     self.pending.removeAll()
-                    self.answer()
+                    self.answer(revision: revision)
                 }
             }
         } else if kind == "ice", incomingSession == sessionID,
@@ -270,25 +580,26 @@ final class BroadcastWebRTCSender: NSObject {
         }
     }
 
-    private func answer() {
+    private func answer(revision: Int) {
         peer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] answer, error in
             guard let self else { return }
             self.queue.async {
-                guard !self.stopped else { return }
+                guard !self.stopped, self.negotiationRevision == revision else { return }
                 guard let answer, error == nil else {
                     self.note("answer 생성 실패", error: error?.localizedDescription ?? "SDP 없음"); return
                 }
-                // Keep a generous screen budget in the answer as a fallback.
-                // The receiver offer also carries startup/min/max bitrate
-                // hints, which is the side that controls the receive budget.
+                // Keep only an upper budget; do not force a startup/minimum
+                // bandwidth or rewrite codec profile/level parameters.
                 let tunedSDP = self.screenAnswerSDP(answer.sdp)
                 let tunedAnswer = RTCSessionDescription(type: .answer, sdp: tunedSDP)
                 self.peer.setLocalDescription(tunedAnswer) { [weak self] error in
                     guard let self else { return }
                     self.queue.async {
-                        guard !self.stopped else { return }
+                        guard !self.stopped, self.negotiationRevision == revision else { return }
                         if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
-                        self.send("answer", ["type": "answer", "sdp": tunedSDP]) { success in
+                        self.applyVideoSenderPolicy()
+                        self.applyAudioSenderPolicy()
+                        self.send("answer", ["type": "answer", "sdp": tunedSDP, "revision": revision]) { success in
                             if success {
                                 self.offerPublished = true
                                 self.note("answer 전송 완료 · ICE 연결 대기")
@@ -314,6 +625,7 @@ final class BroadcastWebRTCSender: NSObject {
                 inVideo = line.hasPrefix("m=video ")
                 inserted = false
             }
+            if inVideo && (line.hasPrefix("b=AS:") || line.hasPrefix("b=TIAS:")) { continue }
             output.append(line)
             // b=AS is expressed in kbit/s.  60 Mbit/s leaves room for the
             // native 1920x1324 screen while avoiding an unbounded sender.
@@ -372,6 +684,13 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
         queue.async {
             guard !self.stopped else { return }
             self.diagnostics.ice = String(describing: newState)
+            // Some WebRTC builds replace RTP encoding parameters during SDP
+            // setup. Reapply the quality policy once the transport is live so
+            // the first motion-heavy seconds do not begin at camera bitrate.
+            if newState == .connected || newState == .completed {
+                self.applyVideoSenderPolicy()
+                self.applyAudioSenderPolicy()
+            }
             self.note("ICE 상태: \(newState) · 영상 수신 여부는 Windows 프레임 수로 확인")
         }
     }
@@ -389,6 +708,15 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
         queue.async {
             guard !self.stopped, dataChannel.readyState == .open else { return }
+            if buffer.data.count <= 4096,
+               let payload = (try? JSONSerialization.jsonObject(with: buffer.data)) as? [String: Any],
+               payload["type"] as? String == "quality", payload["sessionID"] as? String == self.sessionID,
+               let id = payload["qualityID"] as? String,
+               let requestID = payload["requestID"] as? String, requestID.count <= 64 {
+                self.applyQuality(id, bitrateID: payload["bitrateID"] as? String,
+                                  requestID: requestID)
+                return
+            }
             let reply = Data("ReplayKit 송신기 응답 (0.3.2)".utf8)
             _ = dataChannel.sendData(RTCDataBuffer(data: reply, isBinary: false))
         }

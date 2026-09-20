@@ -12,6 +12,9 @@
 @property(nonatomic, readonly) int64_t underrunCount;
 @property(nonatomic, readonly) int64_t overrunCount;
 @property(nonatomic, readonly) double bufferedMilliseconds;
+@property(nonatomic, readonly) int64_t deliveryCallbacks;
+@property(nonatomic, readonly) int64_t converterResetCount;
+@property(nonatomic, readonly) double maxDeliveryGapMilliseconds;
 @property(nonatomic, readonly) NSString *inputDescription;
 
 - (void)appendApplicationAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer;

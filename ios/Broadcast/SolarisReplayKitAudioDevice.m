@@ -1,24 +1,20 @@
 #import "SolarisReplayKitAudioDevice.h"
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
-#import <mach/mach_time.h>
 #import <math.h>
 
-// WebRTC's audio device contract is one 10 ms block per callback. ReplayKit
-// supplies app audio in larger, irregular blocks (about 20-25 ms on the test
-// iPad), so forwarding all available blocks immediately creates burst/gap
-// timing and audible crackle. Keep a small bounded jitter buffer and clock it
-// out at exactly 10 ms instead.
+// WebRTC's ObjC audio device module owns FineAudioBuffer, whose job is to turn
+// variable-size device callbacks into WebRTC's internal 10 ms blocks. ReplayKit
+// already supplies clocked app-audio callbacks, so deliver each converted
+// callback exactly once. A second dispatch timer fights that clock and can
+// create audible stalls even when its separate PCM queue never underflows.
 static const NSUInteger SolarisAudioBytesPerFrame = 2 * sizeof(int16_t);
-static const NSUInteger SolarisAudioFramesPerChunk = 480;
-static const NSUInteger SolarisAudioChunkBytes = SolarisAudioFramesPerChunk * SolarisAudioBytesPerFrame;
-static const NSUInteger SolarisAudioPrimeBytes = 8 * SolarisAudioChunkBytes;   // 80 ms
-static const NSUInteger SolarisAudioMaximumBytes = 24 * SolarisAudioChunkBytes; // 240 ms
 
 typedef struct {
   AudioBufferList *bufferList;
   UInt32 frames;
-  BOOL consumed;
+  UInt32 frameOffset;
+  UInt32 bytesPerFrame;
 } SolarisAudioConverterInput;
 
 static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
@@ -27,39 +23,52 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
                                                     AudioStreamPacketDescription **packetDescription,
                                                     void *context) {
   SolarisAudioConverterInput *input = context;
-  if (input->consumed || input->frames == 0) {
+  if (input->frameOffset >= input->frames || input->bytesPerFrame == 0) {
     *packets = 0;
     return noErr;
   }
-  *packets = input->frames;
+  UInt32 requestedFrames = *packets;
+  UInt32 remainingFrames = input->frames - input->frameOffset;
+  UInt32 providedFrames = MIN(requestedFrames, remainingFrames);
+  *packets = providedFrames;
   bufferList->mNumberBuffers = input->bufferList->mNumberBuffers;
   for (UInt32 index = 0; index < input->bufferList->mNumberBuffers; index++) {
-    bufferList->mBuffers[index] = input->bufferList->mBuffers[index];
+    AudioBuffer source = input->bufferList->mBuffers[index];
+    bufferList->mBuffers[index] = source;
+    NSUInteger byteOffset = (NSUInteger)input->frameOffset * input->bytesPerFrame;
+    NSUInteger requestedBytes = (NSUInteger)providedFrames * input->bytesPerFrame;
+    if (source.mData && byteOffset <= source.mDataByteSize) {
+      bufferList->mBuffers[index].mData = (uint8_t *)source.mData + byteOffset;
+      bufferList->mBuffers[index].mDataByteSize =
+          (UInt32)MIN(requestedBytes, source.mDataByteSize - byteOffset);
+    } else {
+      bufferList->mBuffers[index].mData = NULL;
+      bufferList->mBuffers[index].mDataByteSize = 0;
+    }
   }
-  input->consumed = YES;
+  input->frameOffset += providedFrames;
   return noErr;
 }
 
 @interface SolarisReplayKitAudioDevice () {
   id<RTCAudioDeviceDelegate> _delegate;
   dispatch_queue_t _queue;
-  dispatch_source_t _deliveryTimer;
   AudioConverterRef _converter;
   AudioStreamBasicDescription _converterInput;
   BOOL _hasConverterInput;
-  NSMutableData *_pendingPCM;
   BOOL _initialized;
   BOOL _recordingInitialized;
   BOOL _recording;
   BOOL _playing;
+  BOOL _reportedInputDuration;
   NSInteger _appSampleBuffers;
   int64_t _submittedFrames;
   int64_t _droppedFrames;
-  int64_t _underrunCount;
-  int64_t _overrunCount;
-  int64_t _nextSampleTime;
-  double _bufferedMillisecondsValue;
-  BOOL _pumpPrimed;
+  int64_t _deliveryCallbacks;
+  int64_t _converterResetCount;
+  double _maxDeliveryGapMilliseconds;
+  double _lastDeliveryUptime;
+  NSTimeInterval _inputBufferDuration;
   NSString *_inputDescription;
 }
 @end
@@ -69,8 +78,10 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
 - (instancetype)init {
   self = [super init];
   if (self) {
-    _queue = dispatch_queue_create("org.solaris.probe.replaykit-app-audio", DISPATCH_QUEUE_SERIAL);
-    _pendingPCM = [NSMutableData data];
+    dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(
+        DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
+    _queue = dispatch_queue_create("org.solaris.probe.replaykit-app-audio", attributes);
+    _inputBufferDuration = 0.020;
     _inputDescription = @"대기";
   }
   return self;
@@ -83,15 +94,18 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
 - (NSInteger)appSampleBuffers { @synchronized (self) { return _appSampleBuffers; } }
 - (int64_t)submittedFrames { @synchronized (self) { return _submittedFrames; } }
 - (int64_t)droppedFrames { @synchronized (self) { return _droppedFrames; } }
-- (int64_t)underrunCount { @synchronized (self) { return _underrunCount; } }
-- (int64_t)overrunCount { @synchronized (self) { return _overrunCount; } }
-- (double)bufferedMilliseconds { @synchronized (self) { return _bufferedMillisecondsValue; } }
+// Kept in the diagnostics schema so build28 reports remain comparable. The
+// build29 path has no external ring buffer, so these remain zero by design.
+- (int64_t)underrunCount { return 0; }
+- (int64_t)overrunCount { return 0; }
+- (double)bufferedMilliseconds { return 0.0; }
+- (int64_t)deliveryCallbacks { @synchronized (self) { return _deliveryCallbacks; } }
+- (int64_t)converterResetCount { @synchronized (self) { return _converterResetCount; } }
+- (double)maxDeliveryGapMilliseconds { @synchronized (self) { return _maxDeliveryGapMilliseconds; } }
 - (NSString *)inputDescription { @synchronized (self) { return _inputDescription; } }
 
-// WebRTC asks for an audio device in 10 ms units.  Reporting stereo 48 kHz
-// makes the negotiated Opus path preserve left/right channels end-to-end.
 - (double)deviceInputSampleRate { return 48000.0; }
-- (NSTimeInterval)inputIOBufferDuration { return 0.010; }
+- (NSTimeInterval)inputIOBufferDuration { @synchronized (self) { return _inputBufferDuration; } }
 - (NSInteger)inputNumberOfChannels { return 2; }
 - (NSTimeInterval)inputLatency { return 0.0; }
 - (double)deviceOutputSampleRate { return 48000.0; }
@@ -111,33 +125,23 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
 }
 
 - (BOOL)terminateDevice {
-  _delegate = nil;
   _initialized = NO;
   _recordingInitialized = NO;
   _recording = NO;
   _playing = NO;
   [self stop];
+  _delegate = nil;
   return YES;
 }
 
-// The broadcast extension sends only; returning success for playout prevents
-// the native ADM from treating the lack of a local speaker as a device error.
+// The extension only sends. Successful no-op playout methods keep native ADM
+// initialization symmetric without opening a speaker or microphone device.
 - (BOOL)initializePlayout { return _initialized; }
 - (BOOL)startPlayout { _playing = YES; return YES; }
 - (BOOL)stopPlayout { _playing = NO; return YES; }
 - (BOOL)initializeRecording { _recordingInitialized = _initialized; return _recordingInitialized; }
-- (BOOL)startRecording {
-  _recording = _recordingInitialized;
-  if (_recording) {
-    dispatch_async(_queue, ^{ [self startDeliveryTimerIfNeeded]; });
-  }
-  return _recording;
-}
-- (BOOL)stopRecording {
-  _recording = NO;
-  dispatch_async(_queue, ^{ [self stopDeliveryTimerAndClearBuffer]; });
-  return YES;
-}
+- (BOOL)startRecording { _recording = _recordingInitialized; return _recording; }
+- (BOOL)stopRecording { _recording = NO; return YES; }
 
 - (void)appendApplicationAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer {
   if (!sampleBuffer || !CMSampleBufferDataIsReady(sampleBuffer)) return;
@@ -151,8 +155,10 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
 - (void)consumeApplicationAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer {
   @synchronized (self) { _appSampleBuffers += 1; }
   if (!_recording || !_delegate) return;
+
   CMAudioFormatDescriptionRef description = CMSampleBufferGetFormatDescription(sampleBuffer);
-  const AudioStreamBasicDescription *input = description ? CMAudioFormatDescriptionGetStreamBasicDescription(description) : NULL;
+  const AudioStreamBasicDescription *input =
+      description ? CMAudioFormatDescriptionGetStreamBasicDescription(description) : NULL;
   UInt32 inputFrames = (UInt32)MAX(0, CMSampleBufferGetNumSamples(sampleBuffer));
   if (!input || inputFrames == 0 || input->mSampleRate <= 0) {
     @synchronized (self) { _droppedFrames += inputFrames; }
@@ -161,6 +167,23 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
   if (![self configureConverterForInput:*input]) {
     @synchronized (self) { _droppedFrames += inputFrames; }
     return;
+  }
+
+  // Keep ADM's declared device callback duration in sync with the real
+  // ReplayKit callback. WebRTC warns that mismatched device parameters can
+  // cause partial transmission and audible artifacts.
+  NSTimeInterval callbackDuration = (NSTimeInterval)inputFrames / input->mSampleRate;
+  BOOL shouldNotifyDuration = NO;
+  @synchronized (self) {
+    if (!_reportedInputDuration) {
+      _inputBufferDuration = callbackDuration;
+      _reportedInputDuration = YES;
+      shouldNotifyDuration = YES;
+    }
+  }
+  if (shouldNotifyDuration) {
+    id<RTCAudioDeviceDelegate> delegate = _delegate;
+    [delegate dispatchAsync:^{ [delegate notifyAudioInputParametersChange]; }];
   }
 
   size_t listSize = 0;
@@ -174,148 +197,115 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
   AudioBufferList *inputList = malloc(listSize);
   CMBlockBufferRef retainedBlock = NULL;
   status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-      sampleBuffer, &listSize, inputList, listSize, kCFAllocatorDefault, kCFAllocatorDefault,
-      kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &retainedBlock);
+      sampleBuffer, &listSize, inputList, listSize, kCFAllocatorDefault,
+      kCFAllocatorDefault, kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+      &retainedBlock);
   if (status != noErr) {
     free(inputList);
     @synchronized (self) { _droppedFrames += inputFrames; }
     return;
   }
 
-  const UInt32 outputFrames = (UInt32)ceil((double)inputFrames * 48000.0 / input->mSampleRate) + 8;
-  NSMutableData *converted = [NSMutableData dataWithLength:(NSUInteger)outputFrames * 4];
+  const UInt32 outputCapacity =
+      (UInt32)ceil((double)inputFrames * 48000.0 / input->mSampleRate) + 16;
+  NSMutableData *converted =
+      [NSMutableData dataWithLength:(NSUInteger)outputCapacity * SolarisAudioBytesPerFrame];
   AudioBufferList outputList;
   outputList.mNumberBuffers = 1;
   outputList.mBuffers[0].mNumberChannels = 2;
   outputList.mBuffers[0].mDataByteSize = (UInt32)converted.length;
   outputList.mBuffers[0].mData = converted.mutableBytes;
-  SolarisAudioConverterInput converterInput = {inputList, inputFrames, NO};
-  UInt32 packets = outputFrames;
+  SolarisAudioConverterInput converterInput = {
+      inputList, inputFrames, 0, input->mBytesPerFrame};
+  UInt32 outputFrames = outputCapacity;
   status = AudioConverterFillComplexBuffer(_converter, SolarisAudioConverterInputCallback,
-      &converterInput, &packets, &outputList, NULL);
+      &converterInput, &outputFrames, &outputList, NULL);
   if (retainedBlock) CFRelease(retainedBlock);
   free(inputList);
-  if (status != noErr || packets == 0) {
+  if (status != noErr || outputFrames == 0) {
     @synchronized (self) { _droppedFrames += inputFrames; }
     return;
   }
-  [converted setLength:(NSUInteger)packets * 4];
-  [_pendingPCM appendData:converted];
-  [self boundPendingAudio];
-  [self updateBufferedDuration];
+
+  [converted setLength:(NSUInteger)outputFrames * SolarisAudioBytesPerFrame];
+  [self deliverConvertedPCM:converted frames:outputFrames sampleBuffer:sampleBuffer];
 }
 
 - (BOOL)configureConverterForInput:(AudioStreamBasicDescription)input {
-  if (_hasConverterInput && memcmp(&_converterInput, &input, sizeof(input)) == 0 && _converter) return YES;
+  BOOL sameFormat = _hasConverterInput && _converter &&
+      _converterInput.mSampleRate == input.mSampleRate &&
+      _converterInput.mFormatID == input.mFormatID &&
+      _converterInput.mFormatFlags == input.mFormatFlags &&
+      _converterInput.mBytesPerPacket == input.mBytesPerPacket &&
+      _converterInput.mFramesPerPacket == input.mFramesPerPacket &&
+      _converterInput.mBytesPerFrame == input.mBytesPerFrame &&
+      _converterInput.mChannelsPerFrame == input.mChannelsPerFrame &&
+      _converterInput.mBitsPerChannel == input.mBitsPerChannel;
+  if (sameFormat) return YES;
   if (_converter) { AudioConverterDispose(_converter); _converter = NULL; }
+
   AudioStreamBasicDescription output = {0};
   output.mSampleRate = 48000.0;
   output.mFormatID = kAudioFormatLinearPCM;
   output.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
-  output.mBytesPerPacket = 4;
+  output.mBytesPerPacket = SolarisAudioBytesPerFrame;
   output.mFramesPerPacket = 1;
-  output.mBytesPerFrame = 4;
+  output.mBytesPerFrame = SolarisAudioBytesPerFrame;
   output.mChannelsPerFrame = 2;
   output.mBitsPerChannel = 16;
   OSStatus status = AudioConverterNew(&input, &output, &_converter);
   _hasConverterInput = (status == noErr && _converter != NULL);
   _converterInput = input;
-  [_pendingPCM setLength:0];
-  _pumpPrimed = NO;
-  [self updateBufferedDuration];
   @synchronized (self) {
-    _inputDescription = [NSString stringWithFormat:@"%.0fHz · %u채널 → 48kHz 스테레오", input.mSampleRate, (unsigned)input.mChannelsPerFrame];
+    _converterResetCount += 1;
+    _inputDescription = [NSString stringWithFormat:
+        @"%.0fHz · %u채널 · flags 0x%X · %u-bit → 48kHz S16 스테레오",
+        input.mSampleRate, (unsigned)input.mChannelsPerFrame,
+        (unsigned)input.mFormatFlags, (unsigned)input.mBitsPerChannel];
   }
   return _hasConverterInput;
 }
 
-- (void)startDeliveryTimerIfNeeded {
-  if (_deliveryTimer || !_recording) return;
-  _nextSampleTime = 0;
-  _pumpPrimed = NO;
-  _deliveryTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue);
-  dispatch_source_set_timer(_deliveryTimer,
-      dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_MSEC),
-      10 * NSEC_PER_MSEC, 1 * NSEC_PER_MSEC);
-  __weak SolarisReplayKitAudioDevice *weakSelf = self;
-  dispatch_source_set_event_handler(_deliveryTimer, ^{
-    [weakSelf deliverOneTenMillisecondFrame];
-  });
-  dispatch_resume(_deliveryTimer);
-}
-
-- (void)boundPendingAudio {
-  if (_pendingPCM.length <= SolarisAudioMaximumBytes) return;
-  // Keep the newest 80 ms. Old audio is less useful than bounded latency.
-  NSUInteger bytesToDrop = _pendingPCM.length - SolarisAudioPrimeBytes;
-  bytesToDrop -= bytesToDrop % SolarisAudioBytesPerFrame;
-  [_pendingPCM replaceBytesInRange:NSMakeRange(0, bytesToDrop) withBytes:NULL length:0];
-  @synchronized (self) {
-    _droppedFrames += (int64_t)(bytesToDrop / SolarisAudioBytesPerFrame);
-    _overrunCount += 1;
-  }
-  [self updateBufferedDuration];
-}
-
-- (void)deliverOneTenMillisecondFrame {
-  if (!_recording || !_delegate) return;
-  if (!_pumpPrimed) {
-    if (_pendingPCM.length < SolarisAudioPrimeBytes) return;
-    _pumpPrimed = YES;
-  }
-
-  NSMutableData *chunk;
-  if (_pendingPCM.length >= SolarisAudioChunkBytes) {
-    chunk = [_pendingPCM subdataWithRange:NSMakeRange(0, SolarisAudioChunkBytes)].mutableCopy;
-    [_pendingPCM replaceBytesInRange:NSMakeRange(0, SolarisAudioChunkBytes) withBytes:NULL length:0];
-    [self updateBufferedDuration];
-  } else {
-    // Keep WebRTC's 10 ms cadence during a short ReplayKit gap. A silent block
-    // is preferable to starving the ADM and restarting its jitter estimator.
-    chunk = [NSMutableData dataWithLength:SolarisAudioChunkBytes];
-    @synchronized (self) { _underrunCount += 1; }
-  }
-
+- (void)deliverConvertedPCM:(NSMutableData *)pcm
+                      frames:(UInt32)frames
+                sampleBuffer:(CMSampleBufferRef)sampleBuffer {
+  if (!_recording || !_delegate || frames == 0) return;
   AudioBufferList list;
   list.mNumberBuffers = 1;
   list.mBuffers[0].mNumberChannels = 2;
-  list.mBuffers[0].mDataByteSize = (UInt32)SolarisAudioChunkBytes;
-  list.mBuffers[0].mData = chunk.mutableBytes;
+  list.mBuffers[0].mDataByteSize = (UInt32)pcm.length;
+  list.mBuffers[0].mData = pcm.mutableBytes;
   AudioUnitRenderActionFlags flags = 0;
   AudioTimeStamp timestamp = {0};
-  timestamp.mSampleTime = (Float64)_nextSampleTime;
-  timestamp.mHostTime = mach_absolute_time();
-  timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
+  CMTime presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+  Float64 seconds = CMTimeGetSeconds(presentationTime);
+  if (CMTIME_IS_VALID(presentationTime) && isfinite(seconds)) {
+    timestamp.mSampleTime = seconds * 48000.0;
+    timestamp.mFlags = kAudioTimeStampSampleTimeValid;
+  }
+
+  double now = NSProcessInfo.processInfo.systemUptime;
+  double gapMilliseconds =
+      _lastDeliveryUptime > 0 ? (now - _lastDeliveryUptime) * 1000.0 : 0;
+  _lastDeliveryUptime = now;
   OSStatus status = _delegate.deliverRecordedData(
-      &flags, &timestamp, 1, (UInt32)SolarisAudioFramesPerChunk, &list, NULL, nil);
-  _nextSampleTime += SolarisAudioFramesPerChunk;
+      &flags, &timestamp, 1, frames, &list, NULL, nil);
   if (status == noErr) {
-    @synchronized (self) { _submittedFrames += SolarisAudioFramesPerChunk; }
+    @synchronized (self) {
+      _submittedFrames += frames;
+      _deliveryCallbacks += 1;
+      _maxDeliveryGapMilliseconds = MAX(_maxDeliveryGapMilliseconds, gapMilliseconds);
+    }
   } else {
-    @synchronized (self) { _droppedFrames += SolarisAudioFramesPerChunk; }
+    @synchronized (self) { _droppedFrames += frames; }
   }
-}
-
-- (void)updateBufferedDuration {
-  double milliseconds = (double)_pendingPCM.length / (double)SolarisAudioBytesPerFrame / 48.0;
-  @synchronized (self) { _bufferedMillisecondsValue = milliseconds; }
-}
-
-- (void)stopDeliveryTimerAndClearBuffer {
-  if (_deliveryTimer) {
-    dispatch_source_cancel(_deliveryTimer);
-    _deliveryTimer = nil;
-  }
-  [_pendingPCM setLength:0];
-  _pumpPrimed = NO;
-  [self updateBufferedDuration];
 }
 
 - (void)stop {
   dispatch_sync(_queue, ^{
-    [self stopDeliveryTimerAndClearBuffer];
     if (_converter) { AudioConverterDispose(_converter); _converter = NULL; }
     _hasConverterInput = NO;
+    _lastDeliveryUptime = 0;
   });
 }
 

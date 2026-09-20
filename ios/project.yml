@@ -8,7 +8,7 @@ settings:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     MARKETING_VERSION: '0.3.2'
-    CURRENT_PROJECT_VERSION: '17'
+    CURRENT_PROJECT_VERSION: '29'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
 targets:
@@ -44,6 +44,7 @@ targets:
         SKIP_INSTALL: 'YES'
         LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/Frameworks'
         CODE_SIGN_ENTITLEMENTS: Config/Broadcast.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Broadcast/SolarisBroadcast-Bridging-Header.h
     dependencies:
       # Downloaded and checksum-verified BEFORE XcodeGen by prepare_webrtc.py.
       # A file reference lets Xcode process the XCFramework's real iOS slice.

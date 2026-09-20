@@ -1,5 +1,5 @@
-// Real browser video/ICE/decoder integration against an isolated mock signal server.
-// The sender is a canvas WebRTC peer, NOT ReplayKit. No real credentials are used.
+// Real browser video/audio/ICE integration against an isolated mock signal server.
+// The sender is canvas + synthetic stereo audio, NOT ReplayKit. No real credentials are used.
 import {createServer} from 'node:http';
 import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -52,24 +52,49 @@ try {
         const results=await sender.evaluate(async envelope=>{
           if(window.peer) window.peer.close();
           window.stream?.getTracks().forEach(t=>t.stop());
+          await window.audioContext?.close();
           if(window.drawTimer) clearInterval(window.drawTimer);
           document.body.replaceChildren();
-          const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
+          const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1324;
           document.body.append(canvas);
           const ctx=canvas.getContext('2d');let frame=0;
           const draw=()=>{
-            ctx.fillStyle=++frame%2?'#187dd1':'#139878';ctx.fillRect(0,0,640,360);
+            ctx.fillStyle=++frame%2?'#187dd1':'#139878';ctx.fillRect(0,0,canvas.width,canvas.height);
             ctx.fillStyle='white';ctx.font='32px sans-serif';ctx.fillText('Solaris test '+frame,40,180);
           };
           draw();
           window.drawTimer=setInterval(draw,66);
-          window.stream=canvas.captureStream(15);
+          const videoStream=canvas.captureStream(15);
+          // A real Opus track verifies the receiver's separate audio
+          // transceiver and shared playback stream without claiming that this
+          // fixture exercises ReplayKit's iOS audio callback.
+          window.audioContext=new AudioContext({sampleRate:48000});
+          const destination=window.audioContext.createMediaStreamDestination();
+          const oscillator=window.audioContext.createOscillator();
+          const gain=window.audioContext.createGain();
+          oscillator.frequency.value=440;gain.gain.value=0.02;
+          oscillator.connect(gain).connect(destination);oscillator.start();
+          await window.audioContext.resume();
+          window.stream=new MediaStream([...videoStream.getVideoTracks(),...destination.stream.getAudioTracks()]);
           const peer=new RTCPeerConnection({iceServers:[]});window.peer=peer;
-          peer.addTrack(window.stream.getVideoTracks()[0],window.stream);
+          window.stream.getTracks().forEach(track=>peer.addTrack(track,window.stream));
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'29',sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
+            dc.onmessage=async event=>{
+              const request=JSON.parse(event.data);
+              if(request.type!=='quality'||request.sessionID!==envelope.sessionID) return;
+              const limit=request.qualityID==='720p30'?1280:1920;
+              // Synthetic sender implements the quality command by resizing
+              // its canvas. This tests the data channel and real decoder,
+              // not ReplayKit's or iOS's quality controls.
+              canvas.width=limit;canvas.height=Math.floor(limit*1324/1920/2)*2;
+              draw();
+              dc.send(JSON.stringify({version:'0.3.2',build:'29',sessionID:envelope.sessionID,
+                state:'synthetic quality acknowledgement',qualityID:request.qualityID,bitrateID:request.bitrateID,
+                settingsRequestID:request.requestID,targetFPS:request.qualityID==='720p30'?30:60}));
+            };
           };
           const candidates=[];
           peer.onicecandidate=e=>{if(e.candidate)candidates.push(e.candidate.toJSON());};
@@ -110,14 +135,43 @@ try {
   await page.fill('#anonKey','sb_publishable_TEST_ONLY');
   await page.fill('#roomId','browser-test');
   for(let run=0;run<2;run++) {
+    await page.selectOption('#qualityPreset','native60');
+    await page.selectOption('#codecMode','vp8');
     await page.click('#startBtn');
     await page.waitForFunction(()=>document.getElementById('summary').textContent.includes('화면 수신 확인'),null,{timeout:30000});
     const report=await page.evaluate(()=>JSON.parse(diagnostic()));
+    const fixtureReport=await sender.evaluate(async()=>{
+      const stats=Array.from((await window.peer.getStats()).values());
+      const source=stats.find(r=>r.type==='media-source'&&r.kind==='video');
+      const outbound=stats.find(r=>r.type==='outbound-rtp'&&(r.kind==='video'||r.mediaType==='video'));
+      return {sourceWidth:source?.width||0,sourceHeight:source?.height||0,
+        framesEncoded:outbound?.framesEncoded||0,encodedWidth:outbound?.frameWidth||0,
+        encodedHeight:outbound?.frameHeight||0};
+    });
     assert.ok(report.framesDecoded>0);
-    assert.equal(report.video.width,640);
+    // Validate the synthetic source separately from the negotiated encoding.
+    // WebRTC congestion control may initially encode 1920x1324 input at a
+    // smaller resolution; requiring the receiver to be exactly 1920 wide
+    // incorrectly turns normal adaptation into a CI failure.
+    assert.deepEqual([fixtureReport.sourceWidth,fixtureReport.sourceHeight],[1920,1324]);
+    assert.ok(fixtureReport.framesEncoded>0);
+    assert.ok(report.video.width>0&&report.video.height>0);
+    assert.equal(report.audioTrack,true);
+    assert.ok(report.audioInbound.bytesReceived>0);
+    assert.equal(report.audioInbound.codec,'opus');
     assert.equal(report.answer,true);
     assert.doesNotMatch(JSON.stringify(report),/sb_publishable_TEST_ONLY/);
-    console.log('PASS: real Chromium video decoded and played; run',run+1,'frames',report.framesDecoded);
+    console.log('PASS: real Chromium video decoded and played; run',run+1,
+      'frames',report.framesDecoded,'source',`${fixtureReport.sourceWidth}x${fixtureReport.sourceHeight}`,
+      'encoded',`${fixtureReport.encodedWidth}x${fixtureReport.encodedHeight}`);
+    await page.selectOption('#qualityPreset','720p30');
+    await page.click('#applyQualityBtn');
+    await page.waitForFunction(()=>document.getElementById('qualityState').textContent.includes('송신기 적용 확인: 720p30'),null,{timeout:10000});
+    // A canvas capture track is not a ReplayKit capture track, and Chromium
+    // does not guarantee that a resize is reflected as a new track size on
+    // every platform.  The application-level acknowledgement is the stable
+    // integration contract here; iPad output size is verified by its RTP stats.
+    console.log('PASS: real data-channel quality request acknowledged');
     await page.click('#stopBtn');
   }
   await work;
