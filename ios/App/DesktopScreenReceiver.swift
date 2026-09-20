@@ -119,8 +119,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         session.lockForConfiguration()
         defer { session.unlockForConfiguration() }
         do {
-            try session.setCategory(AVAudioSession.Category.playback.rawValue,
-                                    mode: AVAudioSession.Mode.moviePlayback.rawValue,
+            try session.setCategory(AVAudioSession.Category.playback,
+                                    mode: AVAudioSession.Mode.moviePlayback,
                                     options: [])
             try session.setActive(true)
         } catch {
@@ -429,7 +429,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build32.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build33.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

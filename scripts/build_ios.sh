@@ -11,7 +11,7 @@ fi
 for executable in xcodegen xcodebuild codesign ditto python3 curl xcrun plutil; do
   command -v "$executable" >/dev/null || { echo "Missing: $executable"; exit 1; }
 done
-SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.3.2-build32-resign.ipa"
+SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.3.2-build33-resign.ipa"
 if [[ -e "$SOLARIS_OUTPUT" ]]; then
   echo "Output already exists. Move/rename it before rebuilding: $SOLARIS_OUTPUT"
   exit 1
@@ -19,7 +19,20 @@ fi
 python3 scripts/check_project.py
 mkdir -p build/diagnostics dist
 SOLARIS_STAGE="$(mktemp -d "$SOLARIS_ROOT/build/package.XXXXXX")"
-trap 'echo "iOS BUILD FAILED: see build/diagnostics (not a successful IPA build)." >&2' ERR
+report_build_failure() {
+  local status=$?
+  echo "iOS BUILD FAILED: see build/diagnostics (not a successful IPA build)." >&2
+  if [[ -f build/diagnostics/xcodebuild.log ]]; then
+    echo "::group::Swift/Xcode compiler errors"
+    grep -nE '(^|[[:space:]])(error|fatal error):' build/diagnostics/xcodebuild.log | tail -50 || true
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "::error title=Xcode compiler error::$line"
+    done < <(grep -E '(^|[[:space:]])(error|fatal error):' build/diagnostics/xcodebuild.log | tail -20 || true)
+    echo "::endgroup::"
+  fi
+  exit "$status"
+}
+trap report_build_failure ERR
 python3 scripts/prepare_webrtc.py 2>&1 | tee build/diagnostics/dependency.log
 (
   cd ios
@@ -62,8 +75,8 @@ codesign --verify --deep --strict "$SOLARIS_APP"
 ditto -c -k --keepParent "$SOLARIS_STAGE/Payload" "$SOLARIS_OUTPUT"
 python3 scripts/check_project.py --ipa "$SOLARIS_OUTPUT" \
   2>&1 | tee build/diagnostics/ipa.log
-cp ios/App/Resources/solaris-p2p.html dist/Solaris-Windows-0.3.2-build32.html
-cp ios/App/Resources/solaris-desktop.html dist/Solaris-Desktop-Share-build32.html
+cp ios/App/Resources/solaris-p2p.html dist/Solaris-Windows-0.3.2-build33.html
+cp ios/App/Resources/solaris-desktop.html dist/Solaris-Desktop-Share-build33.html
 cp docs/STEP3_WEBRTC_SCREEN_KO.md dist/START_HERE_KO.md
 echo "Packaged: $SOLARIS_OUTPUT"
 echo "RE-SIGNING AND PHYSICAL-DEVICE TEST REQUIRED. No install/capture success is claimed."

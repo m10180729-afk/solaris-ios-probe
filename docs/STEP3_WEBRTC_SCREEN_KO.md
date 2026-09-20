@@ -1,15 +1,15 @@
-# Solaris 0.3.2 build32 — 양방향 화면공유 설치와 확인
+# Solaris 0.3.2 build33 — 양방향 화면공유 설치와 확인
 
-이 파일은 build32용입니다. 이전 IPA/HTML과 섞지 마세요.
+이 파일은 build33용입니다. 이전 IPA/HTML과 섞지 마세요.
 검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
 
-1. 소스 ZIP을 Solaris-0.3.2-build32-windows-1080p120-source 폴더에 모두 압축 해제합니다.
+1. 소스 ZIP을 Solaris-0.3.2-build33-windows-1080p120-source 폴더에 모두 압축 해제합니다.
 2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build32-bidirectional-screen 아티팩트를 다운로드하고 압축 해제합니다.
-5. Solaris-0.3.2-build32-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
+4. Solaris-0.3.2-build33-bidirectional-screen 아티팩트를 다운로드하고 압축 해제합니다.
+5. Solaris-0.3.2-build33-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
 6. iPad 앱에 0.3.2 (build 32)가 표시되는지 확인합니다.
-7. iPad→Windows는 Solaris-Windows-0.3.2-build32.html을 Windows에서 엽니다.
+7. iPad→Windows는 Solaris-Windows-0.3.2-build33.html을 Windows에서 엽니다.
 8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
 9. 품질 ‘원본 1920급 · 60fps · 화질 우선’, 비트레이트 ‘최고화질 28–60Mbps’, 코덱 ‘H.264 하드웨어 · 권장’을 사용합니다.
 10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
@@ -25,7 +25,7 @@ iPad의 기존 선택기는 공유 저장소 접근 없이 방송 확장에 설�
 
 ‘원본’은 ReplayKit이 실제 전달한 픽셀 버퍼 크기입니다. iPad 패널 전체 픽셀 수와
 같다는 보장은 없습니다. 긴 변 제한은 화면 비율을 유지하며 업스케일하지 않습니다.
-build32의 iPad 송출 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
+build33의 iPad 송출 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
 방송 중 ‘안정형 20–60Mbps’를 선택하고 적용할 수 있습니다. WebRTC 혼잡 제어는 실제
 네트워크 상태가 나쁘면 요청값보다 낮출 수 있으므로 진단의 실제 Mbps를 확인합니다.
 
@@ -58,7 +58,7 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 ## Windows → iPad 또는 Windows · 1080p120
 
 1. 수신 iPad 앱에서 ‘Windows 화면 받기’ → ‘Windows 화면 수신 시작’을 누릅니다.
-2. 송신 Windows에서 Solaris-Desktop-Share-build32.html을 엽니다.
+2. 송신 Windows에서 Solaris-Desktop-Share-build33.html을 엽니다.
 3. 같은 Supabase URL·Publishable key·방 ID를 입력하고 ‘내 Windows 화면 보내기 · 1080p120’을 누릅니다.
 4. 전체 화면 또는 창을 고르고 화면 소리가 필요하면 브라우저 공유 창의 오디오 공유를 켭니다.
 5. 다른 Windows에서 받을 때는 그 PC에서 같은 HTML과 설정으로 ‘다른 Windows 화면 받기’를 누릅니다.
@@ -67,5 +67,5 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 송신 화면·GPU·브라우저가 120fps 캡처를 제공하지 않으면 연결을 실패시키지 않고 실제 가능한 FPS로 동작합니다.
 사용자가 별도 품질 모드를 반복 시험할 필요는 없으며 진단에서 실제 캡처·인코딩·수신 값을 확인합니다.
 
-빌드 실패 시 Solaris-build32-xcode-evidence의 Xcode 로그가 필요합니다.
+빌드 실패 시 Solaris-build33-xcode-evidence의 Xcode 로그가 필요합니다.
 Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.

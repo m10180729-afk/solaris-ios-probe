@@ -250,14 +250,22 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build32_labels_are_consistent(self):
+    def test_build33_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '32'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '33'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build32-bidirectional-screen", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build32.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build32.html", workflow)
-        self.assertIn("Solaris-0.3.2-build32-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build33-bidirectional-screen", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build33.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build33.html", workflow)
+        self.assertIn("Solaris-0.3.2-build33-resign.ipa", workflow)
+
+    def test_desktop_playback_uses_typed_av_audio_session_values(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "ios/App/DesktopScreenReceiver.swift").read_text()
+        self.assertIn("session.setCategory(AVAudioSession.Category.playback,", source)
+        self.assertIn("mode: AVAudioSession.Mode.moviePlayback,", source)
+        self.assertNotIn("AVAudioSession.Category.playback.rawValue", source)
+        self.assertNotIn("AVAudioSession.Mode.moviePlayback.rawValue", source)
 
 
 if __name__ == "__main__":
