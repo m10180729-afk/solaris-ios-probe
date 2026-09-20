@@ -17,12 +17,15 @@ final class BroadcastWebRTCSender: NSObject {
     private let queue = DispatchQueue(label: "org.solaris.probe.webrtc")
     private let frameGate = NSLock()
     private let factory: RTCPeerConnectionFactory
+    private let appAudioDevice: SolarisReplayKitAudioDevice
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
     private var quality: ScreenQuality
     private var bitrateProfile: BroadcastBitrateProfile
     private var videoTrack: RTCVideoTrack!
     private var videoSender: RTCRtpSender?
+    private var audioTrack: RTCAudioTrack!
+    private var audioSender: RTCRtpSender?
     private var peer: RTCPeerConnection!
     private var channel: RTCDataChannel?
     private var timer: DispatchSourceTimer?
@@ -55,6 +58,8 @@ final class BroadcastWebRTCSender: NSObject {
     private var previousEncoded: Int64 = 0
     private var previousBytes: Int64 = 0
     private var previousEncodeTime = 0.0
+    private var previousAudioStatsTime = 0.0
+    private var previousAudioBytes: Int64 = 0
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
@@ -85,8 +90,13 @@ final class BroadcastWebRTCSender: NSObject {
         }) {
             encoderFactory.preferredCodec = h264
         }
+        // The stock iOS ADM captures the microphone.  Screen sharing must use
+        // ReplayKit's .audioApp buffers instead, so install the dedicated
+        // source before creating the peer connection factory.
+        appAudioDevice = SolarisReplayKitAudioDevice()
         factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory,
-                                           decoderFactory: RTCDefaultVideoDecoderFactory())
+                                           decoderFactory: RTCDefaultVideoDecoderFactory(),
+                                           audioDevice: appAudioDevice)
         // Mark this as a screen-cast source.  A generic video source lets
         // WebRTC's camera-oriented adaptation logic resize the track when it
         // sees bandwidth pressure.  The native WebRTC 153 API has a separate
@@ -111,7 +121,21 @@ final class BroadcastWebRTCSender: NSObject {
         videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
         videoTrack.isEnabled = true
         videoSender = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        let audioConstraints = RTCMediaConstraints(
+            mandatoryConstraints: [
+                "googEchoCancellation": "false",
+                "googAutoGainControl": "false",
+                "googNoiseSuppression": "false",
+                "googHighpassFilter": "false"
+            ], optionalConstraints: nil)
+        let audioSource = factory.audioSource(with: audioConstraints)
+        audioTrack = factory.audioTrack(with: audioSource, trackId: "solaris-app-audio")
+        audioTrack.isEnabled = true
+        // Same stream ID makes the browser render image and app sound together.
+        audioSender = peer.add(audioTrack, streamIds: ["solaris-screen-stream"])
         applyVideoSenderPolicy()
+        applyAudioSenderPolicy()
+        diagnostics.audioTrackEnabled = true
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
         settings.timeoutIntervalForResource = 8
@@ -147,10 +171,23 @@ final class BroadcastWebRTCSender: NSObject {
             timer?.cancel()
             timer = nil
             channel?.close()
+            audioTrack.isEnabled = false
+            appAudioDevice.stop()
             peer.close()
             network.invalidateAndCancel()
             note("방송 종료")
         }
+    }
+
+    func captureApplicationAudio(_ sample: CMSampleBuffer) {
+        // This is intentionally the only audio ingress.  SampleHandler never
+        // passes .audioMic, so an ordinary screen broadcast cannot transmit a
+        // microphone recording by accident.
+        appAudioDevice.appendApplicationAudioSampleBuffer(sample)
+        diagnostics.appAudioSampleBuffers = appAudioDevice.appSampleBuffers
+        diagnostics.appAudioFrames = appAudioDevice.submittedFrames
+        diagnostics.appAudioDroppedFrames = appAudioDevice.droppedFrames
+        diagnostics.appAudioFormat = appAudioDevice.inputDescription
     }
 
     func capture(_ sample: CMSampleBuffer) {
@@ -292,6 +329,26 @@ final class BroadcastWebRTCSender: NSObject {
         diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · \(bitrateProfile.title)"
     }
 
+    private func applyAudioSenderPolicy() {
+        guard let audioSender else {
+            diagnostics.lastError = "오디오 RTCRtpSender 생성 실패"
+            return
+        }
+        let parameters = audioSender.parameters
+        let encodings = parameters.encodings
+        guard !encodings.isEmpty else { return }
+        for encoding in encodings {
+            encoding.isActive = true
+            // Opus stereo at 48 kHz.  This preserves normal app/game audio
+            // while remaining tiny beside the 28–60 Mbps video budget.
+            encoding.minBitrateBps = NSNumber(value: 160_000)
+            encoding.maxBitrateBps = NSNumber(value: 256_000)
+            encoding.bitratePriority = 2.0
+        }
+        parameters.encodings = encodings
+        audioSender.parameters = parameters
+    }
+
     private func applyQuality(_ id: String, bitrateID: String? = nil, requestID: String = "") {
         guard let selected = ScreenQuality.presets.first(where: { $0.id == id }) else { return }
         quality = selected
@@ -319,7 +376,22 @@ final class BroadcastWebRTCSender: NSObject {
                 let now = ProcessInfo.processInfo.systemUptime
                 for stat in report.statistics.values where stat.type == "outbound-rtp" {
                     let v = stat.values
-                    guard (v["kind"] as? String ?? v["mediaType"] as? String) == "video" else { continue }
+                    let kind = v["kind"] as? String ?? v["mediaType"] as? String
+                    if kind == "audio" {
+                        let bytes = (v["bytesSent"] as? NSNumber)?.int64Value ?? 0
+                        let audioElapsed = now - self.previousAudioStatsTime
+                        if self.previousAudioStatsTime > 0, audioElapsed > 0, bytes >= self.previousAudioBytes {
+                            self.diagnostics.audioSendKbps = Double(bytes - self.previousAudioBytes) * 8 / audioElapsed / 1_000
+                        }
+                        self.previousAudioStatsTime = now
+                        self.previousAudioBytes = bytes
+                        self.diagnostics.audioSentBytes = bytes
+                        if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] {
+                            self.diagnostics.audioCodec = codec.values["mimeType"] as? String ?? ""
+                        }
+                        continue
+                    }
+                    guard kind == "video" else { continue }
                     let encoded = (v["framesEncoded"] as? NSNumber)?.int64Value ?? 0
                     let bytes = (v["bytesSent"] as? NSNumber)?.int64Value ?? 0
                     let encodeTime = (v["totalEncodeTime"] as? NSNumber)?.doubleValue ?? 0
@@ -366,6 +438,10 @@ final class BroadcastWebRTCSender: NSObject {
                         self.diagnostics.roundTripMilliseconds = rtt * 1_000
                     }
                 }
+                self.diagnostics.appAudioSampleBuffers = self.appAudioDevice.appSampleBuffers
+                self.diagnostics.appAudioFrames = self.appAudioDevice.submittedFrames
+                self.diagnostics.appAudioDroppedFrames = self.appAudioDevice.droppedFrames
+                self.diagnostics.appAudioFormat = self.appAudioDevice.inputDescription
                 self.diagnostics.statsUpdatedAt = Date().timeIntervalSince1970
                 self.persist(force: true)
             }
@@ -510,6 +586,7 @@ final class BroadcastWebRTCSender: NSObject {
                         guard !self.stopped, self.negotiationRevision == revision else { return }
                         if let error { self.note("answer 적용 실패", error: error.localizedDescription); return }
                         self.applyVideoSenderPolicy()
+                        self.applyAudioSenderPolicy()
                         self.send("answer", ["type": "answer", "sdp": tunedSDP, "revision": revision]) { success in
                             if success {
                                 self.offerPublished = true
@@ -600,6 +677,7 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
             // the first motion-heavy seconds do not begin at camera bitrate.
             if newState == .connected || newState == .completed {
                 self.applyVideoSenderPolicy()
+                self.applyAudioSenderPolicy()
             }
             self.note("ICE 상태: \(newState) · 영상 수신 여부는 Windows 프레임 수로 확인")
         }

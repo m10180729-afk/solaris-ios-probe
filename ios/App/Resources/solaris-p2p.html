@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris 화면 수신 · build26</title>
+<title>Solaris 화면·소리 수신 · build27</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11151c;color:#eef3ff}body{margin:0}main{max-width:960px;margin:auto;padding:24px}h1{font-size:26px}p{line-height:1.6;color:#b5c3d8}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:18px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;font-size:14px;color:#b5c3d8}input,button{box-sizing:border-box;width:100%;padding:13px;margin-top:8px;border:1px solid #465878;border-radius:8px;background:#111a28;color:inherit;font:inherit}button{cursor:pointer;background:#20406a;font-weight:650}button.primary{background:#1471c9}button:disabled{opacity:.5;cursor:default}video{width:100%;background:#05080d;max-height:60vh;min-height:240px}.checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}.checks div{padding:12px;background:#111a28;border-radius:8px}.ok{color:#65e6a9}.warn{color:#ffd082}.bad{color:#ff9696}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;font-size:12px}#diagnosticText{width:100%;box-sizing:border-box;min-height:120px}small{color:#b5c3d8}@media(max-width:640px){.grid,.checks{grid-template-columns:1fr}main{padding:12px}}
 select{box-sizing:border-box;width:100%;padding:13px;margin-top:8px;border:1px solid #465878;border-radius:8px;background:#111a28;color:inherit;font:inherit}
 </style></head><body><main>
-<h1>Solaris 화면 수신 · 0.3.2 build26</h1>
-<p>iPad 앱도 <b>build26</b>을 사용하세요. Windows 수신 시작 → iPad 방송 시작 순서입니다.<br>ReplayKit 원본 1920급·60fps를 H.264 VideoToolbox와 최고화질 28–60Mbps 정책으로 전송합니다.</p>
+<h1>Solaris 화면·소리 수신 · 0.3.2 build27</h1>
+<p>iPad 앱도 <b>build27</b>을 사용하세요. Windows 수신 시작 → iPad 방송 시작 순서입니다.<br>ReplayKit 원본 1920급·60fps와 <b>화면 앱 소리만</b> Opus 48kHz 스테레오로 전송합니다. 마이크는 전송하지 않습니다.</p>
 <section class="card"><div class="grid">
 <label>Supabase Project URL<input id="supabaseUrl" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
 <label>Publishable key (Secret key 금지)<input id="anonKey" type="password" placeholder="sb_publishable_..." autocomplete="off"></label>
@@ -32,14 +32,15 @@ select{box-sizing:border-box;width:100%;padding:13px;margin-top:8px;border:1px s
 <div>④ 영상 트랙: <b id="trackState">대기</b></div>
 <div>⑤ 영상 수신: <b id="frameState">0프레임</b></div>
 <div>⑥ 화면 재생: <b id="playState">대기</b></div>
+<div>⑦ 화면 소리: <b id="audioState">대기</b></div>
 </div><p id="senderDetails">아이패드 송신 상태가 연결 후 여기에 표시됩니다.</p>
-<video id="remoteVideo" autoplay muted playsinline controls></video>
-<button id="playBtn">영상 재생 재시도</button><p>영상 프레임이 증가해야 화면 수신 성공입니다. 메시지 연결만으로 성공이라고 표시하지 않습니다.</p></section>
+<video id="remoteVideo" autoplay playsinline controls></video>
+<button id="playBtn">영상·소리 재생 시작 / 재시도</button><p>영상 프레임과 화면 소리 RTP 바이트가 증가해야 성공입니다. 브라우저가 자동 재생을 막으면 위 버튼을 한 번 누르세요.</p></section>
 <section class="card"><button id="copyBtn">진단 한 번에 복사 (키 제외)</button><pre id="log"></pre><textarea id="diagnosticText" hidden readonly aria-label="복사할 진단"></textarea></section>
 </main><script>
 'use strict';
 const BUILD = '0.3.2';
-const BUILD_NUMBER = '26';
+const BUILD_NUMBER = '27';
 const QUALITY_IDS = ['native60','1080p60','1080p30','720p30'];
 const BITRATE_IDS = ['maximum28','stable20'];
 const PROTOCOL = 'screen-v031';
@@ -151,8 +152,21 @@ async function poll(s) {
 function playback(s) {
   if(active!==s || !$('remoteVideo').srcObject) return;
   $('remoteVideo').play().catch(e => {
-    if(active===s) { mark('playState','재생 버튼을 누르세요','warn'); log('재생: '+e.message); }
+    if(active===s) { mark('playState','영상·소리 재생 버튼을 누르세요','warn'); log('재생: '+e.message); }
   });
+}
+function attachRemoteTrack(s,track) {
+  if(active!==s) return;
+  if(!s.remoteStream) s.remoteStream=new MediaStream();
+  if(!s.remoteTrackIDs.has(track.id)) {
+    s.remoteTrackIDs.add(track.id);
+    s.remoteStream.addTrack(track);
+  }
+  const video=$('remoteVideo');
+  if(video.srcObject!==s.remoteStream) video.srcObject=s.remoteStream;
+  video.muted=false;
+  video.volume=1;
+  playback(s);
 }
 async function measure(s) {
   if(active!==s || s.measuring) return;
@@ -161,6 +175,7 @@ async function measure(s) {
     const report=await s.pc.getStats();
     if(active!==s) return;
     let frames=0,bytes=0,inWidth=0,inHeight=0,inFPS=0,packetsLost=0,packetsReceived=0,codecId='',framesDropped=0,totalDecodeTime=0,jitter=0,jitterBufferDelay=0,jitterBufferEmittedCount=0;
+    let audioBytes=0,audioPackets=0,audioLost=0,audioCodecId='',audioJitter=0;
     report.forEach(r => {
       if(r.type==='inbound-rtp' && (r.kind==='video'||r.mediaType==='video')) {
         frames+=r.framesDecoded||0;
@@ -176,6 +191,13 @@ async function measure(s) {
         jitter=Math.max(jitter,r.jitter||0);
         jitterBufferDelay+=Math.max(0,r.jitterBufferDelay||0);
         jitterBufferEmittedCount+=Math.max(0,r.jitterBufferEmittedCount||0);
+      }
+      if(r.type==='inbound-rtp' && (r.kind==='audio'||r.mediaType==='audio')) {
+        audioBytes+=r.bytesReceived||0;
+        audioPackets+=Math.max(0,r.packetsReceived||0);
+        audioLost+=Math.max(0,r.packetsLost||0);
+        audioCodecId=audioCodecId||r.codecId||'';
+        audioJitter=Math.max(audioJitter,r.jitter||0);
       }
     });
     const codecReport=codecId&&typeof report.get==='function'?report.get(codecId):null;
@@ -202,6 +224,10 @@ async function measure(s) {
     const packetLossPercent=packetTotal?packetsLost*100/packetTotal:0;
     const jitterBufferMilliseconds=jitterBufferEmittedCount?jitterBufferDelay*1000/jitterBufferEmittedCount:0;
     s.inboundStats={width:inWidth,height:inHeight,fps:inFPS,receiveMbps,receiveMbps10sAverage,receiveMbps10sPeak,codec,packetsReceived,packetsLost,packetLossPercent,recentLossPercent,framesDropped,totalDecodeTime,jitter,jitterBufferMilliseconds,jitterBufferTargetMilliseconds:s.jitterBufferTargetMilliseconds};
+    const audioCodecReport=audioCodecId&&typeof report.get==='function'?report.get(audioCodecId):null;
+    const audioCodec=(audioCodecReport?.mimeType||'').replace(/^audio\//i,'')||'확인 중';
+    const audioTotal=audioPackets+audioLost;
+    s.audioStats={bytesReceived:audioBytes,packetsReceived:audioPackets,packetsLost:audioLost,packetLossPercent:audioTotal?audioLost*100/audioTotal:0,codec:audioCodec,jitter:audioJitter};
     const inboundSize=inWidth&&inHeight?`${inWidth}×${inHeight}`:'대기';
     if(s.lastInboundSize && s.lastInboundSize!==inboundSize && inboundSize!=='대기') {
       log(`수신 인코딩 해상도 변화: ${s.lastInboundSize} → ${inboundSize}`);
@@ -216,6 +242,8 @@ async function measure(s) {
     const playbackSize=playing?`${video.videoWidth}×${video.videoHeight}`:'영상 대기';
     const statsSuffix=inboundSize!=='대기'?` · RTP ${inboundSize}${inFPS?` · ${inFPS.toFixed(1)}fps`:''} · ${codec}${receiveMbps?` · ${receiveMbps.toFixed(1)}Mbps`:''}`:'';
     mark('playState',playing?playbackSize+statsSuffix:playbackSize,playing?'ok':'warn');
+    const audioReceiving=s.audioTrack && audioBytes>0;
+    mark('audioState',audioReceiving?`수신 · ${audioCodec} · ${audioBytes}바이트`:(s.audioTrack?'트랙 대기 · RTP 0바이트':'대기'),audioReceiving?'ok':s.audioTrack?'warn':'');
     if(codecMismatch) {
       mark('summary',`코덱 오류: H.264 전용으로 요청했지만 실제 ${codec}입니다. 진단을 복사해 주세요.`,'bad');
     } else if(frames>0 && playing && Date.now()-s.lastProgress<6000) {
@@ -223,7 +251,7 @@ async function measure(s) {
     } else if(frames>0 && Date.now()-s.lastProgress>=6000) {
       mark('summary','영상 프레임 증가가 멈췄습니다. 아이패드 화면을 움직여 확인하세요.','warn');
     } else if(Date.now()-s.started>15000) {
-      const message=!s.accepted ? '아이패드 방송 응답 없음: 앱 build26 / 방 ID / 방송 시작 확인'
+      const message=!s.accepted ? '아이패드 방송 응답 없음: 앱 build27 / 방 ID / 방송 시작 확인'
         : !s.track ? '방송 응답은 왔지만 영상 트랙 없음: 진단을 복사해 보내주세요.'
         : bytes===0 ? '연결됨 / 영상 데이터 0바이트: 송신 인코딩 또는 전송 실패. 연결 성공과 영상 성공은 다릅니다.'
         : '영상 데이터는 도착했지만 디코딩 0프레임: 코덱/디코더 확인 필요';
@@ -246,7 +274,7 @@ function stop() {
   const video=$('remoteVideo'); video.pause(); video.srcObject=null;
   lock(false);
   mark('summary','수신 중지. 재시작할 때 아이패드 방송도 중단 후 다시 시작하세요.');
-  for(const id of ['signalState','senderState','peerState','trackState','frameState','playState']) mark(id,'중지');
+  for(const id of ['signalState','senderState','peerState','trackState','frameState','playState','audioState']) mark(id,'중지');
 }
 async function start() {
   if(active) return;
@@ -259,7 +287,7 @@ async function start() {
     const s={id:crypto.randomUUID(),config:c,controllers:new Set(),pending:[],outgoing:[],
     polling:false,measuring:false,lastID:0,accepted:false,accepting:false,published:false,
     frames:0,bytes:0,lastBytes:0,lastStatsAt:0,lastPacketsReceived:0,lastPacketsLost:0,receiveSamples:[],lastProgress:0,started:Date.now(),track:false,
-    lastInboundSize:'',inboundStats:null,codecPreference:'default',revision:0,recovering:false,
+    lastInboundSize:'',inboundStats:null,audioStats:null,audioTrack:false,remoteStream:null,remoteTrackIDs:new Set(),codecPreference:'default',revision:0,recovering:false,
     recoveryAttempted:false,connectedAt:0,answerCodec:'',qualityRequest:null,
     jitterBufferTargetMilliseconds:0,
     bitrateID:BITRATE_IDS.includes($('bitrateMode').value)?$('bitrateMode').value:'maximum28',
@@ -267,7 +295,7 @@ async function start() {
   try {
     s.pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]});
     active=s; lock(true);
-    for(const id of ['signalState','senderState','peerState','trackState','playState']) mark(id,'대기');
+    for(const id of ['signalState','senderState','peerState','trackState','playState','audioState']) mark(id,'대기');
     mark('frameState','0프레임');
     $('senderDetails').textContent='아이패드 방송 응답 대기';
     log(`Solaris ${BUILD} build${BUILD_NUMBER} · 새 화면 세션 ${s.id}`);
@@ -275,20 +303,30 @@ async function start() {
     s.videoTransceiver=videoTransceiver;
     s.codecPreference=selectCodecs(videoTransceiver,$('codecMode').value||'h264');
     log(`영상 코덱 요청: ${s.codecPreference}`);
+    const audioTransceiver=s.pc.addTransceiver('audio',{direction:'recvonly'});
+    s.audioTransceiver=audioTransceiver;
+    s.audioCodecPreference=selectAudioCodecs(audioTransceiver);
+    log(`화면 소리 코덱 요청: ${s.audioCodecPreference}`);
     s.pc.ontrack=event=>{
-      if(active!==s || event.track.kind!=='video') return;
-      s.track=true; mark('trackState','수신','ok'); log('영상 트랙 수신');
-      try {
-        if(event.receiver && 'jitterBufferTarget' in event.receiver) {
-          event.receiver.jitterBufferTarget=750;
-          s.jitterBufferTargetMilliseconds=750;
-          log('화질 우선 수신 버퍼: 750ms 요청');
-        }
-      } catch(e) { log('수신 버퍼 설정 미지원: '+e.message); }
-      $('remoteVideo').srcObject=event.streams?.[0] || new MediaStream([event.track]);
-      $('remoteVideo').muted=true;
-      event.track.onunmute=()=>playback(s);
-      playback(s);
+      if(active!==s) return;
+      if(event.track.kind==='video') {
+        s.track=true; mark('trackState','수신','ok'); log('영상 트랙 수신');
+        try {
+          if(event.receiver && 'jitterBufferTarget' in event.receiver) {
+            event.receiver.jitterBufferTarget=750;
+            s.jitterBufferTargetMilliseconds=750;
+            log('화질 우선 수신 버퍼: 750ms 요청');
+          }
+        } catch(e) { log('수신 버퍼 설정 미지원: '+e.message); }
+        event.track.onunmute=()=>playback(s);
+        attachRemoteTrack(s,event.track);
+      } else if(event.track.kind==='audio') {
+        s.audioTrack=true;
+        mark('audioState','트랙 수신 · 소리 RTP 대기','warn');
+        log('화면 소리 트랙 수신 · Opus 스테레오 대기');
+        event.track.onunmute=()=>playback(s);
+        attachRemoteTrack(s,event.track);
+      }
     };
     s.pc.onicecandidate=event=>{
       if(active!==s || !event.candidate) return;
@@ -318,7 +356,8 @@ async function start() {
       const queueDrops=Number.isFinite(d.senderQueueDrops)?` / 송신 큐 교체 ${d.senderQueueDrops}프레임`:'';
       const network=d.statsUpdatedAt?` / 가용 송신 ${(d.availableOutgoingMbps||0).toFixed(1)}Mbps · RTT ${(d.roundTripMilliseconds||0).toFixed(0)}ms · 원격 손실 ${d.remotePacketsLost||0}`:'';
       const encoder=d.statsUpdatedAt?` / 실제 인코딩 ${d.encodedWidth||0}×${d.encodedHeight||0} ${(d.encodedFPS||0).toFixed(1)}fps · ${d.negotiatedCodec||'?'} · ${(d.sendMbps||0).toFixed(1)}Mbps / 누적 인코딩 ${d.encodedFrames||0} · 전송 ${d.sentBytes||0}바이트 / 제한 ${d.qualityLimitationReason||'unknown'}${network}`:'';
-      $('senderDetails').textContent=`iPad ${d.version} build${d.build||'?'}: ${d.state} / 원본 ${source} → 요청 출력 ${output}${aspect}${scaling} / ${fps}${queueDrops}${encoder}${policy} / ${d.lastError||'보고된 오류 없음'}`;
+      const appAudio=d.audioTrackEnabled?` / 화면 소리 ${d.audioCodec||'Opus 협상 대기'} · ${(d.audioSendKbps||0).toFixed(0)}kbps · ${d.appAudioFormat||'입력 대기'} · 제출 ${d.appAudioFrames||0}프레임 · 누락 ${d.appAudioDroppedFrames||0}`:'';
+      $('senderDetails').textContent=`iPad ${d.version} build${d.build||'?'}: ${d.state} / 원본 ${source} → 요청 출력 ${output}${aspect}${scaling} / ${fps}${queueDrops}${encoder}${policy}${appAudio} / ${d.lastError||'보고된 오류 없음'}`;
         s.senderDiagnostic=d;
         if(d.build!==BUILD_NUMBER) mark('qualityState',`앱 build${d.build||'?'} / 수신기 build${BUILD_NUMBER}: 같은 패키지의 앱을 설치하세요.`,'warn');
         else if(s.qualityRequest && d.settingsRequestID===s.qualityRequest && d.qualityID===s.qualityID && d.bitrateID===s.bitrateID) {
@@ -349,17 +388,22 @@ function tuneScreenOfferSDP(sdp){
   // Actual CRLF, not literal backslash-r/backslash-n as in build19.
   const lines=sdp.replace(/\r\n/g,'\n').split('\n');
   const h264Payloads=new Set();
-  let videoSection=false;
+  const opusPayloads=new Set();
+  let videoSection=false,audioSection=false;
   for(const line of lines){
-    if(line.startsWith('m=')) videoSection=line.startsWith('m=video ');
+    if(line.startsWith('m=')) { videoSection=line.startsWith('m=video ');audioSection=line.startsWith('m=audio '); }
     const match=videoSection&&line.match(/^a=rtpmap:(\d+) H264\/90000$/i);
     if(match) h264Payloads.add(match[1]);
+    const opus=audioSection&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);
+    if(opus) opusPayloads.add(opus[1]);
   }
-  let inVideo=false;
+  let inVideo=false,inAudio=false;
   const out=[];
   for(const line of lines){
-    if(line.startsWith('m=')) inVideo=line.startsWith('m=video ');
-    if(inVideo && /^b=(AS|TIAS):/.test(line)) continue;
+    if(line.startsWith('m=')) { inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio '); }
+    if((inVideo||inAudio) && /^b=(AS|TIAS):/.test(line)) continue;
+    const audioFmtp=inAudio&&line.match(/^a=fmtp:(\d+) (.+)$/i);
+    if(audioFmtp&&opusPayloads.has(audioFmtp[1])) continue;
     let tuned=line;
     const fmtp=inVideo&&line.match(/^a=fmtp:(\d+) (.+)$/i);
     if(fmtp&&h264Payloads.has(fmtp[1])) {
@@ -377,8 +421,18 @@ function tuneScreenOfferSDP(sdp){
       out.push('b=AS:60000');
       out.push('b=TIAS:60000000');
     }
+    if(inAudio && line.startsWith('c=')){
+      out.push('b=AS:256');
+      out.push('b=TIAS:256000');
+    }
+    const opusRtpmap=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);
+    if(opusRtpmap&&opusPayloads.has(opusRtpmap[1])) {
+      // Stereo must be negotiated by both ends.  Opus remains lossy by design,
+      // but 48 kHz / 256 kbps avoids the telephone-call processing profile.
+      out.push(`a=fmtp:${opusRtpmap[1]} stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1`);
+    }
   }
-  // RTX apt stays untouched; only H.264's negotiated level byte is raised.
+  // RTX apt stays untouched; H.264 level and Opus stereo are explicit.
   return out.join('\r\n');
 }
 function selectCodecs(transceiver,mode){
@@ -399,6 +453,22 @@ function selectCodecs(transceiver,mode){
     return mode==='vp8'?'VP8 software compatibility':'H264 only (hardware required)';
   } catch(e) {
     log(`코덱 설정 실패: ${e.message}`);
+    throw e;
+  }
+}
+function selectAudioCodecs(transceiver){
+  try {
+    if(!transceiver || typeof transceiver.setCodecPreferences!=='function' ||
+       typeof RTCRtpReceiver==='undefined' || typeof RTCRtpReceiver.getCapabilities!=='function') {
+      throw Error('이 브라우저는 오디오 코덱 고정을 지원하지 않습니다. 최신 Edge 또는 Chrome을 사용하세요.');
+    }
+    const codecs=RTCRtpReceiver.getCapabilities('audio')?.codecs||[];
+    const opus=codecs.filter(c=>(c.mimeType||'').toLowerCase()==='audio/opus');
+    if(!opus.length) throw Error('Opus 코덱을 사용할 수 없습니다.');
+    transceiver.setCodecPreferences(opus);
+    return 'Opus 48kHz stereo · 256kbps';
+  } catch(e) {
+    log(`화면 소리 코덱 설정 실패: ${e.message}`);
     throw e;
   }
 }
@@ -446,7 +516,7 @@ function diagnostic() {
   return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,room:s?.config.room,session:s?.id,
     peer:s?.pc.connectionState,ice:s?.pc.iceConnectionState,signaling:s?.pc.signalingState,
     answer:s?.accepted,track:s?.track,framesDecoded:s?.frames,bytesReceived:s?.bytes,
-    codecPreference:s?.codecPreference,revision:s?.revision,recoveryAttempted:s?.recoveryAttempted,qualityID:s?.qualityID,bitrateID:s?.bitrateID,inbound:s?.inboundStats,
+    codecPreference:s?.codecPreference,audioCodecPreference:s?.audioCodecPreference,audioTrack:s?.audioTrack,revision:s?.revision,recoveryAttempted:s?.recoveryAttempted,qualityID:s?.qualityID,bitrateID:s?.bitrateID,inbound:s?.inboundStats,audioInbound:s?.audioStats,
     sender:s?.senderDiagnostic,video:{width:$('remoteVideo').videoWidth,height:$('remoteVideo').videoHeight,
       readyState:$('remoteVideo').readyState,paused:$('remoteVideo').paused},log:$('log').textContent},null,2);
 }
@@ -465,5 +535,5 @@ $('forgetBtn').onclick=()=>{
 };
 window.addEventListener('beforeunload',stop);
 loadSettings();
-log('0.3.2 build26 준비 완료 · 원본 60fps · 최고화질 28–60Mbps · H264 VideoToolbox');
+log('0.3.2 build27 준비 완료 · 원본 60fps · 최고화질 28–60Mbps · H264 VideoToolbox · 화면 소리 Opus 스테레오');
 </script></body></html>

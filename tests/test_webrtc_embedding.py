@@ -142,6 +142,28 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn('value="stable20"', receiver)
         self.assertNotIn('value="1440p60"', receiver)
 
+    def test_screen_audio_uses_app_samples_only_with_stereo_opus(self):
+        root = Path(__file__).resolve().parents[1]
+        handler = (root / "ios/Broadcast/SampleHandler.swift").read_text()
+        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
+        device = (root / "ios/Broadcast/SolarisReplayKitAudioDevice.m").read_text()
+        receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
+        browser = (root / "scripts/screen_browser_test.mjs").read_text()
+        self.assertIn("captureApplicationAudio(sampleBuffer)", handler)
+        self.assertIn("case .audioMic: stats.micAudioSamples += 1", handler)
+        self.assertIn("case .audioMic: stats.micAudioSamples += 1\n            @unknown default", handler)
+        self.assertIn("appendApplicationAudioSampleBuffer", sender)
+        self.assertIn("audioTrack = factory.audioTrack", sender)
+        self.assertIn("audioSender = peer.add(audioTrack", sender)
+        self.assertIn("inputNumberOfChannels { return 2; }", device)
+        self.assertIn("output.mSampleRate = 48000.0", device)
+        self.assertIn("output.mChannelsPerFrame = 2", device)
+        self.assertIn("stereo=1;sprop-stereo=1;maxaveragebitrate=256000", receiver)
+        self.assertIn("addTransceiver('audio',{direction:'recvonly'})", receiver)
+        self.assertIn("event.track.kind==='audio'", receiver)
+        self.assertIn("createMediaStreamDestination", browser)
+        self.assertIn("report.audioInbound.bytesReceived>0", browser)
+
     def test_sender_prefers_h264_hardware_without_hidden_vp8_downgrade(self):
         sender = (Path(__file__).resolve().parents[1] /
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
@@ -205,13 +227,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build26_labels_are_consistent(self):
+    def test_build27_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '26'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '27'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build26-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build26.html", workflow)
-        self.assertIn("Solaris-0.3.2-build26-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build27-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build27.html", workflow)
+        self.assertIn("Solaris-0.3.2-build27-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

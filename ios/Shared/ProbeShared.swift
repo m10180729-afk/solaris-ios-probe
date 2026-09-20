@@ -159,6 +159,16 @@ struct BroadcastDiagnostics: Codable {
     var roundTripMilliseconds = 0.0
     var remotePacketsLost: Int64 = 0
     var statsUpdatedAt = 0.0
+    // ReplayKit .audioApp only.  Microphone samples are deliberately excluded
+    // from this screen-sharing track and remain for a future call feature.
+    var appAudioSampleBuffers = 0
+    var appAudioFrames: Int64 = 0
+    var appAudioDroppedFrames: Int64 = 0
+    var appAudioFormat = "대기"
+    var audioTrackEnabled = false
+    var audioCodec = ""
+    var audioSentBytes: Int64 = 0
+    var audioSendKbps = 0.0
     var lastError = ""
 }
 

@@ -21,9 +21,10 @@ function harness(options={}) {
     signalingState='stable';connectionState='new';iceConnectionState='new';
     remoteDescription=null; remoteCalls=0; candidates=[]; closed=false;
     report=new Map();
-    addTransceiver(kind,options){this.transceiver={kind,...options,setCodecPreferences(list){this.codecs=list;}};return this.transceiver;}
+    transceivers=[];
+    addTransceiver(kind,options){const transceiver={kind,...options,setCodecPreferences(list){this.codecs=list;}};this.transceivers.push(transceiver);if(kind==='video')this.transceiver=transceiver;else this.audioTransceiver=transceiver;return transceiver;}
     createDataChannel(){return {readyState:'open',sent:[],send(text){this.sent.push(JSON.parse(text));},close(){}};}
-    async createOffer(){return {type:'offer',sdp:'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n'};}
+    async createOffer(){return {type:'offer',sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=rtpmap:111 opus/48000/2\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=rtpmap:96 H264/90000\r\n'};}
     async setLocalDescription(d){this.localDescription={...d,toJSON:()=>d};this.signalingState='have-local-offer';}
     async setRemoteDescription(d){this.remoteCalls++;this.remoteDescription=d;this.signalingState='stable';}
     async addIceCandidate(c){assert.ok(this.remoteDescription,'ICE must wait for SDP');this.candidates.push(c);}
@@ -32,16 +33,17 @@ function harness(options={}) {
   }
   const codecs=[{mimeType:'video/H264',sdpFmtpLine:'profile-level-id=42e01f;packetization-mode=1'},
     {mimeType:'video/rtx'},{mimeType:'video/VP8'},{mimeType:'video/VP9'},{mimeType:'video/red'},{mimeType:'video/ulpfec'}];
+  const audioCodecs=[{mimeType:'audio/opus',sdpFmtpLine:'minptime=10;useinbandfec=1'}, {mimeType:'audio/CN'}];
   const context=vm.createContext({console,URL,AbortController,crypto:webcrypto,RTCPeerConnection:Peer,
-    RTCRtpReceiver:options.noCapabilities?undefined:{getCapabilities(){return {codecs};}},
-    MediaStream:class {constructor(tracks){this.tracks=tracks;}},
+    RTCRtpReceiver:options.noCapabilities?undefined:{getCapabilities(kind){return {codecs:kind==='audio'?audioCodecs:codecs};}},
+    MediaStream:class {constructor(tracks=[]){this.tracks=tracks;}addTrack(track){this.tracks.push(track);}},
     setTimeout,clearTimeout,setInterval:fn=>{intervals.set(++serial,fn);return serial;},
     clearInterval:id=>intervals.delete(id),
     document:{getElementById:element},window:{addEventListener(){}},navigator:{},
     localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     fetch:async(url,options)=>{requests.push({url:new URL(url),...options});return response(url,options);}
   });
-  vm.runInContext(source+'\nglobalThis.probe={start,stop,handle,poll,measure,diagnostic,validConfig,tuneScreenOfferSDP,selectCodecs,firstVideoCodec,recoverVideo,applyQuality,get active(){return active;}};',context);
+  vm.runInContext(source+'\nglobalThis.probe={start,stop,handle,poll,measure,diagnostic,validConfig,tuneScreenOfferSDP,selectCodecs,selectAudioCodecs,firstVideoCodec,recoverVideo,applyQuality,get active(){return active;}};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -54,6 +56,8 @@ test('screen-only room, recvonly video, API key header and new session',async()=
   const h=harness();await h.api.start();const s=h.api.active;
   assert.equal(s.config.transport,'same-room-screen-v031');
   assert.equal(s.pc.transceiver.direction,'recvonly');
+  assert.equal(s.pc.audioTransceiver.direction,'recvonly');
+  assert.equal(s.pc.audioTransceiver.codecs[0].mimeType,'audio/opus');
   const post=h.requests.find(r=>r.method==='POST');
   assert.equal(post.headers.apikey,'sb_publishable_TEST_ONLY');
   assert.equal(post.headers.Authorization,undefined);
@@ -110,8 +114,10 @@ test('POST failure releases connection and enables retry',async()=>{
 });
 test('track without stream is attached and played',async()=>{
   const h=harness();await h.api.start();const s=h.api.active;
-  const track={kind:'video'};s.pc.ontrack({track,streams:[]});
+  const track={kind:'video',id:'video-track'};s.pc.ontrack({track,streams:[]});
   assert.equal(h.element('remoteVideo').srcObject.tracks[0],track);
+  const audio={kind:'audio',id:'audio-track'};s.pc.ontrack({track:audio,streams:[]});
+  assert.equal(h.element('remoteVideo').srcObject.tracks[1],audio);
   assert.equal(h.element('remoteVideo').paused,false);h.api.stop();
 });
 test('connected peer alone is not screen success; decoded frames and playback are required',async()=>{
@@ -146,7 +152,7 @@ test('offer is posted before locally queued ICE',async()=>{
   assert.deepEqual(h.requests.filter(r=>r.method==='POST').map(r=>JSON.parse(r.body).kind),['offer','ice']);
   h.api.stop();
 });
-test('real CRLF SDP changes only video bandwidth, is idempotent and keeps fmtp intact',()=>{
+test('real CRLF SDP requests H264 video budget and Opus stereo, idempotently',()=>{
   const h=harness();
   const input=['v=0','m=audio 9 UDP/TLS/RTP/SAVPF 111','c=IN IP4 0.0.0.0','b=AS:64',
     'a=rtpmap:111 opus/48000/2','m=video 9 UDP/TLS/RTP/SAVPF 96 97 98',
@@ -157,7 +163,9 @@ test('real CRLF SDP changes only video bandwidth, is idempotent and keeps fmtp i
   const result=h.api.tuneScreenOfferSDP(input);
   assert.notEqual(result,input); // The old escaped parser returned input unchanged.
   assert.equal((result.match(/b=TIAS:60000000/g)||[]).length,1);
-  assert.ok(result.includes('b=AS:64\r\n'));
+  assert.ok(result.includes('b=AS:256\r\n'));
+  assert.ok(result.includes('b=TIAS:256000\r\n'));
+  assert.ok(result.includes('stereo=1;sprop-stereo=1;maxaveragebitrate=256000'));
   assert.ok(result.includes('a=fmtp:97 apt=96\r\n'));
   assert.ok(result.includes('profile-level-id=42e033\r\n'));
   assert.ok(!result.includes('profile-level-id=42e01f\r\n'));
@@ -183,7 +191,7 @@ test('connected H264 with zero frames reports failure without hidden VP8 downgra
   const h=harness();await h.api.start();const s=h.api.active,session=s.id;
   await h.api.handle(s,row(s,'answer',{sdp:'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\n'}));
   s.pc.connectionState='connected';s.connectedAt=Date.now()-12000;
-  s.senderDiagnostic={build:'26',framesSubmitted:60};
+  s.senderDiagnostic={build:'27',framesSubmitted:60};
   await h.api.measure(s);
   assert.equal(s.revision,0);assert.equal(s.id,session);
   assert.equal(s.recoveryAttempted,true);assert.equal(s.codecPreference,'H264 only (hardware required)');
@@ -196,7 +204,7 @@ test('working H264 video is not renegotiated',async()=>{
   const h=harness();await h.api.start();const s=h.api.active;
   s.pc.signalingState='stable';s.accepted=true;s.pc.connectionState='connected';
   s.connectedAt=Date.now()-12000;s.answerCodec='H264';
-  s.senderDiagnostic={build:'26',framesSubmitted:60};
+  s.senderDiagnostic={build:'27',framesSubmitted:60};
   s.pc.report=new Map([['v',{type:'inbound-rtp',kind:'video',framesDecoded:30,bytesReceived:10000}]]);
   await h.api.measure(s);assert.equal(s.recoveryAttempted,false);h.api.stop();
 });
@@ -216,7 +224,7 @@ test('quality is saved and acknowledged by request ID, not merely by local selec
   h.api.applyQuality();assert.match(h.element('qualityState').textContent,/확인 대기/);
   const request=s.dc.sent.at(-1);
   assert.equal(request.bitrateID,'stable20');
-  const diagnostic={version:'0.3.2',build:'26',sessionID:s.id,qualityID:'720p30',bitrateID:'stable20',targetFPS:30};
+  const diagnostic={version:'0.3.2',build:'27',sessionID:s.id,qualityID:'720p30',bitrateID:'stable20',targetFPS:30};
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:'old'})});
   assert.doesNotMatch(h.element('qualityState').textContent,/송신기 적용 확인:/);
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:request.requestID})});

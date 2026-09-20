@@ -1,5 +1,5 @@
-// Real browser video/ICE/decoder integration against an isolated mock signal server.
-// The sender is a canvas WebRTC peer, NOT ReplayKit. No real credentials are used.
+// Real browser video/audio/ICE integration against an isolated mock signal server.
+// The sender is canvas + synthetic stereo audio, NOT ReplayKit. No real credentials are used.
 import {createServer} from 'node:http';
 import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -52,6 +52,7 @@ try {
         const results=await sender.evaluate(async envelope=>{
           if(window.peer) window.peer.close();
           window.stream?.getTracks().forEach(t=>t.stop());
+          await window.audioContext?.close();
           if(window.drawTimer) clearInterval(window.drawTimer);
           document.body.replaceChildren();
           const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1324;
@@ -63,12 +64,23 @@ try {
           };
           draw();
           window.drawTimer=setInterval(draw,66);
-          window.stream=canvas.captureStream(15);
+          const videoStream=canvas.captureStream(15);
+          // A real Opus track verifies the receiver's separate audio
+          // transceiver and shared playback stream without claiming that this
+          // fixture exercises ReplayKit's iOS audio callback.
+          window.audioContext=new AudioContext({sampleRate:48000});
+          const destination=window.audioContext.createMediaStreamDestination();
+          const oscillator=window.audioContext.createOscillator();
+          const gain=window.audioContext.createGain();
+          oscillator.frequency.value=440;gain.gain.value=0.02;
+          oscillator.connect(gain).connect(destination);oscillator.start();
+          await window.audioContext.resume();
+          window.stream=new MediaStream([...videoStream.getVideoTracks(),...destination.stream.getAudioTracks()]);
           const peer=new RTCPeerConnection({iceServers:[]});window.peer=peer;
-          peer.addTrack(window.stream.getVideoTracks()[0],window.stream);
+          window.stream.getTracks().forEach(track=>peer.addTrack(track,window.stream));
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'26',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'27',sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
             dc.onmessage=async event=>{
               const request=JSON.parse(event.data);
@@ -79,7 +91,7 @@ try {
               // not ReplayKit's or iOS's quality controls.
               canvas.width=limit;canvas.height=Math.floor(limit*1324/1920/2)*2;
               draw();
-              dc.send(JSON.stringify({version:'0.3.2',build:'26',sessionID:envelope.sessionID,
+              dc.send(JSON.stringify({version:'0.3.2',build:'27',sessionID:envelope.sessionID,
                 state:'synthetic quality acknowledgement',qualityID:request.qualityID,bitrateID:request.bitrateID,
                 settingsRequestID:request.requestID,targetFPS:request.qualityID==='720p30'?30:60}));
             };
@@ -144,6 +156,9 @@ try {
     assert.deepEqual([fixtureReport.sourceWidth,fixtureReport.sourceHeight],[1920,1324]);
     assert.ok(fixtureReport.framesEncoded>0);
     assert.ok(report.video.width>0&&report.video.height>0);
+    assert.equal(report.audioTrack,true);
+    assert.ok(report.audioInbound.bytesReceived>0);
+    assert.equal(report.audioInbound.codec,'opus');
     assert.equal(report.answer,true);
     assert.doesNotMatch(JSON.stringify(report),/sb_publishable_TEST_ONLY/);
     console.log('PASS: real Chromium video decoded and played; run',run+1,

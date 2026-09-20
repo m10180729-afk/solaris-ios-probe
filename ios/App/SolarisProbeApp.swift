@@ -31,7 +31,7 @@ struct ProbeView: View {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
                     Text("아이패드 화면 → Windows")
-                    Text("원본 화면 송출 · 품질 설정은 Windows 수신기에서 적용 · 음성 없음")
+                    Text("원본 화면·앱 소리 송출 · Windows에서 품질 적용 · 마이크 전송 안 함")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("화면 품질") {
@@ -54,12 +54,12 @@ struct ProbeView: View {
                     }
                 }
                 Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build26.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2-build27.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)
                     }
-                    Text("Windows의 영상 프레임이 증가하고 실제 화면이 표시되어야 성공입니다.")
+                    Text("Windows의 영상 프레임과 화면 소리 RTP 바이트가 증가해야 성공입니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("3 · 연결 상태 확인") {

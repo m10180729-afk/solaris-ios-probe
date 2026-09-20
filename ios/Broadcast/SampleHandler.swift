@@ -104,7 +104,12 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                         queue.async { [self] in sendPreview(sampleBuffer) }
                     }
                 }
-            case .audioApp: stats.appAudioSamples += 1
+            case .audioApp:
+                stats.appAudioSamples += 1
+                // Screen sound only.  Never forward .audioMic here: calls get
+                // their own microphone track later, rather than accidentally
+                // mixing the broadcaster's voice into screen-share audio.
+                p2pSender?.captureApplicationAudio(sampleBuffer)
             case .audioMic: stats.micAudioSamples += 1
             @unknown default: break
             }
