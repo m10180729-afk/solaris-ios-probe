@@ -2,12 +2,16 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <math.h>
+#import <string.h>
 
 // WebRTC's ObjC audio device module owns FineAudioBuffer, whose job is to turn
 // variable-size device callbacks into WebRTC's internal 10 ms blocks. ReplayKit
 // already supplies clocked app-audio callbacks, so deliver each converted
-// callback exactly once. A second dispatch timer fights that clock and can
-// create audible stalls even when its separate PCM queue never underflows.
+// callback exactly once. Use the render-block form of deliverRecordedData:
+// WebRTC's pre-filled-buffer branch historically constructs its sample view
+// with `frameCount` elements even for interleaved stereo, effectively dropping
+// one half of the PCM timeline. The render-block branch allocates
+// frameCount * channelCount elements and preserves both channels.
 static const NSUInteger SolarisAudioBytesPerFrame = 2 * sizeof(int16_t);
 
 typedef struct {
@@ -94,8 +98,8 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
 - (NSInteger)appSampleBuffers { @synchronized (self) { return _appSampleBuffers; } }
 - (int64_t)submittedFrames { @synchronized (self) { return _submittedFrames; } }
 - (int64_t)droppedFrames { @synchronized (self) { return _droppedFrames; } }
-// Kept in the diagnostics schema so build28 reports remain comparable. The
-// build29 path has no external ring buffer, so these remain zero by design.
+// Kept in the diagnostics schema so older reports remain comparable. The
+// build30 path has no external ring buffer, so these remain zero by design.
 - (int64_t)underrunCount { return 0; }
 - (int64_t)overrunCount { return 0; }
 - (double)bufferedMilliseconds { return 0.0; }
@@ -270,11 +274,6 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
                       frames:(UInt32)frames
                 sampleBuffer:(CMSampleBufferRef)sampleBuffer {
   if (!_recording || !_delegate || frames == 0) return;
-  AudioBufferList list;
-  list.mNumberBuffers = 1;
-  list.mBuffers[0].mNumberChannels = 2;
-  list.mBuffers[0].mDataByteSize = (UInt32)pcm.length;
-  list.mBuffers[0].mData = pcm.mutableBytes;
   AudioUnitRenderActionFlags flags = 0;
   AudioTimeStamp timestamp = {0};
   CMTime presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
@@ -288,8 +287,34 @@ static OSStatus SolarisAudioConverterInputCallback(AudioConverterRef converter,
   double gapMilliseconds =
       _lastDeliveryUptime > 0 ? (now - _lastDeliveryUptime) * 1000.0 : 0;
   _lastDeliveryUptime = now;
+  const void *sourceBytes = pcm.bytes;
+  const UInt32 sourceByteCount = (UInt32)pcm.length;
+  RTCAudioDeviceRenderRecordedDataBlock renderBlock =
+      ^OSStatus(AudioUnitRenderActionFlags *renderFlags,
+                const AudioTimeStamp *renderTimestamp,
+                NSInteger inputBusNumber,
+                UInt32 requestedFrames,
+                AudioBufferList *destination,
+                void *renderContext) {
+        if (!destination || destination->mNumberBuffers != 1 ||
+            requestedFrames != frames) {
+          return kAudio_ParamError;
+        }
+        AudioBuffer *audio = &destination->mBuffers[0];
+        if (!audio->mData || audio->mNumberChannels != 2 ||
+            audio->mDataByteSize < sourceByteCount) {
+          return kAudio_ParamError;
+        }
+        memcpy(audio->mData, sourceBytes, sourceByteCount);
+        audio->mDataByteSize = sourceByteCount;
+        return noErr;
+      };
+  // Passing NULL for inputData deliberately selects WebRTC's stereo-safe
+  // render path. Do not replace this with a pre-filled AudioBufferList unless
+  // the pinned WebRTC implementation is verified to multiply frameCount by
+  // mNumberChannels in that branch.
   OSStatus status = _delegate.deliverRecordedData(
-      &flags, &timestamp, 1, frames, &list, NULL, nil);
+      &flags, &timestamp, 1, frames, NULL, NULL, renderBlock);
   if (status == noErr) {
     @synchronized (self) {
       _submittedFrames += frames;

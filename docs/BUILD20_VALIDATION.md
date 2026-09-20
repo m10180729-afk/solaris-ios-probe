@@ -53,6 +53,21 @@ build20 Actions에서 합성 원본 1920×1324가 480×331로 적응된 것을 �
 수신 디코딩·재생을 분리 검증한다. 새 build23 Actions 성공은 업로드 후 확인해야 한다.
 무료 재서명, iPad 영상 복구, 지속 60fps는 실제 기기 확인 전까지 미검증이다.
 
+## build29 오디오 진단과 build30 수정
+
+build29 기기 진단은 송신 PCM 4,059,219프레임(48kHz 기준 약 84.6초)을 기록했지만,
+Windows는 총 84.69초 중 2,099,572샘플(약 43.7초)을 은폐했고 41.3초를 무음으로
+보정했다. 오디오 패킷 손실은 0.57%뿐이어서 네트워크 손실로 이 절반 결손을 설명할
+수 없다. 정상 디코딩 시간 약 41초가 송신 PCM 시간의 약 절반인 것은 stereo PCM의
+프레임 수와 interleaved sample element 수가 2:1인 것과 일치한다.
+
+WebRTC ObjC 사용자 정의 오디오 장치 API는 미리 채운 `inputData` 또는 WebRTC가
+할당한 버퍼를 채우는 `renderBlock` 두 경로를 제공한다. build30은 stereo-safe
+`renderBlock` 경로를 사용해 WebRTC가 `frameCount × channelCount` 크기로 할당한
+버퍼에 전체 좌·우 PCM을 복사한다. 수신 진단에는 송신 PCM 초, 정상 디코딩 초,
+두 값의 비율과 은폐 비율을 함께 기록한다. 실제 기기에서 비율이 1에 근접하고
+은폐 비율이 지속적으로 낮은지 확인하기 전에는 해결 완료로 판정하지 않는다.
+
 ## 참고한 원자료
 
 - https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpTransceiver/setCodecPreferences

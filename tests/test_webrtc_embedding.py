@@ -160,6 +160,11 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("output.mChannelsPerFrame = 2", device)
         self.assertIn("FineAudioBuffer", device)
         self.assertIn("deliverConvertedPCM:converted frames:outputFrames", device)
+        self.assertIn("RTCAudioDeviceRenderRecordedDataBlock renderBlock", device)
+        self.assertIn("frames, NULL, NULL, renderBlock", device)
+        self.assertIn("requestedFrames != frames", device)
+        self.assertIn("audio->mNumberChannels != 2", device)
+        self.assertNotIn("frames, &list, NULL, nil", device)
         self.assertIn("notifyAudioInputParametersChange", device)
         self.assertIn("dispatch_queue_attr_make_with_qos_class", device)
         self.assertIn("_converterInput.mFormatFlags == input.mFormatFlags", device)
@@ -170,6 +175,9 @@ class EmbeddingTests(unittest.TestCase):
         self.assertNotIn("dispatch_source_set_timer", device)
         self.assertNotIn("_pendingPCM", device)
         self.assertIn("stereo=1;sprop-stereo=1;maxaveragebitrate=256000", receiver)
+        self.assertIn("decodedMediaSeconds", receiver)
+        self.assertIn("concealmentPercent", receiver)
+        self.assertIn("decodedToSenderRatio", receiver)
         self.assertIn("addTransceiver('audio',{direction:'recvonly'})", receiver)
         self.assertIn("event.track.kind==='audio'", receiver)
         self.assertIn("createMediaStreamDestination", browser)
@@ -238,13 +246,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build29_labels_are_consistent(self):
+    def test_build30_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '29'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '30'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build29-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build29.html", workflow)
-        self.assertIn("Solaris-0.3.2-build29-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build30-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build30.html", workflow)
+        self.assertIn("Solaris-0.3.2-build30-resign.ipa", workflow)
 
 
 if __name__ == "__main__":
