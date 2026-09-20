@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UIKit
 import WebRTC
 
 private let desktopProtocolVersion = "desktop-v1"
@@ -428,7 +429,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build31.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build32.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

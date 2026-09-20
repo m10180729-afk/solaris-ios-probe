@@ -71,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build31-xcode-evidence
+          name: Solaris-build32-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -80,11 +80,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build31-bidirectional-screen
+          name: Solaris-0.3.2-build32-bidirectional-screen
           path: |
-            dist/Solaris-0.3.2-build31-resign.ipa
-            dist/Solaris-Windows-0.3.2-build31.html
-            dist/Solaris-Desktop-Share-build31.html
+            dist/Solaris-0.3.2-build32-resign.ipa
+            dist/Solaris-Windows-0.3.2-build32.html
+            dist/Solaris-Desktop-Share-build32.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3
