@@ -266,13 +266,14 @@ final class BroadcastWebRTCSender: NSObject {
         for encoding in encodings {
             encoding.isActive = true
             encoding.maxBitrateBps = NSNumber(value: 60_000_000)
-            // Keep the hardware encoder out of its very-low-bitrate startup
-            // mode. This is a floor request, not a guarantee; congestion
-            // control may still lower it when the network cannot carry it.
-            encoding.minBitrateBps = NSNumber(value: 8_000_000)
+            // Quality-first viewing profile.  Build24 proved that the encoder
+            // followed its 8 Mbps floor, but fast full-screen transitions
+            // visibly exhausted that budget.  Request 20 Mbps from startup;
+            // congestion control can still reduce it to protect the call.
+            encoding.minBitrateBps = NSNumber(value: 20_000_000)
             encoding.maxFramerate = NSNumber(value: quality.fps)
             encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
-            encoding.bitratePriority = 2.0
+            encoding.bitratePriority = 4.0
         }
         parameters.encodings = encodings
         // Disable WebRTC's automatic frame-rate/resolution degradation. The
@@ -281,7 +282,7 @@ final class BroadcastWebRTCSender: NSObject {
             value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
         )
         videoSender.parameters = parameters
-        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 requested · 8–60Mbps"
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · quality-first 20–60Mbps"
     }
 
     private func applyQuality(_ id: String, requestID: String = "") {
@@ -331,6 +332,27 @@ final class BroadcastWebRTCSender: NSObject {
                     if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] {
                         self.diagnostics.negotiatedCodec = codec.values["mimeType"] as? String ?? ""
                         self.diagnostics.codecParameters = codec.values["sdpFmtpLine"] as? String ?? ""
+                    }
+                }
+                for stat in report.statistics.values where stat.type == "candidate-pair" {
+                    let v = stat.values
+                    let selected = (v["selected"] as? NSNumber)?.boolValue ??
+                        ((v["nominated"] as? NSNumber)?.boolValue ?? false)
+                    guard selected || v["state"] as? String == "succeeded" else { continue }
+                    if let available = (v["availableOutgoingBitrate"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.availableOutgoingMbps = available / 1_000_000
+                    }
+                    if let rtt = (v["currentRoundTripTime"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.roundTripMilliseconds = rtt * 1_000
+                    }
+                }
+                for stat in report.statistics.values where stat.type == "remote-inbound-rtp" {
+                    let v = stat.values
+                    guard (v["kind"] as? String ?? v["mediaType"] as? String) == "video" else { continue }
+                    self.diagnostics.remotePacketsLost =
+                        (v["packetsLost"] as? NSNumber)?.int64Value ?? 0
+                    if let rtt = (v["roundTripTime"] as? NSNumber)?.doubleValue {
+                        self.diagnostics.roundTripMilliseconds = rtt * 1_000
                     }
                 }
                 self.diagnostics.statsUpdatedAt = Date().timeIntervalSince1970
@@ -560,6 +582,12 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
         queue.async {
             guard !self.stopped else { return }
             self.diagnostics.ice = String(describing: newState)
+            // Some WebRTC builds replace RTP encoding parameters during SDP
+            // setup. Reapply the quality policy once the transport is live so
+            // the first motion-heavy seconds do not begin at camera bitrate.
+            if newState == .connected || newState == .completed {
+                self.applyVideoSenderPolicy()
+            }
             self.note("ICE 상태: \(newState) · 영상 수신 여부는 Windows 프레임 수로 확인")
         }
     }

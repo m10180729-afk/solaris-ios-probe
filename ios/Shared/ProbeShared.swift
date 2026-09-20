@@ -72,15 +72,13 @@ struct ScreenQuality: Codable, Equatable, Identifiable {
     // The ReplayKit extension cannot reliably read host-app UserDefaults when
     // installed through free AltStore signing. Use the highest native-preserving
     // preset as the extension fallback instead of silently reverting to 1280p.
-    static let extensionDefault = ScreenQuality(id: "native60", title: "원본 해상도 · 최대 60fps", maxLongSide: 16384, fps: 60)
+    static let extensionDefault = ScreenQuality(id: "native60", title: "원본 1920급 · 60fps · 화질 우선", maxLongSide: 1920, fps: 60)
     static let presets = [
         extensionDefault,
         automatic,
         ScreenQuality(id: "720p30", title: "720p · 30fps", maxLongSide: 1280, fps: 30),
         ScreenQuality(id: "1080p30", title: "1080p · 30fps", maxLongSide: 1920, fps: 30),
-        ScreenQuality(id: "1080p60", title: "1080p · 60fps", maxLongSide: 1920, fps: 60),
-        ScreenQuality(id: "1440p30", title: "QHD · 30fps", maxLongSide: 2560, fps: 30),
-        ScreenQuality(id: "1440p60", title: "QHD · 60fps", maxLongSide: 2560, fps: 60)
+        ScreenQuality(id: "1080p60", title: "1920급 · 60fps", maxLongSide: 1920, fps: 60)
     ]
 
     static func current() -> ScreenQuality {
@@ -138,6 +136,9 @@ struct BroadcastDiagnostics: Codable {
     var codecParameters = ""
     var encoderImplementation = ""
     var qualityLimitationReason = "unknown"
+    var availableOutgoingMbps = 0.0
+    var roundTripMilliseconds = 0.0
+    var remotePacketsLost: Int64 = 0
     var statsUpdatedAt = 0.0
     var lastError = ""
 }
