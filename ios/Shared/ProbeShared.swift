@@ -46,6 +46,10 @@ struct P2PBroadcastConfig: Codable {
     // A separate transport room prevents the old WebView callee from answering
     // offers intended for the native ReplayKit extension.
     var signalingRoom: String { roomID + "-screen-v031" }
+    // Desktop capture is a separate offer/answer flow. Keeping it out of the
+    // ReplayKit room prevents a Windows sender from being answered by the
+    // broadcast extension that is waiting for the opposite direction.
+    var desktopSignalingRoom: String { roomID + "-desktop-v1" }
 
     var url: URL? {
         guard let parts = URLComponents(string: projectURL),

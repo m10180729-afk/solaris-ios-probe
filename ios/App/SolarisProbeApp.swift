@@ -30,9 +30,18 @@ struct ProbeView: View {
             Form {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
-                    Text("아이패드 화면 → Windows")
-                    Text("원본 화면·앱 소리 송출 · Windows에서 품질 적용 · 마이크 전송 안 함")
+                    Text("아이패드 ↔ Windows 화면공유")
+                    Text("iPad 송출 1920급·60fps / Windows 송출 1080p120 목표 · 화면 소리 포함 · 마이크 전송 안 함")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                if let c = config {
+                    Section("Windows → iPad · 1080p120") {
+                        NavigationLink("Windows 화면 받기") {
+                            DesktopReceiverView(config: c)
+                        }
+                        Text("Windows 송신 또는 다른 Windows 수신은 Solaris-Desktop-Share-build31.html에서 시작합니다.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 Section("화면 품질") {
                     Text("Windows에서 품질을 선택하고 ‘품질 저장 / 방송에 적용’을 누르세요.")
@@ -54,7 +63,7 @@ struct ProbeView: View {
                     }
                 }
                 Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build30.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2-build31.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)

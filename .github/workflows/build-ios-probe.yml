@@ -59,7 +59,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_*.py' -v
           python3 -m unittest discover -s receiver -p 'test_*.py' -v
           node scripts/check_viewer.mjs
-          node --test tests/screen_receiver.test.mjs
+          node --test tests/screen_receiver.test.mjs tests/desktop_share.test.mjs
       - name: Test shared configuration validation
         run: |
           mkdir -p build
@@ -71,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build30-xcode-evidence
+          name: Solaris-build31-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -80,10 +80,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build30-app-and-receiver
+          name: Solaris-0.3.2-build31-bidirectional-screen
           path: |
-            dist/Solaris-0.3.2-build30-resign.ipa
-            dist/Solaris-Windows-0.3.2-build30.html
+            dist/Solaris-0.3.2-build31-resign.ipa
+            dist/Solaris-Windows-0.3.2-build31.html
+            dist/Solaris-Desktop-Share-build31.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

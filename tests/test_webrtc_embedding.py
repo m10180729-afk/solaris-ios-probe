@@ -27,12 +27,16 @@ class EmbeddingTests(unittest.TestCase):
             "group": {"isa": "PBXGroup", "sourceTree": "<group>", "children": ["vendor"]},
             "vendor": {"isa": "PBXGroup", "sourceTree": "<group>", "path": "Vendor", "children": ["rtc"]},
             "rtc": {"isa": "PBXFileReference", "sourceTree": "<group>", "path": "WebRTC.xcframework"},
-            "link": {"isa": "PBXBuildFile", "fileRef": "rtc"},
-            "embed": {"isa": "PBXBuildFile", "fileRef": "rtc"},
-            "links": {"isa": "PBXFrameworksBuildPhase", "files": ["link"]},
-            "copies": {"isa": "PBXCopyFilesBuildPhase", "files": ["embed"], "dstSubfolderSpec": 10},
-            "extension": {"isa": "PBXNativeTarget", "name": "SolarisBroadcast", "buildPhases": ["links", "copies"]},
-            "app": {"isa": "PBXNativeTarget", "name": "SolarisProbe", "buildPhases": []},
+            "extensionLink": {"isa": "PBXBuildFile", "fileRef": "rtc"},
+            "extensionEmbed": {"isa": "PBXBuildFile", "fileRef": "rtc"},
+            "appLink": {"isa": "PBXBuildFile", "fileRef": "rtc"},
+            "appEmbed": {"isa": "PBXBuildFile", "fileRef": "rtc"},
+            "extensionLinks": {"isa": "PBXFrameworksBuildPhase", "files": ["extensionLink"]},
+            "extensionCopies": {"isa": "PBXCopyFilesBuildPhase", "files": ["extensionEmbed"], "dstSubfolderSpec": 10},
+            "appLinks": {"isa": "PBXFrameworksBuildPhase", "files": ["appLink"]},
+            "appCopies": {"isa": "PBXCopyFilesBuildPhase", "files": ["appEmbed"], "dstSubfolderSpec": 10},
+            "extension": {"isa": "PBXNativeTarget", "name": "SolarisBroadcast", "buildPhases": ["extensionLinks", "extensionCopies"]},
+            "app": {"isa": "PBXNativeTarget", "name": "SolarisProbe", "buildPhases": ["appLinks", "appCopies"]},
         }}
 
     def test_actual_file_reference_accepted(self):
@@ -41,7 +45,7 @@ class EmbeddingTests(unittest.TestCase):
     def test_old_package_embed_reproduces_missing_product_path(self):
         objects = self.graph["objects"]
         objects["package"] = {"isa": "XCSwiftPackageProductDependency", "productName": "WebRTC"}
-        objects["embed"] = {"isa": "PBXBuildFile", "productRef": "package"}
+        objects["extensionEmbed"] = {"isa": "PBXBuildFile", "productRef": "package"}
         with self.assertRaisesRegex(ValueError, "Release-iphoneos/WebRTC"):
             check_project_graph(self.graph, self.root)
 
@@ -55,18 +59,18 @@ class EmbeddingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "copy source does not exist"):
             check_project_graph(self.graph, self.root)
 
-    def test_duplicate_host_embedding_rejected(self):
-        self.graph["objects"]["app"]["buildPhases"] = ["copies"]
-        with self.assertRaisesRegex(ValueError, "Duplicate/unneeded"):
+    def test_missing_host_receiver_embedding_rejected(self):
+        self.graph["objects"]["app"]["buildPhases"] = []
+        with self.assertRaisesRegex(ValueError, "Host receiver"):
             check_project_graph(self.graph, self.root)
 
     def test_missing_link_rejected(self):
-        self.graph["objects"]["extension"]["buildPhases"] = ["copies"]
+        self.graph["objects"]["extension"]["buildPhases"] = ["extensionCopies"]
         with self.assertRaisesRegex(ValueError, "link and embed"):
             check_project_graph(self.graph, self.root)
 
     def test_wrong_embed_destination_rejected(self):
-        self.graph["objects"]["copies"]["dstSubfolderSpec"] = 13
+        self.graph["objects"]["extensionCopies"]["dstSubfolderSpec"] = 13
         with self.assertRaisesRegex(ValueError, "must embed in Frameworks"):
             check_project_graph(self.graph, self.root)
 
@@ -246,13 +250,14 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build30_labels_are_consistent(self):
+    def test_build31_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '30'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '31'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build30-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build30.html", workflow)
-        self.assertIn("Solaris-0.3.2-build30-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build31-bidirectional-screen", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build31.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build31.html", workflow)
+        self.assertIn("Solaris-0.3.2-build31-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

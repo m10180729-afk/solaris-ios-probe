@@ -73,12 +73,13 @@ def check_project_graph(project, source_root):
             require(len(linked) == 1 and linked == embedded,
                     f"Extension must link and embed the same real XCFramework once: {counts[name]}")
         elif name == "SolarisProbe":
-            require(not linked and not embedded, "Duplicate/unneeded WebRTC in host app")
+            require(len(linked) == 1 and linked == embedded,
+                    f"Host receiver must link and embed the same real XCFramework once: {counts[name]}")
     require(counts.get("SolarisBroadcast") == (1, 1), "Broadcast target missing")
-    require(counts.get("SolarisProbe") == (0, 0), "Host app target missing or duplicates WebRTC")
+    require(counts.get("SolarisProbe") == (1, 1), "Host receiver target missing WebRTC")
     for source in sorted(sources):
         print(f"VERIFIED existing WebRTC copy/link source: {source}")
-    print("PASS generated project: fileRef, extension link+embed once, host has no WebRTC")
+    print("PASS generated project: real fileRef, host receiver and extension each link/embed once")
 
 
 def command(*args):
@@ -87,31 +88,35 @@ def command(*args):
 
 def check_built_app(app):
     extension = app / "PlugIns/SolarisBroadcast.appex"
-    framework = extension / "Frameworks/WebRTC.framework"
-    binary = framework / "WebRTC"
-    require(binary.is_file(), f"Missing required embedded binary: {binary}")
+    host_framework = app / "Frameworks/WebRTC.framework"
+    extension_framework = extension / "Frameworks/WebRTC.framework"
+    frameworks = [host_framework, extension_framework]
+    for framework in frameworks:
+        require((framework / "WebRTC").is_file(), f"Missing required embedded binary: {framework / 'WebRTC'}")
     copies = list(app.rglob("WebRTC.framework"))
-    require(copies == [framework], f"Expected exactly one extension-local WebRTC.framework, got: {copies}")
-    info = plistlib.loads((framework / "Info.plist").read_bytes())
-    require(info.get("CFBundleExecutable") == "WebRTC", "Invalid WebRTC executable metadata")
-    require("iPhoneOS" in info.get("CFBundleSupportedPlatforms", []), "Wrong WebRTC platform slice")
+    require(sorted(copies) == sorted(frameworks),
+            f"Expected one host and one extension WebRTC.framework, got: {copies}")
+    for framework in frameworks:
+        info = plistlib.loads((framework / "Info.plist").read_bytes())
+        require(info.get("CFBundleExecutable") == "WebRTC", "Invalid WebRTC executable metadata")
+        require("iPhoneOS" in info.get("CFBundleSupportedPlatforms", []), "Wrong WebRTC platform slice")
     for bundle in (app, extension):
         metadata = plistlib.loads((bundle / "Info.plist").read_bytes())
         executable = bundle / metadata["CFBundleExecutable"]
         libraries = command("xcrun", "otool", "-L", str(executable))
         print(libraries)
-        if bundle == extension:
-            require("@rpath/WebRTC.framework/WebRTC" in libraries, "Extension does not dynamically link WebRTC")
-            loads = command("xcrun", "otool", "-l", str(executable))
-            require("path @executable_path/Frameworks (offset" in loads,
-                    "Missing extension-local Frameworks LC_RPATH")
-        else:
-            require("WebRTC.framework" not in libraries, "Host app unnecessarily links WebRTC")
-    architectures = command("xcrun", "lipo", "-archs", str(binary)).split()
-    require(architectures == ["arm64"], f"Wrong device framework architectures: {architectures}")
-    require("@rpath/WebRTC.framework/WebRTC" in command("xcrun", "otool", "-D", str(binary)),
-            "WebRTC install name does not match loader path")
-    print(f"PASS built app: arm64 WebRTC binary, dynamic link and loader path: {binary}")
+        require("@rpath/WebRTC.framework/WebRTC" in libraries,
+                f"{bundle.name} does not dynamically link WebRTC")
+        loads = command("xcrun", "otool", "-l", str(executable))
+        require("path @executable_path/Frameworks (offset" in loads,
+                f"Missing {bundle.name} local Frameworks LC_RPATH")
+    for framework in frameworks:
+        binary = framework / "WebRTC"
+        architectures = command("xcrun", "lipo", "-archs", str(binary)).split()
+        require(architectures == ["arm64"], f"Wrong device framework architectures: {architectures}")
+        require("@rpath/WebRTC.framework/WebRTC" in command("xcrun", "otool", "-D", str(binary)),
+                "WebRTC install name does not match loader path")
+    print("PASS built app: host receiver and broadcast extension have arm64 WebRTC loader paths")
 
 
 def main():

@@ -38,6 +38,8 @@ def check_sources():
     for path in ("ios/project.yml", "receiver/viewer.html", "tests/ProbeConfigTests.swift",
                  "scripts/build_ios.sh", ".github/workflows/build-ios-probe.yml",
                  "ios/App/Resources/SolarisMark.jpeg",
+                 "ios/App/Resources/solaris-desktop.html",
+                 "ios/App/DesktopScreenReceiver.swift",
                  "ios/Broadcast/BroadcastWebRTCSender.swift"):
         assert (ROOT / path).is_file(), path
     project = (ROOT / "ios/project.yml").read_text(encoding="utf-8")
@@ -47,8 +49,11 @@ def check_sources():
     build_script = (ROOT / "scripts/build_ios.sh").read_text()
     assert "--entitlements" not in build_script, "Do not restore App Group entitlements during packaging"
     assert "import WebRTC" in (ROOT / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-    for path in (ROOT / "ios/App").rglob("*.swift"):
-        assert "import WebRTC" not in path.read_text(), "Only the broadcast extension uses WebRTC"
+    desktop_receiver = (ROOT / "ios/App/DesktopScreenReceiver.swift").read_text()
+    assert "import WebRTC" in desktop_receiver, "Native iPad desktop receiver must link WebRTC"
+    assert "desktop-v1" in desktop_receiver
+    desktop_html = (ROOT / "ios/App/Resources/solaris-desktop.html").read_text()
+    assert "getDisplayMedia" in desktop_html and "maxFramerate=120" in desktop_html
     app_source = (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
     assert "ProbeShared.group()" not in app_source, "Broadcast UI must not require App Group storage"
     print("PASS: Python syntax, plist values, no App Group requirement, real XCFramework dependency")
@@ -71,15 +76,19 @@ def check_ipa(path):
             assert not any("$(" in str(value) for value in info.values()), "Unexpanded build setting"
             executable = archive.read(folder + info["CFBundleExecutable"])
             assert executable[:4] in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
-        framework_root = extension_root + "Frameworks/WebRTC.framework/"
+        host_framework_root = app_root + "Frameworks/WebRTC.framework/"
+        extension_framework_root = extension_root + "Frameworks/WebRTC.framework/"
         names = set(archive.namelist())
-        assert framework_root + "WebRTC" in names, "Missing extension Frameworks/WebRTC.framework/WebRTC"
-        assert not any(n.startswith(app_root + "Frameworks/WebRTC.framework/") for n in names), "Duplicate host WebRTC framework"
-        info = plistlib.loads(archive.read(framework_root + "Info.plist"))
-        assert info["CFBundleExecutable"] == "WebRTC"
-        assert "iPhoneOS" in info.get("CFBundleSupportedPlatforms", []), "Wrong WebRTC platform"
-        assert archive.read(framework_root + "WebRTC")[:4] in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"), "Invalid WebRTC binary"
-    print("PASS: IPA bundles, ReplayKit mode, versions, executables, extension-local WebRTC.framework")
+        for framework_root, owner in ((host_framework_root, "host"),
+                                      (extension_framework_root, "extension")):
+            assert framework_root + "WebRTC" in names, \
+                f"Missing {owner} Frameworks/WebRTC.framework/WebRTC"
+            info = plistlib.loads(archive.read(framework_root + "Info.plist"))
+            assert info["CFBundleExecutable"] == "WebRTC"
+            assert "iPhoneOS" in info.get("CFBundleSupportedPlatforms", []), "Wrong WebRTC platform"
+            assert archive.read(framework_root + "WebRTC")[:4] in \
+                (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"), "Invalid WebRTC binary"
+    print("PASS: IPA bundles, ReplayKit mode, versions, host+extension WebRTC.framework")
     print("IPA is only a re-signing candidate. Device installation remains unverified.")
 
 

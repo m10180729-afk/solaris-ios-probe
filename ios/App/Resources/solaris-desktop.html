@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solaris Windows 화면공유 · build31</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:700px){.grid,.status{grid-template-columns:1fr}}
+</style></head><body><main>
+<h1>Solaris Windows 화면공유 · build31</h1>
+<p>Windows → iPad Pro / Windows 전용입니다. <b>1920×1080 · 120fps</b>를 직접 요청하며, 실제 장치가 지원하지 않을 때만 브라우저가 가능한 프레임으로 동작합니다. 마이크는 사용하지 않고 선택한 화면의 시스템 소리만 전송합니다.</p>
+
+<section class="card grid">
+  <label>Supabase Project URL<input id="supabaseUrl" autocomplete="off" placeholder="https://….supabase.co"></label>
+  <label>Publishable key<input id="anonKey" type="password" autocomplete="off" placeholder="sb_publishable_…"></label>
+  <label>방 ID<input id="roomId" autocomplete="off" value="solaristest1"></label>
+  <div><button id="forgetBtn">이 브라우저 저장값 지우기</button></div>
+  <button id="sendBtn">내 Windows 화면 보내기 · 1080p120</button>
+  <button id="receiveBtn">다른 Windows 화면 받기</button>
+  <button id="stopBtn" class="danger" disabled>공유/수신 중지</button>
+  <button id="copyBtn">진단 복사</button>
+</section>
+
+<section class="card">
+  <div class="status">
+    <div>역할<br><b id="roleState">대기</b></div>
+    <div>WebRTC<br><b id="peerState">대기</b></div>
+    <div>코덱<br><b id="codecState">대기</b></div>
+    <div>캡처<br><b id="captureState">대기</b></div>
+    <div>전송/수신<br><b id="mediaState">대기</b></div>
+    <div>화면 소리<br><b id="audioState">대기</b></div>
+  </div>
+  <p id="summary">설정을 입력한 뒤 송신 또는 수신을 시작하세요.</p>
+</section>
+
+<section class="card"><video id="screenVideo" autoplay playsinline controls></video></section>
+<section class="card"><pre id="log"></pre><textarea id="diagnosticText" hidden></textarea></section>
+
+<script>
+'use strict';
+const BUILD='0.3.2',BUILD_NUMBER='31',PROTOCOL='desktop-v1';
+const $=id=>document.getElementById(id);
+let active=null;
+function log(message){$('log').textContent+=`[${new Date().toLocaleTimeString()}] ${message}\n`;$('log').scrollTop=$('log').scrollHeight;}
+function mark(id,text,kind=''){$(id).textContent=text;$(id).className=kind;}
+function lock(running){$('sendBtn').disabled=running;$('receiveBtn').disabled=running;$('stopBtn').disabled=!running;}
+function loadSettings(){try{$('supabaseUrl').value=localStorage.getItem('solarisp2p.url')||'';$('anonKey').value=localStorage.getItem('solarisp2p.key')||'';$('roomId').value=localStorage.getItem('solarisp2p.room')||'solaristest1';}catch{}}
+function validConfig(){
+  const url=$('supabaseUrl').value.trim().replace(/\/$/,'');
+  const key=$('anonKey').value.trim(),room=$('roomId').value.trim();
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url))throw Error('Supabase URL을 확인하세요.');
+  if(!/^sb_publishable_[A-Za-z0-9_-]+$/.test(key))throw Error('Publishable key만 사용하세요. Secret key는 금지됩니다.');
+  if(!/^[A-Za-z0-9-]{3,64}$/.test(room))throw Error('방 ID는 영문·숫자·하이픈 3–64자입니다.');
+  return{url,key,room,transport:`${room}-desktop-v1`};
+}
+function headers(c){return{'Content-Type':'application/json','apikey':c.key,'Prefer':'return=minimal'};}
+function endpoint(c,params=''){return`${c.url}/rest/v1/solaris_signals${params?'?'+params:''}`;}
+async function fetchTimed(url,options={},timeout=7000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{return await fetch(url,{...options,signal:controller.signal});}finally{clearTimeout(timer);}}
+async function sendSignal(s,kind,payload){
+  const source=s.role==='sender'?'windows-desktop':'windows-desktop-receiver';
+  const body={room_id:s.config.transport,sender:s.role==='sender'?'caller':'callee',kind,payload:{...payload,protocol:PROTOCOL,source,sessionID:s.id}};
+  const response=await fetchTimed(endpoint(s.config),{method:'POST',headers:headers(s.config),body:JSON.stringify(body)});
+  if(!response.ok)throw Error(`신호 ${kind} HTTP ${response.status}`);
+}
+function peerConfig(){return{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]};}
+function mediaCodecs(kind){
+  const caps=(kind==='sender'?RTCRtpSender:RTCRtpReceiver).getCapabilities?.('video')?.codecs||[];
+  const h264=caps.filter(c=>(c.mimeType||'').toLowerCase()==='video/h264');
+  if(!h264.length)throw Error('H.264 WebRTC 코덱을 사용할 수 없습니다. 최신 Edge/Chrome과 GPU 드라이버를 사용하세요.');
+  return[...h264,...caps.filter(c=>/\/(rtx|red|ulpfec|flexfec-03)$/i.test(c.mimeType||''))];
+}
+function tuneDesktopSDP(sdp){
+  const lines=sdp.replace(/\r\n/g,'\n').split('\n');let inVideo=false,inAudio=false;
+  const h264=new Set(),opus=new Set();
+  for(const line of lines){if(line.startsWith('m=')){inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio ');}let m=inVideo&&line.match(/^a=rtpmap:(\d+) H264\/90000$/i);if(m)h264.add(m[1]);m=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);if(m)opus.add(m[1]);}
+  inVideo=false;inAudio=false;const out=[];
+  for(const line of lines){
+    if(line.startsWith('m=')){inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio ');}
+    if((inVideo||inAudio)&&/^b=(AS|TIAS):/.test(line))continue;
+    const audioFmtp=inAudio&&line.match(/^a=fmtp:(\d+) /i);if(audioFmtp&&opus.has(audioFmtp[1]))continue;
+    let tuned=line;const fmtp=inVideo&&line.match(/^a=fmtp:(\d+) (.+)$/i);
+    if(fmtp&&h264.has(fmtp[1]))tuned=`a=fmtp:${fmtp[1]} ${fmtp[2].replace(/profile-level-id=([0-9a-f]{4})[0-9a-f]{2}/i,(_m,p)=>`profile-level-id=${p}33`)}`;
+    out.push(tuned);
+    if(inVideo&&line.startsWith('c=')){out.push('b=AS:80000');out.push('b=TIAS:80000000');}
+    if(inAudio&&line.startsWith('c=')){out.push('b=AS:256');out.push('b=TIAS:256000');}
+    const op=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);if(op&&opus.has(op[1]))out.push(`a=fmtp:${op[1]} stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1`);
+  }
+  return out.join('\r\n');
+}
+async function applySenderPolicy(sender){
+  const configure=(p,extended)=>{
+    if(!p.encodings?.length)p.encodings=[{}];
+    for(const e of p.encodings){e.active=true;e.maxBitrate=80000000;e.maxFramerate=120;e.scaleResolutionDownBy=1;if(extended){e.priority='high';e.networkPriority='high';}}
+    if(extended)p.degradationPreference='maintain-framerate';
+    return p;
+  };
+  try{await sender.setParameters(configure(sender.getParameters(),true));}
+  catch(firstError){
+    log('브라우저가 확장 RTP 정책 일부를 거부하여 핵심 1080p120 정책으로 재시도: '+firstError.message);
+    await sender.setParameters(configure(sender.getParameters(),false));
+  }
+}
+function baseSession(config,role){
+  return{id:role==='sender'?crypto.randomUUID():null,config,role,pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
+}
+function installPeerHandlers(s){
+  s.pc.onicecandidate=e=>{if(active!==s||!e.candidate)return;const c=e.candidate.toJSON();if(s.published)sendSignal(s,'ice',c).catch(x=>log('ICE 전송 실패: '+x.message));else s.outgoing.push(c);};
+  s.pc.onconnectionstatechange=()=>{if(active!==s)return;const state=s.pc.connectionState;mark('peerState',state,state==='connected'?'ok':state==='failed'?'bad':'warn');log('WebRTC: '+state);if(state==='connected'&&s.videoSender)applySenderPolicy(s.videoSender).catch(e=>log('송신 정책 재적용 실패: '+e.message));};
+  s.pc.ontrack=e=>{if(active!==s)return;const video=$('screenVideo');if(!s.remoteStream)s.remoteStream=new MediaStream();if(!s.remoteStream.getTracks?.().some(t=>t.id===e.track.id))s.remoteStream.addTrack(e.track);video.srcObject=s.remoteStream;video.play().catch(()=>{});if(e.track.kind==='video'){try{if(e.receiver&&'jitterBufferTarget'in e.receiver)e.receiver.jitterBufferTarget=500;}catch{}mark('mediaState','영상 트랙 수신','ok');}else{mark('audioState','화면 소리 수신','ok');}};
+}
+async function publishAndFlush(s,kind,description){await sendSignal(s,kind,description);s.published=true;for(const c of s.outgoing)await sendSignal(s,'ice',c);s.outgoing=[];}
+async function startSender(){
+  if(active)return;let config;try{config=validConfig();}catch(e){mark('summary',e.message,'bad');return;}
+  try{localStorage.setItem('solarisp2p.url',config.url);localStorage.setItem('solarisp2p.key',config.key);localStorage.setItem('solarisp2p.room',config.room);}catch{}
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920,max:1920},height:{ideal:1080,max:1080},frameRate:{ideal:120,max:120},cursor:'always'},audio:{channelCount:{ideal:2},sampleRate:{ideal:48000},echoCancellation:false,noiseSuppression:false,autoGainControl:false},systemAudio:'include',surfaceSwitching:'include',selfBrowserSurface:'exclude'});
+    const track=stream.getVideoTracks()[0];if(!track)throw Error('선택한 화면에 영상 트랙이 없습니다.');
+    track.contentHint='motion';
+    await track.applyConstraints({width:{ideal:1920,max:1920},height:{ideal:1080,max:1080},frameRate:{ideal:120,max:120}}).catch(e=>log('120fps 캡처 제약 경고: '+e.message));
+    const s=baseSession(config,'sender');s.stream=stream;active=s;lock(true);installPeerHandlers(s);
+    const videoTransceiver=s.pc.addTransceiver(track,{direction:'sendonly',streams:[stream]});if(videoTransceiver.setCodecPreferences)videoTransceiver.setCodecPreferences(mediaCodecs('sender'));s.videoSender=videoTransceiver.sender;
+    for(const audio of stream.getAudioTracks()){audio.contentHint='music';s.pc.addTransceiver(audio,{direction:'sendonly',streams:[stream]});}
+    stream.getTracks().forEach(t=>t.onended=()=>{if(active===s)stop();});
+    $('screenVideo').srcObject=stream;$('screenVideo').muted=true;$('screenVideo').play().catch(()=>{});
+    mark('roleState','Windows 송신','ok');mark('codecState','H.264 only · level 5.1','ok');mark('audioState',stream.getAudioTracks().length?'시스템 소리 송신':'소리 미선택','warn');
+    const settings=track.getSettings();mark('captureState',`${settings.width||'?'}×${settings.height||'?'} · 요청 ${settings.frameRate||'?'}fps`,settings.frameRate>=100?'ok':'warn');
+    await applySenderPolicy(s.videoSender).catch(e=>log('초기 송신 정책 대기: '+e.message));
+    const offer=await s.pc.createOffer();const tuned={type:offer.type,sdp:tuneDesktopSDP(offer.sdp)};await s.pc.setLocalDescription(tuned);
+    await publishAndFlush(s,'offer',s.pc.localDescription.toJSON());
+    mark('summary','1080p120 offer 전송 완료. iPad 앱의 ‘Windows 화면 받기’ 또는 다른 Windows의 수신 버튼을 누르세요.','warn');
+    beginTimers(s);
+  }catch(e){stream?.getTracks().forEach(t=>t.stop());if(active)stop();mark('summary','송신 시작 실패: '+e.message,'bad');log('송신 시작 실패: '+e.message);}
+}
+async function startReceiver(){
+  if(active)return;let config;try{config=validConfig();}catch(e){mark('summary',e.message,'bad');return;}
+  try{localStorage.setItem('solarisp2p.url',config.url);localStorage.setItem('solarisp2p.key',config.key);localStorage.setItem('solarisp2p.room',config.room);}catch{}
+  const s=baseSession(config,'receiver');active=s;lock(true);installPeerHandlers(s);mark('roleState','Windows 수신','ok');mark('codecState','H.264 offer 대기','warn');mark('captureState','해당 없음');mark('summary','Windows 송신 offer를 기다리는 중입니다.','warn');beginTimers(s);await poll(s);
+}
+function beginTimers(s){s.pollTimer=setInterval(()=>poll(s),700);s.statsTimer=setInterval(()=>measure(s),1000);poll(s);measure(s);}
+async function poll(s){
+  if(active!==s||s.polling)return;s.polling=true;
+  try{
+    const opposite=s.role==='sender'?'callee':'caller';const params=new URLSearchParams({select:'id,kind,payload',room_id:`eq.${s.config.transport}`,sender:`eq.${opposite}`,order:'id.asc',limit:'100'});
+    if(s.id){params.set('payload->>sessionID',`eq.${s.id}`);params.set('id',`gt.${s.lastID}`);}else{params.set('kind','eq.offer');params.set('created_at',`gte.${new Date(s.started-300000).toISOString()}`);params.set('order','id.desc');params.set('limit','1');}
+    const response=await fetchTimed(endpoint(s.config,params.toString()),{headers:headers(s.config)});if(!response.ok)throw Error(`HTTP ${response.status}`);const rows=await response.json();
+    for(const row of rows){if(s.id)s.lastID=Math.max(s.lastID,Number(row.id)||0);await handleSignal(s,row.kind,row.payload||{});}
+  }catch(e){if(active===s)log('신호 조회 오류: '+e.message);}finally{s.polling=false;}
+}
+async function handleSignal(s,kind,p){
+  if(active!==s||p.protocol!==PROTOCOL)return;
+  if(s.role==='sender'){
+    if(!['ios-desktop-receiver','windows-desktop-receiver'].includes(p.source)||p.sessionID!==s.id)return;
+    if(kind==='answer'&&!s.answerApplied&&p.sdp){s.answerApplied=true;await s.pc.setRemoteDescription({type:'answer',sdp:p.sdp});for(const c of s.pending)await s.pc.addIceCandidate(c);s.pending=[];log('수신기 answer 적용');}
+  }else{
+    if(p.source!=='windows-desktop')return;
+    if(kind==='offer'&&!s.id&&p.sessionID&&p.sdp){s.id=p.sessionID;await s.pc.setRemoteDescription({type:'offer',sdp:p.sdp});for(const transceiver of s.pc.getTransceivers()){if(transceiver.receiver?.track?.kind==='video'&&transceiver.setCodecPreferences)transceiver.setCodecPreferences(mediaCodecs('receiver'));}for(const c of s.pending)await s.pc.addIceCandidate(c);s.pending=[];const answer=await s.pc.createAnswer();const tuned={type:answer.type,sdp:tuneDesktopSDP(answer.sdp)};await s.pc.setLocalDescription(tuned);await publishAndFlush(s,'answer',s.pc.localDescription.toJSON());mark('codecState','H.264 only · level 5.1','ok');log('Windows 송신 offer 응답 완료');}
+  }
+  if(kind==='ice'&&p.sessionID===s.id&&p.candidate){const c={candidate:p.candidate,sdpMid:p.sdpMid??null,sdpMLineIndex:p.sdpMLineIndex??0};if(s.pc.remoteDescription)await s.pc.addIceCandidate(c);else s.pending.push(c);}
+}
+async function measure(s){
+  if(active!==s)return;
+  try{
+    const report=await s.pc.getStats();let video=null,codec='H.264';for(const r of report.values()){if((r.type==='outbound-rtp'||r.type==='inbound-rtp')&&(r.kind==='video'||r.mediaType==='video'))video=r;if(r.type==='codec'&&/^video\//.test(r.mimeType||''))codec=(r.mimeType||'').replace('video/','');}
+    if(!video)return;const now=performance.now(),frames=Number(video.framesEncoded??video.framesDecoded??0),bytes=Number(video.bytesSent??video.bytesReceived??0),elapsed=(now-s.lastStatsAt)/1000;let fps=0,mbps=0;if(s.lastStatsAt&&elapsed>0){fps=(frames-s.lastFrames)/elapsed;mbps=(bytes-s.lastBytes)*8/elapsed/1e6;}s.lastStatsAt=now;s.lastFrames=frames;s.lastBytes=bytes;
+    const width=video.frameWidth||s.stream?.getVideoTracks()[0]?.getSettings().width||0,height=video.frameHeight||s.stream?.getVideoTracks()[0]?.getSettings().height||0;
+    s.stats={role:s.role,width,height,fps,mbps,frames,bytes,codec,qualityLimitationReason:video.qualityLimitationReason||'none',framesDropped:video.framesDropped||0,packetsLost:video.packetsLost||0};
+    mark('mediaState',`${width}×${height} · ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,fps>=100?'ok':frames?'warn':'');mark('codecState',codec,/H264/i.test(codec)?'ok':'bad');
+    const actual120=width===1920&&height===1080&&fps>=100;
+    mark('summary',actual120?'1080p120 실측 성공':frames?`영상 동작 중 · 현재 ${width}×${height} ${fps.toFixed(1)}fps (목표 1080p120)`:'연결 및 첫 프레임 대기',actual120?'ok':'warn');
+  }catch(e){log('통계 오류: '+e.message);}
+}
+function stop(){
+  const s=active;active=null;if(s){clearInterval(s.pollTimer);clearInterval(s.statsTimer);s.stream?.getTracks().forEach(t=>t.stop());s.pc.ontrack=null;s.pc.onicecandidate=null;s.pc.close();}
+  const video=$('screenVideo');video.pause();video.srcObject=null;video.muted=false;lock(false);for(const id of ['roleState','peerState','codecState','captureState','mediaState','audioState'])mark(id,'중지');mark('summary','중지했습니다. 다시 연결할 때 송신과 수신을 모두 새로 시작하세요.');
+}
+function diagnostic(){const s=active;return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,room:s?.config.room,session:s?.id,role:s?.role,peer:s?.pc.connectionState,signaling:s?.pc.signalingState,capture:s?.stream?.getVideoTracks()[0]?.getSettings(),audioTracks:s?.stream?.getAudioTracks().length||0,actual:s?.stats,log:$('log').textContent},null,2);}
+$('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
+$('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
+$('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
+window.addEventListener('beforeunload',stop);loadSettings();log('Solaris build31 준비 · Windows 1080p120 H.264 송신/수신 · 시스템 소리 · 마이크 제외');
+</script></main></body></html>

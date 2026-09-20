@@ -41,7 +41,8 @@ class BroadcastPackageTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             checks.check_broadcast_info(self.info, "WrongModule.SampleHandler")
 
-    def make_ipa(self, destination, nested=False, mismatch=False, missing_framework=False, duplicate=False):
+    def make_ipa(self, destination, nested=False, mismatch=False,
+                 missing_extension_framework=False, missing_host_framework=False):
         # Minimal fixture: checks bundle metadata and headers, not a runnable IPA.
         app = {"CFBundleIdentifier": "org.solaris.probe", "CFBundleShortVersionString": "0.3.2",
                "CFBundleVersion": "5", "CFBundleExecutable": "SolarisProbe"}
@@ -59,14 +60,15 @@ class BroadcastPackageTests(unittest.TestCase):
                 ("Payload/SolarisProbe.app/PlugIns/SolarisBroadcast.appex/", ext)):
                 archive.writestr(folder + "Info.plist", plistlib.dumps(info))
                 archive.writestr(folder + info["CFBundleExecutable"], b"\xcf\xfa\xed\xfe" + bytes(32))
-            if not missing_framework:
-                roots = ["Payload/SolarisProbe.app/PlugIns/SolarisBroadcast.appex/Frameworks/WebRTC.framework/"]
-                if duplicate:
-                    roots.append("Payload/SolarisProbe.app/Frameworks/WebRTC.framework/")
-                for root in roots:
-                    archive.writestr(root + "Info.plist", plistlib.dumps({
-                        "CFBundleExecutable": "WebRTC", "CFBundleSupportedPlatforms": ["iPhoneOS"]}))
-                    archive.writestr(root + "WebRTC", b"\xcf\xfa\xed\xfe" + bytes(32))
+            roots = []
+            if not missing_extension_framework:
+                roots.append("Payload/SolarisProbe.app/PlugIns/SolarisBroadcast.appex/Frameworks/WebRTC.framework/")
+            if not missing_host_framework:
+                roots.append("Payload/SolarisProbe.app/Frameworks/WebRTC.framework/")
+            for root in roots:
+                archive.writestr(root + "Info.plist", plistlib.dumps({
+                    "CFBundleExecutable": "WebRTC", "CFBundleSupportedPlatforms": ["iPhoneOS"]}))
+                archive.writestr(root + "WebRTC", b"\xcf\xfa\xed\xfe" + bytes(32))
 
     def test_built_ipa_mode(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -91,15 +93,15 @@ class BroadcastPackageTests(unittest.TestCase):
     def test_missing_extension_framework_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "fixture.ipa"
-            self.make_ipa(path, missing_framework=True)
+            self.make_ipa(path, missing_extension_framework=True)
             with self.assertRaisesRegex(AssertionError, "Missing extension"):
                 checks.check_ipa(path)
 
-    def test_duplicate_host_framework_rejected(self):
+    def test_missing_host_framework_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "fixture.ipa"
-            self.make_ipa(path, duplicate=True)
-            with self.assertRaisesRegex(AssertionError, "Duplicate host"):
+            self.make_ipa(path, missing_host_framework=True)
+            with self.assertRaisesRegex(AssertionError, "Missing host"):
                 checks.check_ipa(path)
 
 
