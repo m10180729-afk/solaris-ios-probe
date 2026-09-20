@@ -1,15 +1,15 @@
-# Solaris 0.3.2 build27 — 화면·소리 설치와 확인
+# Solaris 0.3.2 build28 — 화면·소리 설치와 확인
 
-이 파일은 build27용입니다. 이전 build7/build19/build20/build23/build24/build25/build26 HTML이나 IPA와 섞지 마세요.
+이 파일은 build28용입니다. 이전 build7/build19/build20/build23/build24/build25/build26/build27 HTML이나 IPA와 섞지 마세요.
 검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
 
-1. 소스 ZIP을 Solaris-0.3.2-build27-stereo-screen-audio-source 폴더에 모두 압축 해제합니다.
+1. 소스 ZIP을 Solaris-0.3.2-build28-paced-screen-audio-source 폴더에 모두 압축 해제합니다.
 2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build27-app-and-receiver 아티팩트를 다운로드하고 압축 해제합니다.
-5. Solaris-0.3.2-build27-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
-6. iPad 앱에 0.3.2 (build 27)가 표시되는지 확인합니다.
-7. 같은 아티팩트의 Solaris-Windows-0.3.2-build27.html을 Windows에서 엽니다.
+4. Solaris-0.3.2-build28-app-and-receiver 아티팩트를 다운로드하고 압축 해제합니다.
+5. Solaris-0.3.2-build28-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
+6. iPad 앱에 0.3.2 (build 28)가 표시되는지 확인합니다.
+7. 같은 아티팩트의 Solaris-Windows-0.3.2-build28.html을 Windows에서 엽니다.
 8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
 9. 품질 ‘원본 1920급 · 60fps · 화질 우선’, 비트레이트 ‘최고화질 28–60Mbps’, 코덱 ‘H.264 하드웨어 · 권장’을 사용합니다.
 10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
@@ -25,7 +25,7 @@ iPad의 기존 선택기는 공유 저장소 접근 없이 방송 확장에 설�
 
 ‘원본’은 ReplayKit이 실제 전달한 픽셀 버퍼 크기입니다. iPad 패널 전체 픽셀 수와
 같다는 보장은 없습니다. 긴 변 제한은 화면 비율을 유지하며 업스케일하지 않습니다.
-build27 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
+build28 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
 방송 중 ‘안정형 20–60Mbps’를 선택하고 적용할 수 있습니다. WebRTC 혼잡 제어는 실제
 네트워크 상태가 나쁘면 요청값보다 낮출 수 있으므로 진단의 실제 Mbps를 확인합니다.
 
@@ -43,6 +43,7 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 - 품질 우선 버퍼: 지원 브라우저에서 750ms를 요청하며 지원하지 않으면 안전하게 건너뜁니다.
 - 네트워크: 가용 송신 Mbps·왕복 지연·누적/최근 손실률·10초 평균/최대 Mbps를 기록합니다.
 - 요청 출력: 지정한 목표 크기로 실제 인코딩 결과와 구분합니다.
+- 화면 소리: 80ms 선행 버퍼 뒤 10ms 단위로 정속 공급하며 언더런·오버런을 별도로 기록합니다.
 
 문제가 남으면 ‘진단 한 번에 복사 (키 제외)’에 전체 단계 통계가 포함됩니다.
 
@@ -54,5 +55,5 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 - 움직이는 장면의 실제 송신 비트레이트가 약 20Mbps 이상으로 올라갑니다.
 - 연결 끊김이나 해상도 자동 축소가 발생하지 않습니다.
 
-빌드 실패 시 Solaris-build27-xcode-evidence의 Xcode 로그가 필요합니다.
+빌드 실패 시 Solaris-build28-xcode-evidence의 Xcode 로그가 필요합니다.
 Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.

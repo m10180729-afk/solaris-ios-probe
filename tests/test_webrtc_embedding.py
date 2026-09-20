@@ -158,6 +158,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("inputNumberOfChannels { return 2; }", device)
         self.assertIn("output.mSampleRate = 48000.0", device)
         self.assertIn("output.mChannelsPerFrame = 2", device)
+        self.assertIn("SolarisAudioPrimeBytes = 8 * SolarisAudioChunkBytes", device)
+        self.assertIn("10 * NSEC_PER_MSEC, 1 * NSEC_PER_MSEC", device)
+        self.assertIn("deliverOneTenMillisecondFrame", device)
+        self.assertIn("_underrunCount += 1", device)
+        self.assertIn("_overrunCount += 1", device)
+        self.assertNotIn("deliverWholeTenMillisecondFrames", device)
+        self.assertNotIn("while (_pendingPCM.length >=", device)
         self.assertIn("stereo=1;sprop-stereo=1;maxaveragebitrate=256000", receiver)
         self.assertIn("addTransceiver('audio',{direction:'recvonly'})", receiver)
         self.assertIn("event.track.kind==='audio'", receiver)
@@ -227,13 +234,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build27_labels_are_consistent(self):
+    def test_build28_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '27'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '28'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build27-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build27.html", workflow)
-        self.assertIn("Solaris-0.3.2-build27-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build28-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build28.html", workflow)
+        self.assertIn("Solaris-0.3.2-build28-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

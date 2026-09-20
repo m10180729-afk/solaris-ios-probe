@@ -9,6 +9,9 @@
 @property(nonatomic, readonly) NSInteger appSampleBuffers;
 @property(nonatomic, readonly) int64_t submittedFrames;
 @property(nonatomic, readonly) int64_t droppedFrames;
+@property(nonatomic, readonly) int64_t underrunCount;
+@property(nonatomic, readonly) int64_t overrunCount;
+@property(nonatomic, readonly) double bufferedMilliseconds;
 @property(nonatomic, readonly) NSString *inputDescription;
 
 - (void)appendApplicationAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer;

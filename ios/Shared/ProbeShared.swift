@@ -164,6 +164,9 @@ struct BroadcastDiagnostics: Codable {
     var appAudioSampleBuffers = 0
     var appAudioFrames: Int64 = 0
     var appAudioDroppedFrames: Int64 = 0
+    var appAudioUnderruns: Int64 = 0
+    var appAudioOverruns: Int64 = 0
+    var appAudioBufferedMilliseconds = 0.0
     var appAudioFormat = "대기"
     var audioTrackEnabled = false
     var audioCodec = ""

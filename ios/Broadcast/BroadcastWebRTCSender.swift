@@ -187,6 +187,9 @@ final class BroadcastWebRTCSender: NSObject {
         diagnostics.appAudioSampleBuffers = appAudioDevice.appSampleBuffers
         diagnostics.appAudioFrames = appAudioDevice.submittedFrames
         diagnostics.appAudioDroppedFrames = appAudioDevice.droppedFrames
+        diagnostics.appAudioUnderruns = appAudioDevice.underrunCount
+        diagnostics.appAudioOverruns = appAudioDevice.overrunCount
+        diagnostics.appAudioBufferedMilliseconds = appAudioDevice.bufferedMilliseconds
         diagnostics.appAudioFormat = appAudioDevice.inputDescription
     }
 
@@ -441,6 +444,9 @@ final class BroadcastWebRTCSender: NSObject {
                 self.diagnostics.appAudioSampleBuffers = self.appAudioDevice.appSampleBuffers
                 self.diagnostics.appAudioFrames = self.appAudioDevice.submittedFrames
                 self.diagnostics.appAudioDroppedFrames = self.appAudioDevice.droppedFrames
+                self.diagnostics.appAudioUnderruns = self.appAudioDevice.underrunCount
+                self.diagnostics.appAudioOverruns = self.appAudioDevice.overrunCount
+                self.diagnostics.appAudioBufferedMilliseconds = self.appAudioDevice.bufferedMilliseconds
                 self.diagnostics.appAudioFormat = self.appAudioDevice.inputDescription
                 self.diagnostics.statsUpdatedAt = Date().timeIntervalSince1970
                 self.persist(force: true)
