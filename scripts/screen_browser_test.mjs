@@ -68,7 +68,7 @@ try {
           peer.addTrack(window.stream.getVideoTracks()[0],window.stream);
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'25',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'26',sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
             dc.onmessage=async event=>{
               const request=JSON.parse(event.data);
@@ -79,8 +79,8 @@ try {
               // not ReplayKit's or iOS's quality controls.
               canvas.width=limit;canvas.height=Math.floor(limit*1324/1920/2)*2;
               draw();
-              dc.send(JSON.stringify({version:'0.3.2',build:'25',sessionID:envelope.sessionID,
-                state:'synthetic quality acknowledgement',qualityID:request.qualityID,
+              dc.send(JSON.stringify({version:'0.3.2',build:'26',sessionID:envelope.sessionID,
+                state:'synthetic quality acknowledgement',qualityID:request.qualityID,bitrateID:request.bitrateID,
                 settingsRequestID:request.requestID,targetFPS:request.qualityID==='720p30'?30:60}));
             };
           };

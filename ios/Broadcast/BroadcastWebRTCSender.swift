@@ -20,6 +20,7 @@ final class BroadcastWebRTCSender: NSObject {
     private let source: RTCVideoSource
     private let capturer: RTCVideoCapturer
     private var quality: ScreenQuality
+    private var bitrateProfile: BroadcastBitrateProfile
     private var videoTrack: RTCVideoTrack!
     private var videoSender: RTCRtpSender?
     private var peer: RTCPeerConnection!
@@ -63,6 +64,7 @@ final class BroadcastWebRTCSender: NSObject {
         // No App Group entitlement: host defaults are NOT a settings channel.
         // The receiver sends the selected preset in its offer and over the DC.
         self.quality = ScreenQuality.extensionDefault
+        self.bitrateProfile = BroadcastBitrateProfile.maximum
         RTCInitializeSSL()
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         // The build21 diagnostic proved that automatic negotiation selected
@@ -95,6 +97,9 @@ final class BroadcastWebRTCSender: NSObject {
         super.init()
         diagnostics.room = config.roomID
         diagnostics.qualityID = quality.id
+        diagnostics.bitrateID = bitrateProfile.id
+        diagnostics.requestedMinMbps = Double(bitrateProfile.minBitrateBps) / 1_000_000
+        diagnostics.requestedMaxMbps = Double(bitrateProfile.maxBitrateBps) / 1_000_000
         diagnostics.targetFPS = quality.fps
         diagnostics.requestedCodec = "auto"
         let rtc = RTCConfiguration()
@@ -265,12 +270,11 @@ final class BroadcastWebRTCSender: NSObject {
         guard !encodings.isEmpty else { return }
         for encoding in encodings {
             encoding.isActive = true
-            encoding.maxBitrateBps = NSNumber(value: 60_000_000)
-            // Quality-first viewing profile.  Build24 proved that the encoder
-            // followed its 8 Mbps floor, but fast full-screen transitions
-            // visibly exhausted that budget.  Request 20 Mbps from startup;
-            // congestion control can still reduce it to protect the call.
-            encoding.minBitrateBps = NSNumber(value: 20_000_000)
+            encoding.maxBitrateBps = NSNumber(value: bitrateProfile.maxBitrateBps)
+            // Quality-first viewing profile. This is still a request to the
+            // WebRTC congestion controller, not a promise of constant RTP
+            // traffic. Static screens naturally use fewer bits.
+            encoding.minBitrateBps = NSNumber(value: bitrateProfile.minBitrateBps)
             encoding.maxFramerate = NSNumber(value: quality.fps)
             encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
             encoding.bitratePriority = 4.0
@@ -282,12 +286,19 @@ final class BroadcastWebRTCSender: NSObject {
             value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue
         )
         videoSender.parameters = parameters
-        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · quality-first 20–60Mbps"
+        diagnostics.bitrateID = bitrateProfile.id
+        diagnostics.requestedMinMbps = Double(bitrateProfile.minBitrateBps) / 1_000_000
+        diagnostics.requestedMaxMbps = Double(bitrateProfile.maxBitrateBps) / 1_000_000
+        diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · \(bitrateProfile.title)"
     }
 
-    private func applyQuality(_ id: String, requestID: String = "") {
+    private func applyQuality(_ id: String, bitrateID: String? = nil, requestID: String = "") {
         guard let selected = ScreenQuality.presets.first(where: { $0.id == id }) else { return }
         quality = selected
+        if let bitrateID,
+           let selectedBitrate = BroadcastBitrateProfile.profiles.first(where: { $0.id == bitrateID }) {
+            bitrateProfile = selectedBitrate
+        }
         lastOutputFormat = ""
         lastFrame = 0
         diagnostics.qualityID = selected.id
@@ -454,7 +465,9 @@ final class BroadcastWebRTCSender: NSObject {
             negotiationRevision = revision
             remoteReady = false
             diagnostics.requestedCodec = payload["codecRequest"] as? String ?? "auto"
-            if let qualityID = payload["qualityID"] as? String { applyQuality(qualityID) }
+            if let qualityID = payload["qualityID"] as? String {
+                applyQuality(qualityID, bitrateID: payload["bitrateID"] as? String)
+            }
             diagnostics.sessionID = incomingSession
             diagnostics.lastError = ""
             note("offer 수신 · 영상 협상 중")
@@ -610,7 +623,8 @@ extension BroadcastWebRTCSender: RTCPeerConnectionDelegate, RTCDataChannelDelega
                payload["type"] as? String == "quality", payload["sessionID"] as? String == self.sessionID,
                let id = payload["qualityID"] as? String,
                let requestID = payload["requestID"] as? String, requestID.count <= 64 {
-                self.applyQuality(id, requestID: requestID)
+                self.applyQuality(id, bitrateID: payload["bitrateID"] as? String,
+                                  requestID: requestID)
                 return
             }
             let reply = Data("ReplayKit 송신기 응답 (0.3.2)".utf8)

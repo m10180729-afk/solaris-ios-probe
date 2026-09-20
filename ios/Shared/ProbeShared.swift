@@ -100,6 +100,22 @@ struct ScreenQuality: Codable, Equatable, Identifiable {
     }
 }
 
+struct BroadcastBitrateProfile: Codable, Equatable, Identifiable {
+    let id: String
+    let title: String
+    let minBitrateBps: Int
+    let maxBitrateBps: Int
+
+    // build25 reported about 37.7 Mbps available bandwidth with roughly 1%
+    // cumulative packet loss. 28 Mbps leaves useful safety margin while
+    // giving motion-heavy H.264 frames substantially more room than 20 Mbps.
+    static let maximum = BroadcastBitrateProfile(
+        id: "maximum28", title: "최고화질 28–60Mbps", minBitrateBps: 28_000_000, maxBitrateBps: 60_000_000)
+    static let stable = BroadcastBitrateProfile(
+        id: "stable20", title: "안정형 20–60Mbps", minBitrateBps: 20_000_000, maxBitrateBps: 60_000_000)
+    static let profiles = [maximum, stable]
+}
+
 struct BroadcastDiagnostics: Codable {
     var version = "0.3.2"
     var build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
@@ -118,6 +134,9 @@ struct BroadcastDiagnostics: Codable {
     var callbackFPS = 0.0
     var submittedFPS = 0.0
     var qualityID = ""
+    var bitrateID = ""
+    var requestedMinMbps = 0.0
+    var requestedMaxMbps = 0.0
     var sourceAspect = ""
     var scaling = ""
     var outputFormat = ""

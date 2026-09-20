@@ -183,7 +183,7 @@ test('connected H264 with zero frames reports failure without hidden VP8 downgra
   const h=harness();await h.api.start();const s=h.api.active,session=s.id;
   await h.api.handle(s,row(s,'answer',{sdp:'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\n'}));
   s.pc.connectionState='connected';s.connectedAt=Date.now()-12000;
-  s.senderDiagnostic={build:'25',framesSubmitted:60};
+  s.senderDiagnostic={build:'26',framesSubmitted:60};
   await h.api.measure(s);
   assert.equal(s.revision,0);assert.equal(s.id,session);
   assert.equal(s.recoveryAttempted,true);assert.equal(s.codecPreference,'H264 only (hardware required)');
@@ -196,7 +196,7 @@ test('working H264 video is not renegotiated',async()=>{
   const h=harness();await h.api.start();const s=h.api.active;
   s.pc.signalingState='stable';s.accepted=true;s.pc.connectionState='connected';
   s.connectedAt=Date.now()-12000;s.answerCodec='H264';
-  s.senderDiagnostic={build:'25',framesSubmitted:60};
+  s.senderDiagnostic={build:'26',framesSubmitted:60};
   s.pc.report=new Map([['v',{type:'inbound-rtp',kind:'video',framesDecoded:30,bytesReceived:10000}]]);
   await h.api.measure(s);assert.equal(s.recoveryAttempted,false);h.api.stop();
 });
@@ -211,9 +211,12 @@ test('quality is saved and acknowledged by request ID, not merely by local selec
   const h=harness();h.element('qualityPreset').value='720p30';await h.api.start();const s=h.api.active;
   const offer=JSON.parse(h.requests.find(r=>r.method==='POST').body);
   assert.equal(offer.payload.qualityID,'720p30');
+  assert.equal(offer.payload.bitrateID,'maximum28');
+  h.element('bitrateMode').value='stable20';
   h.api.applyQuality();assert.match(h.element('qualityState').textContent,/확인 대기/);
   const request=s.dc.sent.at(-1);
-  const diagnostic={version:'0.3.2',build:'25',sessionID:s.id,qualityID:'720p30',targetFPS:30};
+  assert.equal(request.bitrateID,'stable20');
+  const diagnostic={version:'0.3.2',build:'26',sessionID:s.id,qualityID:'720p30',bitrateID:'stable20',targetFPS:30};
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:'old'})});
   assert.doesNotMatch(h.element('qualityState').textContent,/송신기 적용 확인:/);
   s.dc.onmessage({data:JSON.stringify({...diagnostic,settingsRequestID:request.requestID})});

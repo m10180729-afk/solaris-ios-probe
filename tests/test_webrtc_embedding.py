@@ -112,8 +112,12 @@ class EmbeddingTests(unittest.TestCase):
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
         self.assertIn("videoSource(forScreenCast: true)", sender)
         self.assertIn("RTCRtpSender", sender)
-        self.assertIn("maxBitrateBps = NSNumber(value: 60_000_000)", sender)
-        self.assertIn("minBitrateBps = NSNumber(value: 20_000_000)", sender)
+        self.assertIn("maxBitrateBps = NSNumber(value: bitrateProfile.maxBitrateBps)", sender)
+        self.assertIn("minBitrateBps = NSNumber(value: bitrateProfile.minBitrateBps)", sender)
+        shared = (Path(__file__).resolve().parents[1] /
+                  "ios/Shared/ProbeShared.swift").read_text()
+        self.assertIn("minBitrateBps: 28_000_000", shared)
+        self.assertIn("minBitrateBps: 20_000_000", shared)
         self.assertIn("bitratePriority = 4.0", sender)
         self.assertIn("scaleResolutionDownBy = NSNumber(value: 1.0)", sender)
         self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
@@ -130,7 +134,12 @@ class EmbeddingTests(unittest.TestCase):
                     "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("event.receiver.jitterBufferTarget=750", receiver)
         self.assertIn("packetLossPercent", receiver)
+        self.assertIn("recentLossPercent", receiver)
+        self.assertIn("receiveMbps10sAverage", receiver)
+        self.assertIn("receiveMbps10sPeak", receiver)
         self.assertIn("jitterBufferMilliseconds", receiver)
+        self.assertIn('value="maximum28"', receiver)
+        self.assertIn('value="stable20"', receiver)
         self.assertNotIn('value="1440p60"', receiver)
 
     def test_sender_prefers_h264_hardware_without_hidden_vp8_downgrade(self):
@@ -183,6 +192,8 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn('payload["sessionID"] as? String == self.sessionID', sender)
         self.assertIn("diagnostics.settingsRequestID = requestID", sender)
         self.assertIn("ScreenQuality.presets.first(where:", sender)
+        self.assertIn("BroadcastBitrateProfile.profiles.first(where:", sender)
+        self.assertIn('payload["bitrateID"]', sender)
 
     def test_sender_reports_encoder_stats_and_guards_revisions(self):
         root = Path(__file__).resolve().parents[1]
@@ -194,13 +205,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build25_labels_are_consistent(self):
+    def test_build26_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '25'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '26'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build25-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build25.html", workflow)
-        self.assertIn("Solaris-0.3.2-build25-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build26-app-and-receiver", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build26.html", workflow)
+        self.assertIn("Solaris-0.3.2-build26-resign.ipa", workflow)
 
 
 if __name__ == "__main__":
