@@ -1,59 +1,31 @@
-# Solaris 0.3.2 build28 — 화면·소리 설치와 확인
+# Solaris 0.3.2 build 7 — 설치와 확인
 
-이 파일은 build28용입니다. 이전 build7/build19/build20/build23/build24/build25/build26/build27 HTML이나 IPA와 섞지 마세요.
-검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
+이 ZIP은 수정 소스입니다. 이 전달 시점에는 macOS IPA 빌드와 iPad 실기기 검증이 완료되지 않았습니다.
+browser-test 성공만으로 iOS 빌드 성공이라고 판단하지 마세요.
 
-1. 소스 ZIP을 Solaris-0.3.2-build28-paced-screen-audio-source 폴더에 모두 압축 해제합니다.
-2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
-3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build28-app-and-receiver 아티팩트를 다운로드하고 압축 해제합니다.
-5. Solaris-0.3.2-build28-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
-6. iPad 앱에 0.3.2 (build 28)가 표시되는지 확인합니다.
-7. 같은 아티팩트의 Solaris-Windows-0.3.2-build28.html을 Windows에서 엽니다.
-8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
-9. 품질 ‘원본 1920급 · 60fps · 화질 우선’, 비트레이트 ‘최고화질 28–60Mbps’, 코덱 ‘H.264 하드웨어 · 권장’을 사용합니다.
-10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
-11. 실제 화면이 움직이고 수신 프레임이 증가해야 성공입니다.
+1. ZIP을 다운로드하고 **모두 압축 풀기**로 새 폴더에 풉니다.
+2. 새 폴더의 UPLOAD_GIT_BASH.sh를 Git Bash에서 실행합니다.
+3. GitHub Actions에서 이번 커밋의 browser-test와 build 두 작업이 모두 성공해야 합니다.
+4. 성공한 실행의 Solaris-0.3.2-build17-app-and-receiver 아티팩트를 다운로드합니다.
+5. 압축을 푼 SolarisProbe-resign.ipa를 AltStore로 재서명·설치합니다. 확장을 제거하지 마세요.
+6. iPad 첫 화면이 **0.3.2 (build 7)**인지 확인합니다.
+7. iPad에 표시된 Project URL, 방 ID와 ‘Publishable key 복사’의 값을 Windows에 입력합니다.
+   이 빌드의 방 ID는 기존 설정 그대로 **solaristest1**입니다.
+8. Windows에서 함께 제공된 Solaris-Windows-0.3.2.html을 열고 ‘설정 저장 + 수신 시작’을 누릅니다.
+9. iPad의 방송 버튼 → Solaris 화면 시험 → 공유 시작을 누릅니다.
+10. Windows의 영상 프레임 수가 증가하고 화면이 움직여야 화면 전송 성공입니다.
 
-## 품질 적용
+앱은 확장 번들에 포함된 설정을 보여줍니다. App Group 설정 저장과 공유 진단 파일은 사용하지 않습니다.
+현재 URL·publishable key·방 ID는 변경하지 않았습니다. P2P 테스트 화면은 열지 않습니다.
+실행 중 설정을 수정하는 기능은 이 빌드에 없습니다.
 
-iPad의 기존 선택기는 공유 저장소 접근 없이 방송 확장에 설정 전달을 보장하지 못해 제거했습니다.
-이제 Windows에서 선택 후 ‘품질 저장 / 방송에 적용’을 누릅니다.
-‘송신기 적용 확인’은 방송 확장이 같은 요청 ID로 확인 응답을 보내야 표시됩니다.
-설정은 브라우저에 저장되며 새 연결 때 다시 전송됩니다.
-방송 중에도 적용할 수 있으며 앱 재설치는 필요하지 않습니다.
+빌드 실패 시 같은 ZIP으로 반복 업로드하지 마세요.
+실패한 실행에서 **Solaris-build17-xcode-evidence** 아티팩트를 받아 전달하면
+실제 project.pbxproj, dependency.log, generated-project.log, xcodebuild.log,
+생성된 경우 Build.xcresult와 패키징 검사를 확인할 수 있습니다.
+비밀 키나 Apple 계정 비밀번호는 보내지 마세요.
 
-‘원본’은 ReplayKit이 실제 전달한 픽셀 버퍼 크기입니다. iPad 패널 전체 픽셀 수와
-같다는 보장은 없습니다. 긴 변 제한은 화면 비율을 유지하며 업스케일하지 않습니다.
-build28 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
-방송 중 ‘안정형 20–60Mbps’를 선택하고 적용할 수 있습니다. WebRTC 혼잡 제어는 실제
-네트워크 상태가 나쁘면 요청값보다 낮출 수 있으므로 진단의 실제 Mbps를 확인합니다.
-
-## 자동 복구와 진단
-
-기본 코덱은 H.264 VideoToolbox 하드웨어 경로이며 VP8로 자동 저하하지 않습니다.
-H.264 연결 뒤 실제 영상이 없으면 오류를 표시합니다. VP8은 구형 브라우저 호환성을
-직접 시험할 때만 선택합니다. 무한 재접속하거나 해상도를 몰래 낮추지 않습니다.
-Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 다시 시작하세요.
-
-- ReplayKit 콜백 FPS: 캡처 입력. 정지 화면에서는 낮을 수 있습니다.
-- WebRTC 제출 FPS: 인코더 입력이지 실제 인코딩/수신 FPS가 아닙니다.
-- 실제 인코딩: 프레임 수·픽셀 크기·FPS·코덱·전송 바이트·Mbps.
-- Windows RTP: 실제 수신/디코딩 해상도·FPS·비트레이트·패킷 손실.
-- 품질 우선 버퍼: 지원 브라우저에서 750ms를 요청하며 지원하지 않으면 안전하게 건너뜁니다.
-- 네트워크: 가용 송신 Mbps·왕복 지연·누적/최근 손실률·10초 평균/최대 Mbps를 기록합니다.
-- 요청 출력: 지정한 목표 크기로 실제 인코딩 결과와 구분합니다.
-- 화면 소리: 80ms 선행 버퍼 뒤 10ms 단위로 정속 공급하며 언더런·오버런을 별도로 기록합니다.
-
-문제가 남으면 ‘진단 한 번에 복사 (키 제외)’에 전체 단계 통계가 포함됩니다.
-
-## 완료 판정
-
-- 10분 이상 1920×1324급 해상도가 유지됩니다.
-- 실제 인코딩과 수신이 대부분 55~60fps를 유지합니다.
-- 빠른 스크롤·게임·전체 화면 전환에서 알아보기 힘들 정도의 뭉개짐이 반복되지 않습니다.
-- 움직이는 장면의 실제 송신 비트레이트가 약 20Mbps 이상으로 올라갑니다.
-- 연결 끊김이나 해상도 자동 축소가 발생하지 않습니다.
-
-빌드 실패 시 Solaris-build28-xcode-evidence의 Xcode 로그가 필요합니다.
-Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.
+빌드는 성공했으나 화면이 없으면 Windows ‘진단 한 번에 복사’와 iPad ‘설치 정보 복사’를 전달하세요.
+iPad 설치 정보는 확장의 실제 실행 성공을 증명하지 않습니다.
+무료 재서명 후 설치·동적 라이브러리 로딩·ReplayKit 캡처는 실기기 확인이 필요합니다.
+기존 공유 파일 읽기 오류 260만으로 App Group이 근본 원인이었다고 단정할 수 없습니다.

@@ -95,152 +95,16 @@ class EmbeddingTests(unittest.TestCase):
         receiver = (Path(__file__).resolve().parents[1] /
                     "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("tuneScreenOfferSDP", receiver)
-        self.assertNotIn("x-google-min-bitrate=", receiver)
-        self.assertNotIn("x-google-start-bitrate=", receiver)
+        self.assertIn("x-google-start-bitrate=60000", receiver)
+        self.assertIn("x-google-min-bitrate=20000", receiver)
+        self.assertIn("x-google-max-bitrate=60000", receiver)
         self.assertIn("b=TIAS:60000000", receiver)
-        self.assertIn("profile-level-id=${prefix}33", receiver)
-        self.assertIn("9,960 macroblocks/frame", receiver)
 
     def test_source_format_is_not_reapplied_on_every_frame(self):
         sender = (Path(__file__).resolve().parents[1] /
                   "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
         self.assertIn("lastOutputFormat", sender)
         self.assertIn("if format != lastOutputFormat", sender)
-
-    def test_sender_uses_screen_cast_source_and_rtp_policy(self):
-        sender = (Path(__file__).resolve().parents[1] /
-                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertIn("videoSource(forScreenCast: true)", sender)
-        self.assertIn("RTCRtpSender", sender)
-        self.assertIn("maxBitrateBps = NSNumber(value: bitrateProfile.maxBitrateBps)", sender)
-        self.assertIn("minBitrateBps = NSNumber(value: bitrateProfile.minBitrateBps)", sender)
-        shared = (Path(__file__).resolve().parents[1] /
-                  "ios/Shared/ProbeShared.swift").read_text()
-        self.assertIn("minBitrateBps: 28_000_000", shared)
-        self.assertIn("minBitrateBps: 20_000_000", shared)
-        self.assertIn("bitratePriority = 4.0", sender)
-        self.assertIn("scaleResolutionDownBy = NSNumber(value: 1.0)", sender)
-        self.assertIn("RTCDegradationPreference.maintainFramerateAndResolution", sender)
-        self.assertIn("encoderPolicy", sender)
-
-    def test_quality_policy_is_reapplied_when_transport_connects(self):
-        sender = (Path(__file__).resolve().parents[1] /
-                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertIn("newState == .connected || newState == .completed", sender)
-        self.assertIn("self.applyVideoSenderPolicy()", sender)
-
-    def test_receiver_uses_bounded_quality_buffer_and_reports_loss_rate(self):
-        receiver = (Path(__file__).resolve().parents[1] /
-                    "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("event.receiver.jitterBufferTarget=750", receiver)
-        self.assertIn("packetLossPercent", receiver)
-        self.assertIn("recentLossPercent", receiver)
-        self.assertIn("receiveMbps10sAverage", receiver)
-        self.assertIn("receiveMbps10sPeak", receiver)
-        self.assertIn("jitterBufferMilliseconds", receiver)
-        self.assertIn('value="maximum28"', receiver)
-        self.assertIn('value="stable20"', receiver)
-        self.assertNotIn('value="1440p60"', receiver)
-
-    def test_screen_audio_uses_app_samples_only_with_stereo_opus(self):
-        root = Path(__file__).resolve().parents[1]
-        handler = (root / "ios/Broadcast/SampleHandler.swift").read_text()
-        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        device = (root / "ios/Broadcast/SolarisReplayKitAudioDevice.m").read_text()
-        receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
-        browser = (root / "scripts/screen_browser_test.mjs").read_text()
-        self.assertIn("captureApplicationAudio(sampleBuffer)", handler)
-        self.assertIn("case .audioMic: stats.micAudioSamples += 1", handler)
-        self.assertIn("case .audioMic: stats.micAudioSamples += 1\n            @unknown default", handler)
-        self.assertIn("appendApplicationAudioSampleBuffer", sender)
-        self.assertIn("audioTrack = factory.audioTrack", sender)
-        self.assertIn("audioSender = peer.add(audioTrack", sender)
-        self.assertIn("inputNumberOfChannels { return 2; }", device)
-        self.assertIn("output.mSampleRate = 48000.0", device)
-        self.assertIn("output.mChannelsPerFrame = 2", device)
-        self.assertIn("SolarisAudioPrimeBytes = 8 * SolarisAudioChunkBytes", device)
-        self.assertIn("10 * NSEC_PER_MSEC, 1 * NSEC_PER_MSEC", device)
-        self.assertIn("deliverOneTenMillisecondFrame", device)
-        self.assertIn("_underrunCount += 1", device)
-        self.assertIn("_overrunCount += 1", device)
-        self.assertNotIn("deliverWholeTenMillisecondFrames", device)
-        self.assertNotIn("while (_pendingPCM.length >=", device)
-        self.assertIn("stereo=1;sprop-stereo=1;maxaveragebitrate=256000", receiver)
-        self.assertIn("addTransceiver('audio',{direction:'recvonly'})", receiver)
-        self.assertIn("event.track.kind==='audio'", receiver)
-        self.assertIn("createMediaStreamDestination", browser)
-        self.assertIn("report.audioInbound.bytesReceived>0", browser)
-
-    def test_sender_prefers_h264_hardware_without_hidden_vp8_downgrade(self):
-        sender = (Path(__file__).resolve().parents[1] /
-                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        receiver = (Path(__file__).resolve().parents[1] /
-                    "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("encoderFactory.preferredCodec = h264", sender)
-        self.assertIn("selectCodecs(videoTransceiver", receiver)
-        self.assertIn("recoverVideo", receiver)
-        self.assertIn("setCodecPreferences", receiver)
-        self.assertIn("H264 only (hardware required)", receiver)
-        self.assertIn("automatic VP8 fallback disabled", receiver)
-        self.assertIn("setCodecPreferences([...preferred,...repair])", receiver)
-        self.assertNotIn("...codecs.filter(c=>!preferred.includes(c))", receiver)
-
-    def test_sixty_fps_does_not_use_exact_interval_gate(self):
-        sender = (Path(__file__).resolve().parents[1] /
-                  "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertNotIn("if quality.fps < 60", sender)
-        self.assertIn("Submit every ReplayKit callback", sender)
-        self.assertIn("pendingFrame", sender)
-        self.assertNotIn("guard now - lastFrame >= 1.0 / Double(max(1, quality.fps))", sender)
-
-    def test_receiver_reports_actual_rtp_dimensions_and_changes(self):
-        receiver = (Path(__file__).resolve().parents[1] /
-                    "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("r.frameWidth", receiver)
-        self.assertIn("r.frameHeight", receiver)
-        self.assertIn("receiveMbps", receiver)
-        self.assertIn("codecReport", receiver)
-        self.assertIn("수신 인코딩 해상도 변화", receiver)
-        self.assertIn("RTP ${inboundSize}", receiver)
-        self.assertIn("senderQueueDrops", receiver)
-
-    def test_browser_fixture_separates_source_from_adaptive_encoding(self):
-        script = (Path(__file__).resolve().parents[1] /
-                  "scripts/screen_browser_test.mjs").read_text()
-        self.assertNotIn("assert.equal(report.video.width,1920)", script)
-        self.assertIn("fixtureReport.sourceWidth", script)
-        self.assertIn("fixtureReport.framesEncoded>0", script)
-        self.assertIn("report.video.width>0&&report.video.height>0", script)
-
-    def test_sender_quality_uses_acknowledged_control_not_shared_defaults(self):
-        root = Path(__file__).resolve().parents[1]
-        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        app = (root / "ios/App/SolarisProbeApp.swift").read_text()
-        self.assertNotIn("ScreenQuality.extensionCurrent()", sender)
-        self.assertNotIn("ProbeShared.saveQuality", app)
-        self.assertIn('payload["sessionID"] as? String == self.sessionID', sender)
-        self.assertIn("diagnostics.settingsRequestID = requestID", sender)
-        self.assertIn("ScreenQuality.presets.first(where:", sender)
-        self.assertIn("BroadcastBitrateProfile.profiles.first(where:", sender)
-        self.assertIn('payload["bitrateID"]', sender)
-
-    def test_sender_reports_encoder_stats_and_guards_revisions(self):
-        root = Path(__file__).resolve().parents[1]
-        sender = (root / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
-        self.assertIn("peer.statistics", sender)
-        self.assertIn('v["framesEncoded"]', sender)
-        self.assertIn('v["bytesSent"]', sender)
-        self.assertIn('v["qualityLimitationReason"]', sender)
-        self.assertIn("revision > negotiationRevision", sender)
-        self.assertIn("self.negotiationRevision == revision", sender)
-
-    def test_build28_labels_are_consistent(self):
-        root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '28'", (root / "ios/project.yml").read_text())
-        workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build28-app-and-receiver", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build28.html", workflow)
-        self.assertIn("Solaris-0.3.2-build28-resign.ipa", workflow)
 
 
 if __name__ == "__main__":

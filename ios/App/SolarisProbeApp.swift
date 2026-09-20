@@ -24,6 +24,7 @@ struct ProbeView: View {
         return ProbeShared.embeddedP2PConfig(in: bundle)
     }
     @State private var copied = false
+    @State private var qualityID = ScreenQuality.current().id
 
     var body: some View {
         NavigationStack {
@@ -31,14 +32,21 @@ struct ProbeView: View {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
                     Text("아이패드 화면 → Windows")
-                    Text("원본 화면·앱 소리 송출 · Windows에서 품질 적용 · 마이크 전송 안 함")
+                    Text("화면 품질은 아래 설정에서 선택 · 음성 없음")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("화면 품질") {
-                    Text("Windows에서 품질을 선택하고 ‘품질 저장 / 방송에 적용’을 누르세요.")
-                    Text("‘송신기 적용 확인’이 표시되어야 설정이 전달된 것입니다. 이전 iPad 선택기는 App Group 없이 방송 확장에 전달을 보장할 수 없어 제거했습니다.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Text("기본값은 ReplayKit 입력 원본 해상도 · 최대 60fps입니다. 60fps와 기기 화면의 전체 픽셀 수가 보장되는 것은 아닙니다.")
+                    Picker("송출 품질", selection: $qualityID) {
+                        ForEach(ScreenQuality.presets) { quality in
+                            Text(quality.title).tag(quality.id)
+                        }
+                    }
+                    .onChange(of: qualityID) { value in
+                        if let quality = ScreenQuality.presets.first(where: { $0.id == value }) {
+                            ProbeShared.saveQuality(quality)
+                        }
+                    }
+                    Text("QHD·60fps는 iPad 성능과 네트워크에 따라 실제 프레임이 낮아질 수 있습니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("1 · Windows에 입력할 방송 설정") {
@@ -54,12 +62,12 @@ struct ProbeView: View {
                     }
                 }
                 Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build28.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)
                     }
-                    Text("Windows의 영상 프레임과 화면 소리 RTP 바이트가 증가해야 성공입니다.")
+                    Text("Windows의 영상 프레임이 증가하고 실제 화면이 표시되어야 성공입니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("3 · 연결 상태 확인") {
