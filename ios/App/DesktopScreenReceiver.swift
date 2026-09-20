@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import SwiftUI
 import UIKit
+import MetalKit
 import WebRTC
 
 private let desktopProtocolVersion = "desktop-v1"
@@ -15,6 +16,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private let config: P2PBroadcastConfig
     private let queue = DispatchQueue(label: "org.solaris.probe.desktop-receiver")
     private let factory: RTCPeerConnectionFactory
+    private let playback: SolarisPlaybackAudioDevice
     private var peer: RTCPeerConnection?
     private var timer: DispatchSourceTimer?
     private var network: URLSession!
@@ -34,7 +36,10 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     init(config: P2PBroadcastConfig) {
         self.config = config
         RTCInitializeSSL()
-        self.factory = RTCPeerConnectionFactory()
+        let playbackDevice = SolarisPlaybackAudioDevice()
+        self.playback = playbackDevice
+        self.factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(),
+            decoderFactory: RTCDefaultVideoDecoderFactory(), audioDevice: playbackDevice)
         super.init()
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
@@ -80,7 +85,6 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 self.stopped = true
                 return
             }
-            self.configurePlaybackAudio()
             self.publish("Windows 송신 대기", "방 ID: \(self.config.roomID) · 목표 1920×1080 120fps", running: true)
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
             timer.schedule(deadline: .now(), repeating: 1)
@@ -111,20 +115,6 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 self.state = "수신 중지"
                 self.details = "다시 받을 때 Windows 송신도 중단 후 새로 시작하세요."
             }
-        }
-    }
-
-    private func configurePlaybackAudio() {
-        let session = RTCAudioSession.sharedInstance()
-        session.lockForConfiguration()
-        defer { session.unlockForConfiguration() }
-        do {
-            try session.setCategory(AVAudioSession.Category.playback,
-                                    mode: AVAudioSession.Mode.moviePlayback,
-                                    options: [])
-            try session.setActive(true)
-        } catch {
-            publish("화면 수신 준비", "오디오 출력 설정 경고: \(error.localizedDescription)", running: true)
         }
     }
 
@@ -298,6 +288,9 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             guard let self else { return }
             self.queue.async {
                 guard !self.stopped else { return }
+                if !self.playback.lastError.isEmpty {
+                    self.publish("오디오 출력 오류", self.playback.lastError, running: true)
+                }
                 let now = ProcessInfo.processInfo.systemUptime
                 for stat in report.statistics.values where stat.type == "inbound-rtp" {
                     let values = stat.values
@@ -319,10 +312,10 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     self.previousFrames = frames
                     self.previousBytes = bytes
                     if frames > 0 {
-                        let displayHz = UIScreen.main.maximumFramesPerSecond
+                        let displayHz = 120
                         self.publish(
                             "화면 수신 중",
-                            "실제 \(width)×\(height) · \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · iPad 표시 상한 \(displayHz)Hz",
+                            "실제 \(width)×\(height) · \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · 표시 요청 \(displayHz)Hz",
                             running: true
                         )
                     }
@@ -385,6 +378,13 @@ private struct DesktopVideoSurface: UIViewRepresentable {
         weak var renderer: RTCMTLVideoView?
     }
 
+    private func configureRefresh(_ view: UIView) {
+        if let metal = view as? MTKView {
+            metal.preferredFramesPerSecond = view.window?.screen.maximumFramesPerSecond ?? 120
+        }
+        view.subviews.forEach { configureRefresh($0) }
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> RTCMTLVideoView {
@@ -392,10 +392,12 @@ private struct DesktopVideoSurface: UIViewRepresentable {
         view.videoContentMode = .scaleAspectFit
         view.backgroundColor = .black
         context.coordinator.renderer = view
+        configureRefresh(view)
         return view
     }
 
     func updateUIView(_ view: RTCMTLVideoView, context: Context) {
+        configureRefresh(view)
         guard context.coordinator.track !== track else { return }
         if let old = context.coordinator.track { old.remove(view) }
         context.coordinator.track = track
@@ -429,7 +431,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build33.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build34.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

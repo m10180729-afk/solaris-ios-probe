@@ -8,7 +8,7 @@ settings:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     MARKETING_VERSION: '0.3.2'
-    CURRENT_PROJECT_VERSION: '33'
+    CURRENT_PROJECT_VERSION: '34'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
 targets:
@@ -24,6 +24,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.solaris.probe
         INFOPLIST_FILE: App/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: App/SolarisApp-Bridging-Header.h
         CODE_SIGN_ENTITLEMENTS: Config/App.entitlements
         LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/Frameworks'
     dependencies:

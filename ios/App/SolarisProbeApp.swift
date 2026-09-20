@@ -39,7 +39,7 @@ struct ProbeView: View {
                         NavigationLink("Windows 화면 받기") {
                             DesktopReceiverView(config: c)
                         }
-                        Text("Windows 송신 또는 다른 Windows 수신은 Solaris-Desktop-Share-build33.html에서 시작합니다.")
+                        Text("Windows 송신 또는 다른 Windows 수신은 Solaris-Desktop-Share-build34.html에서 시작합니다.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -63,7 +63,7 @@ struct ProbeView: View {
                     }
                 }
                 Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build33.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2-build34.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)

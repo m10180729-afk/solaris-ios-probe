@@ -20,7 +20,7 @@ function harness(){
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     RTCRtpSender:{getCapabilities:()=>({codecs:[]})},RTCRtpReceiver:{getCapabilities:()=>({codecs:[]})},
     RTCPeerConnection:class{},MediaStream:class{}});
-  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic};',context);
+  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,setActive:s=>active=s};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -70,4 +70,26 @@ test('diagnostics omit Supabase URL and publishable key',()=>{
   const report=h.api.diagnostic();
   assert.doesNotMatch(report,/test\.supabase\.co|sb_publishable_TEST_ONLY/);
   assert.match(report,/desktop-v1/);
+});
+
+
+test('stats use the active RTP codec and distinguish capture from encoded FPS',async()=>{
+  const h=harness();
+  const report=new Map([
+    ['v',{id:'v',type:'outbound-rtp',kind:'video',codecId:'h',mediaSourceId:'src',
+      framesEncoded:21,bytesSent:6000,frameWidth:1920,frameHeight:1080,
+      totalEncodeTime:.42,encoderImplementation:'test encoder'}],
+    ['h',{type:'codec',mimeType:'video/H264'}],
+    ['repair',{type:'codec',mimeType:'video/rtx'}],
+    ['src',{type:'media-source',framesPerSecond:120}]
+  ]);
+  const session={role:'sender',pc:{getStats:async()=>report},lastStatsAt:0,
+    encodeSeconds:0,encodeFrames:0};
+  h.api.setActive(session);
+  await h.api.measure(session);
+  assert.equal(session.stats.codec,'H264');
+  assert.equal(session.stats.captureActualFPS,120);
+  assert.equal(session.stats.encodeMilliseconds,20);
+  assert.equal(session.history.length,1);
+  assert.doesNotMatch(h.element('summary').textContent,/실측 성공/);
 });
