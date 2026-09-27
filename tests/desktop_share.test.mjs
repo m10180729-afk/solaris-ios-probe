@@ -75,7 +75,8 @@ test('mode UI separates stable, experimental and native host launcher',()=>{
   assert.match(html,/1080p120 실험 모드/);
   assert.match(html,/1080p120 네이티브 모드/);
   assert.match(source,/solaris-native:\/\/open\?mode=1080p120/);
-  assert.match(source,/Solaris-Native-Host-build38-portable/);
+  assert.match(source,/Solaris-Native-Host-build39-portable/);
+  assert.match(source,/Solaris-Native-Receiver-build39/);
 });
 
 test('software H264 is reported as a sender bottleneck',async()=>{

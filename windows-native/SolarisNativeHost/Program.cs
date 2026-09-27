@@ -8,7 +8,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2 build38";
+    internal const string Version = "0.3.2 build39";
 
     [STAThread]
     private static void Main(string[] args)
@@ -191,7 +191,7 @@ internal static class SelfTest
     internal static int Run()
     {
         var failures = new List<string>();
-        if (!Program.Version.Contains("build38")) failures.Add("version");
+        if (!Program.Version.Contains("build39")) failures.Add("version");
         if (NativeDiagnostics.FindBundledEngine().Length == 0 && Directory.Exists(Path.Combine(AppContext.BaseDirectory, "engine")))
             failures.Add("bundled-engine-layout");
         var nvidia = new GpuInfo("NVIDIA GeForce RTX 3060", "test", 1920, 1080, 120);

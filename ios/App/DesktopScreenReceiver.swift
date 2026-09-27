@@ -458,7 +458,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build38.html을 열고 같은 방 ID로 1080p60 안정 또는 1080p120 브라우저 실험 모드를 선택하세요. portable 네이티브 120fps 시험은 Moonlight를 사용합니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build39.html을 열고 같은 방 ID로 1080p60 안정 또는 1080p120 브라우저 실험 모드를 선택하세요. 네이티브 120fps는 Solaris Native Receiver build39로 시험합니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

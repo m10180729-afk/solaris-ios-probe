@@ -42,7 +42,13 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Native-Host-build38-portable", self.workflow)
+        self.assertIn("Solaris-Native-Host-build39-portable", self.workflow)
+
+    def test_builds_solaris_branded_native_ios_receiver(self):
+        self.assertIn("moonlight-stream/moonlight-ios.git", self.workflow)
+        self.assertIn("Solaris-Native-Receiver-build39-resign.ipa", self.workflow)
+        self.assertIn("com.solaris.native.receiver", self.workflow)
+        self.assertIn("MOONLIGHT_GPLv3_LICENSE.txt", self.workflow)
 
 
 if __name__ == "__main__":
