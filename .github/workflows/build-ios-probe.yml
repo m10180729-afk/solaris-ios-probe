@@ -10,6 +10,70 @@ permissions:
   contents: read
 
 jobs:
+  windows-native:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build self-contained Solaris launcher
+        shell: pwsh
+        run: |
+          dotnet restore windows-native/SolarisNativeHost/SolarisNativeHost.csproj
+          dotnet publish windows-native/SolarisNativeHost/SolarisNativeHost.csproj -c Release -r win-x64 --self-contained true -o dist/native
+      - name: Bundle official Apollo GPLv3 native engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v0.4.6'
+          $headers = @{ 'User-Agent' = 'Solaris-build38' }
+          $release = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/ClassicOldSong/Apollo/releases/tags/$tag"
+          $candidates = @($release.assets | Where-Object { $_.name -match '(?i)(windows|win).*(amd64|x64).*\.exe$' })
+          if ($candidates.Count -eq 0) {
+            $candidates = @($release.assets | Where-Object { $_.name -match '(?i)\.exe$' })
+          }
+          if ($candidates.Count -eq 0) {
+            Write-Host "Release assets: $($release.assets.name -join ', ')"
+            throw '공식 Apollo Windows 설치 자산을 찾지 못했습니다.'
+          }
+          $asset = $candidates[0]
+          New-Item -ItemType Directory -Force build/apollo-extract, dist/native/engine | Out-Null
+          Invoke-WebRequest -Headers $headers $asset.browser_download_url -OutFile build/apollo-installer.exe
+          & 7z x build/apollo-installer.exe '-obuild/apollo-extract' -y | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "Apollo 패키지 압축 해제 실패: $LASTEXITCODE" }
+          $engine = Get-ChildItem build/apollo-extract -Recurse -File -Filter sunshine.exe | Select-Object -First 1
+          if (-not $engine) { throw '압축 해제 결과에서 sunshine.exe를 찾지 못했습니다.' }
+          Copy-Item "$($engine.Directory.FullName)/*" dist/native/engine -Recurse -Force
+          Invoke-WebRequest -Headers $headers "https://raw.githubusercontent.com/ClassicOldSong/Apollo/$tag/LICENSE" -OutFile dist/native/APOLLO_GPLv3_LICENSE.txt
+          $hash = (Get-FileHash build/apollo-installer.exe -Algorithm SHA256).Hash
+          @"
+          Solaris build38 bundled native engine
+          Upstream: https://github.com/ClassicOldSong/Apollo
+          Release: $tag
+          Asset: $($asset.name)
+          SHA256: $hash
+          License: GPL-3.0
+          Complete corresponding source: https://github.com/ClassicOldSong/Apollo/tree/$tag
+          "@ | Set-Content dist/native/THIRD_PARTY_APOLLO.txt -Encoding UTF8
+      - name: Verify portable package
+        shell: pwsh
+        run: |
+          & dist/native/SolarisNativeHost.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path dist/native/engine/sunshine.exe)) { throw 'portable engine missing' }
+          Copy-Item windows-native/README_KO.md dist/native/START_NATIVE_HOST_KO.md
+      - name: Upload Windows native host
+        uses: actions/upload-artifact@v4
+        with:
+          name: Solaris-Native-Host-build38-portable
+          path: dist/native/
+          if-no-files-found: error
+          retention-days: 7
   browser-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -71,7 +135,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build36-xcode-evidence
+          name: Solaris-build38-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -80,11 +144,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build36-screen-modes
+          name: Solaris-0.3.2-build38-screen-modes
           path: |
-            dist/Solaris-0.3.2-build36-resign.ipa
-            dist/Solaris-Windows-0.3.2-build36.html
-            dist/Solaris-Desktop-Share-build36.html
+            dist/Solaris-0.3.2-build38-resign.ipa
+            dist/Solaris-Windows-0.3.2-build38.html
+            dist/Solaris-Desktop-Share-build38.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

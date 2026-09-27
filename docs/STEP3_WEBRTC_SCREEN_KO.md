@@ -1,15 +1,15 @@
-# Solaris 0.3.2 build36 — 상황별 양방향 화면공유 설치와 확인
+# Solaris 0.3.2 build38 — 설치 없는 네이티브 호스트와 양방향 화면공유
 
-이 파일은 build36용입니다. 이전 IPA/HTML과 섞지 마세요.
+이 파일은 build38용입니다. 이전 IPA/HTML과 섞지 마세요.
 검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
 
-1. 소스 ZIP을 Solaris-0.3.2-build36-screen-modes-source 폴더에 모두 압축 해제합니다.
+1. 소스 ZIP을 Solaris-0.3.2-build38-portable-native-source 폴더에 모두 압축 해제합니다.
 2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build36-screen-modes 아티팩트를 다운로드하고 압축 해제합니다.
-5. Solaris-0.3.2-build36-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
-6. iPad 앱에 0.3.2 (build 36)가 표시되는지 확인합니다.
-7. iPad→Windows는 Solaris-Windows-0.3.2-build36.html을 Windows에서 엽니다.
+4. Solaris-0.3.2-build38-screen-modes와 Solaris-Native-Host-build38-portable 아티팩트를 다운로드합니다.
+5. Solaris-0.3.2-build38-resign.ipa를 AltStore로 설치합니다. 방송 확장을 제거하지 마세요.
+6. iPad 앱에 0.3.2 (build 38)가 표시되는지 확인합니다.
+7. iPad→Windows는 Solaris-Windows-0.3.2-build38.html을 Windows에서 엽니다.
 8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
 9. 품질 ‘원본 1920급 · 60fps · 화질 우선’, 비트레이트 ‘최고화질 28–60Mbps’, 코덱 ‘H.264 하드웨어 · 권장’을 사용합니다.
 10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
@@ -25,7 +25,7 @@ iPad의 기존 선택기는 공유 저장소 접근 없이 방송 확장에 설�
 
 ‘원본’은 ReplayKit이 실제 전달한 픽셀 버퍼 크기입니다. iPad 패널 전체 픽셀 수와
 같다는 보장은 없습니다. 긴 변 제한은 화면 비율을 유지하며 업스케일하지 않습니다.
-build36의 iPad 송출 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
+build38의 iPad 송출 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
 방송 중 ‘안정형 20–60Mbps’를 선택하고 적용할 수 있습니다. WebRTC 혼잡 제어는 실제
 네트워크 상태가 나쁘면 요청값보다 낮출 수 있으므로 진단의 실제 Mbps를 확인합니다.
 
@@ -58,7 +58,7 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 ## Windows → iPad 또는 Windows · 상황별 모드
 
 1. 수신 iPad 앱에서 ‘Windows 화면 받기’ → ‘Windows 화면 수신 시작’을 누릅니다.
-2. 송신 Windows에서 Solaris-Desktop-Share-build36.html을 엽니다.
+2. 송신 Windows에서 Solaris-Desktop-Share-build38.html을 엽니다.
 3. 같은 Supabase URL·Publishable key·방 ID를 입력합니다.
 4. 일반적인 PC는 `1080p60 안정 모드`, 하드웨어·캡처 성능을 확인할 때는 `1080p120 실험 모드`를 선택합니다.
 5. ‘선택한 모드로 Windows 화면 보내기’를 누릅니다.
@@ -67,7 +67,7 @@ Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 �
 8. 120fps 실험 모드는 진단의 실제 값이 1920×1080, 100fps 이상일 때만 성공으로 판단합니다.
 
 송신 화면·GPU·브라우저가 120fps 캡처를 제공하지 않으면 연결을 실패시키지 않고 실제 가능한 FPS로 동작합니다.
-`1080p120 네이티브 모드` 버튼은 최종 Windows GPU 송신 엔진이 필요하다는 안내입니다. build36에는 네이티브 실행 파일이 포함되지 않으며 브라우저 모드를 네이티브 성공으로 표시하지 않습니다.
+`1080p120 네이티브 모드` 버튼은 `solaris-native://`로 SolarisNativeHost.exe를 엽니다. Actions의 `Solaris-Native-Host-build38-portable`을 완전히 압축 해제한 뒤 실행하면 되며 Apollo를 별도로 설치하지 않습니다. 최초 한 번 방화벽 허용과 관리자 확인은 필요할 수 있습니다. iPad 수신은 우선 공식 Moonlight로 검증합니다.
 
-빌드 실패 시 Solaris-build36-xcode-evidence의 Xcode 로그가 필요합니다.
+빌드 실패 시 Solaris-build38-xcode-evidence 또는 Windows native job 로그가 필요합니다.
 Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.

@@ -39,7 +39,12 @@ struct ProbeView: View {
                         NavigationLink("Windows 화면 받기 · 1080p60/120") {
                             DesktopReceiverView(config: c)
                         }
-                        Text("Windows의 Solaris-Desktop-Share-build36.html에서 1080p60 안정 또는 1080p120 실험 모드를 선택하세요. 이 iPad 수신기는 협상된 실제 프레임을 받습니다.")
+                        Text("Windows의 Solaris-Desktop-Share-build38.html에서 1080p60 안정 또는 1080p120 브라우저 실험 모드를 선택하세요. 이 iPad 수신기는 WebRTC로 협상된 실제 프레임을 받습니다.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Section("Windows → iPad · 네이티브 1080p120 시험") {
+                        Link("Moonlight 설치/열기", destination: URL(string: "https://apps.apple.com/app/moonlight-game-streaming/id1000551566")!)
+                        Text("Windows에서 build38 portable의 SolarisNativeHost.exe를 실행하세요. Apollo를 따로 설치할 필요가 없습니다. 현재 1080p120 수신 성능 검증은 Moonlight를 사용합니다.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -63,7 +68,7 @@ struct ProbeView: View {
                     }
                 }
                 Section("iPad → Windows · 검증된 60fps 경로") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build36.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2-build38.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)
@@ -74,7 +79,7 @@ struct ProbeView: View {
                 Section("Windows 송신 모드 안내") {
                     Text("1080p60 안정: 브라우저 호환성이 가장 높습니다.")
                     Text("1080p120 실험: 실제 캡처·인코딩 FPS가 100 이상인 환경에서 시험합니다.")
-                    Text("1080p120 네이티브: GPU 캡처·하드웨어 인코딩 엔진이 추가된 이후 사용하는 최종 목표입니다.")
+                    Text("1080p120 네이티브: Solaris portable 호스트의 내장 GPU 인코딩 엔진과 Moonlight 수신으로 먼저 검증합니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("3 · 연결 상태 확인") {

@@ -70,11 +70,12 @@ test('experimental mode retains the complete 1080p120 sender policy',()=>{
   assert.match(source,/핵심 \$\{mode\.label\} 정책으로 재시도/);
 });
 
-test('mode UI separates stable, experimental and unavailable native engine',()=>{
+test('mode UI separates stable, experimental and native host launcher',()=>{
   assert.match(html,/1080p60 안정 모드/);
   assert.match(html,/1080p120 실험 모드/);
   assert.match(html,/1080p120 네이티브 모드/);
-  assert.match(source,/build36은 선택 UI와 진단 기반만 포함/);
+  assert.match(source,/solaris-native:\/\/open\?mode=1080p120/);
+  assert.match(source,/Solaris-Native-Host-build38-portable/);
 });
 
 test('software H264 is reported as a sender bottleneck',async()=>{

@@ -40,7 +40,10 @@ def check_sources():
                  "ios/App/Resources/SolarisMark.jpeg",
                  "ios/App/Resources/solaris-desktop.html",
                  "ios/App/DesktopScreenReceiver.swift",
-                 "ios/Broadcast/BroadcastWebRTCSender.swift"):
+                 "ios/Broadcast/BroadcastWebRTCSender.swift",
+                 "windows-native/SolarisNativeHost/SolarisNativeHost.csproj",
+                 "windows-native/SolarisNativeHost/Program.cs",
+                 "windows-native/SolarisNativeHost/MainForm.cs"):
         assert (ROOT / path).is_file(), path
     project = (ROOT / "ios/project.yml").read_text(encoding="utf-8")
     assert "framework: Vendor/WebRTC.xcframework" in project
