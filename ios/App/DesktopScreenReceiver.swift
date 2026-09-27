@@ -9,7 +9,7 @@ private let desktopProtocolVersion = "desktop-v1"
 
 final class DesktopScreenReceiver: NSObject, ObservableObject {
     @Published private(set) var state = "수신 대기"
-    @Published private(set) var details = "Windows에서 1080p120 송신을 시작한 뒤 수신을 누르세요."
+    @Published private(set) var details = "Windows에서 1080p60 안정 또는 1080p120 실험 송신을 시작한 뒤 수신을 누르세요."
     @Published private(set) var videoTrack: RTCVideoTrack?
     @Published private(set) var running = false
 
@@ -197,7 +197,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         if kind == "offer", sessionID == nil,
            let sdp = payload["sdp"] as? String, sdp.contains("m=video") {
             sessionID = incomingSession
-            publish("Windows offer 수신", "H.264 1080p120 협상 중", running: true)
+            publish("Windows offer 수신", "H.264 1080p60/120 협상 중", running: true)
             peer?.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
                 guard let self else { return }
                 self.queue.async {
@@ -458,7 +458,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build35.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build36.html을 열고 같은 방 ID로 1080p60 안정 또는 1080p120 실험 모드를 선택하세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

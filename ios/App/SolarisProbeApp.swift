@@ -31,15 +31,15 @@ struct ProbeView: View {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
                     Text("아이패드 ↔ Windows 화면공유")
-                    Text("iPad 송출 1920급·60fps / Windows 송출 1080p120 목표 · 화면 소리 포함 · 마이크 전송 안 함")
+                    Text("상황별 화면공유 선택 · iPad 송출 1920급 60fps / Windows 송출 1080p60 안정·120fps 실험")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 if let c = config {
-                    Section("Windows → iPad · 1080p120") {
-                        NavigationLink("Windows 화면 받기") {
+                    Section("Windows → iPad") {
+                        NavigationLink("Windows 화면 받기 · 1080p60/120") {
                             DesktopReceiverView(config: c)
                         }
-                        Text("Windows 송신 또는 다른 Windows 수신은 Solaris-Desktop-Share-build35.html에서 시작합니다.")
+                        Text("Windows의 Solaris-Desktop-Share-build36.html에서 1080p60 안정 또는 1080p120 실험 모드를 선택하세요. 이 iPad 수신기는 협상된 실제 프레임을 받습니다.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -62,13 +62,19 @@ struct ProbeView: View {
                             .foregroundStyle(.orange)
                     }
                 }
-                Section("2 · Windows 수신 시작 후 방송 시작") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build35.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                Section("iPad → Windows · 검증된 60fps 경로") {
+                    Text("Windows에서 Solaris-Windows-0.3.2-build36.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)
                     }
-                    Text("Windows의 영상 프레임과 화면 소리 RTP 바이트가 증가해야 성공입니다.")
+                    Text("Windows의 영상 프레임과 화면 소리 RTP 바이트가 증가해야 성공입니다. 이 경로는 기존에 검증된 ReplayKit 전송을 유지합니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Windows 송신 모드 안내") {
+                    Text("1080p60 안정: 브라우저 호환성이 가장 높습니다.")
+                    Text("1080p120 실험: 실제 캡처·인코딩 FPS가 100 이상인 환경에서 시험합니다.")
+                    Text("1080p120 네이티브: GPU 캡처·하드웨어 인코딩 엔진이 추가된 이후 사용하는 최종 목표입니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("3 · 연결 상태 확인") {

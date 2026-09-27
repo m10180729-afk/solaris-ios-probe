@@ -20,7 +20,7 @@ function harness(){
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     RTCRtpSender:{getCapabilities:()=>({codecs:[]})},RTCRtpReceiver:{getCapabilities:()=>({codecs:[]})},
     RTCPeerConnection:class{},MediaStream:class{}});
-  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,setActive:s=>active=s};',context);
+  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,setActive:s=>active=s};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -34,33 +34,47 @@ test('desktop signaling uses an isolated room and publishable key validation',()
   assert.throws(()=>h.api.validConfig(),/Publishable key/);
 });
 
-test('desktop SDP requests H264 level 5.1, 80Mbps video and stereo Opus',()=>{
+test('stable desktop SDP requests H264 level 5.1, 40Mbps video and stereo Opus',()=>{
   const h=harness();
   const input=['v=0','m=audio 9 UDP/TLS/RTP/SAVPF 111','c=IN IP4 0.0.0.0',
     'a=rtpmap:111 opus/48000/2','m=video 9 UDP/TLS/RTP/SAVPF 96',
     'c=IN IP4 0.0.0.0','a=rtpmap:96 H264/90000',
     'a=fmtp:96 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f',''].join('\r\n');
   const result=h.api.tuneDesktopSDP(input);
-  assert.match(result,/b=TIAS:80000000/);
+  assert.match(result,/b=TIAS:40000000/);
   assert.match(result,/profile-level-id=42e033/);
-  assert.match(result,/x-google-start-bitrate=20000/);
-  assert.match(result,/x-google-min-bitrate=8000/);
-  assert.match(result,/x-google-max-bitrate=80000/);
+  assert.match(result,/x-google-start-bitrate=12000/);
+  assert.match(result,/x-google-min-bitrate=6000/);
+  assert.match(result,/x-google-max-bitrate=40000/);
   assert.match(result,/stereo=1;sprop-stereo=1;maxaveragebitrate=256000/);
 });
 
-test('single desktop build contains the complete 1080p120 sender and receiver policy',()=>{
+test('experimental mode retains the complete 1080p120 sender policy',()=>{
+  const h=harness();
+  const input=['v=0','m=video 9 UDP/TLS/RTP/SAVPF 96','c=IN IP4 0.0.0.0',
+    'a=rtpmap:96 H264/90000','a=fmtp:96 packetization-mode=1;profile-level-id=42e01f',''].join('\r\n');
+  const result=h.api.tuneDesktopSDP(input,h.api.MODES.experimental120);
+  assert.match(result,/b=TIAS:80000000/);
+  assert.match(result,/x-google-start-bitrate=20000/);
+  assert.match(result,/x-google-min-bitrate=8000/);
+  assert.match(result,/x-google-max-bitrate=80000/);
   assert.match(source,/getDisplayMedia/);
   assert.match(source,/width:\{ideal:1920,max:1920\}/);
   assert.match(source,/height:\{ideal:1080,max:1080\}/);
-  assert.match(source,/frameRate:\{ideal:120,max:120\}/);
-  assert.match(source,/e\.maxFramerate=120/);
-  assert.match(source,/e\.maxBitrate=80000000/);
-  assert.match(source,/degradationPreference='maintain-resolution'/);
+  assert.match(source,/maxFramerate=mode\.fps/);
+  assert.match(source,/maxBitrate=mode\.maxBitrate/);
+  assert.match(source,/degradationPreference=mode\.degradationPreference/);
   assert.match(source,/direction:'sendonly'/);
   assert.match(source,/systemAudio:'include'/);
   assert.doesNotMatch(source,/getUserMedia/);
-  assert.match(source,/핵심 1080p120 정책으로 재시도/);
+  assert.match(source,/핵심 \$\{mode\.label\} 정책으로 재시도/);
+});
+
+test('mode UI separates stable, experimental and unavailable native engine',()=>{
+  assert.match(html,/1080p60 안정 모드/);
+  assert.match(html,/1080p120 실험 모드/);
+  assert.match(html,/1080p120 네이티브 모드/);
+  assert.match(source,/build36은 선택 UI와 진단 기반만 포함/);
 });
 
 test('software H264 is reported as a sender bottleneck',async()=>{

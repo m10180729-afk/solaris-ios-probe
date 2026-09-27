@@ -250,14 +250,14 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build35_labels_are_consistent(self):
+    def test_build36_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '35'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '36'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build35-bidirectional-screen", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build35.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build35.html", workflow)
-        self.assertIn("Solaris-0.3.2-build35-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build36-screen-modes", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build36.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build36.html", workflow)
+        self.assertIn("Solaris-0.3.2-build36-resign.ipa", workflow)
 
     def test_desktop_audio_is_output_only(self):
         root = Path(__file__).resolve().parents[1]

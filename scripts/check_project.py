@@ -53,7 +53,8 @@ def check_sources():
     assert "import WebRTC" in desktop_receiver, "Native iPad desktop receiver must link WebRTC"
     assert "desktop-v1" in desktop_receiver
     desktop_html = (ROOT / "ios/App/Resources/solaris-desktop.html").read_text()
-    assert "getDisplayMedia" in desktop_html and "maxFramerate=120" in desktop_html
+    assert "getDisplayMedia" in desktop_html and "maxFramerate=mode.fps" in desktop_html
+    assert "stable60" in desktop_html and "experimental120" in desktop_html
     app_source = (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
     assert "ProbeShared.group()" not in app_source, "Broadcast UI must not require App Group storage"
     print("PASS: Python syntax, plist values, no App Group requirement, real XCFramework dependency")
