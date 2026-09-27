@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build34</title>
+<title>Solaris Windows 화면공유 · build35</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:700px){.grid,.status{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build34</h1>
+<h1>Solaris Windows 화면공유 · build35</h1>
 <p>Windows → iPad Pro / Windows 전용입니다. <b>1920×1080 · 120fps</b>를 직접 요청하며, 120fps는 요청값이며, 실제 캡처·인코딩·수신 성능은 진단으로 확인합니다. 마이크는 사용하지 않고 선택한 화면의 시스템 소리만 전송합니다.</p>
 
 <section class="card grid">
@@ -35,7 +35,7 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='34',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='35',PROTOCOL='desktop-v1';
 const $=id=>document.getElementById(id);
 let active=null;
 function log(message){$('log').textContent+=`[${new Date().toLocaleTimeString()}] ${message}\n`;$('log').scrollTop=$('log').scrollHeight;}
@@ -76,7 +76,11 @@ function tuneDesktopSDP(sdp){
     if((inVideo||inAudio)&&/^b=(AS|TIAS):/.test(line))continue;
     const audioFmtp=inAudio&&line.match(/^a=fmtp:(\d+) /i);if(audioFmtp&&opus.has(audioFmtp[1]))continue;
     let tuned=line;const fmtp=inVideo&&line.match(/^a=fmtp:(\d+) (.+)$/i);
-    if(fmtp&&h264.has(fmtp[1]))tuned=`a=fmtp:${fmtp[1]} ${fmtp[2].replace(/profile-level-id=([0-9a-f]{4})[0-9a-f]{2}/i,(_m,p)=>`profile-level-id=${p}33`)}`;
+    if(fmtp&&h264.has(fmtp[1])){
+      const base=fmtp[2].replace(/profile-level-id=([0-9a-f]{4})[0-9a-f]{2}/i,(_m,p)=>`profile-level-id=${p}33`)
+        .replace(/;(x-google-(start|min|max)-bitrate)=\d+/gi,'');
+      tuned=`a=fmtp:${fmtp[1]} ${base};x-google-start-bitrate=20000;x-google-min-bitrate=8000;x-google-max-bitrate=80000`;
+    }
     out.push(tuned);
     if(inVideo&&line.startsWith('c=')){out.push('b=AS:80000');out.push('b=TIAS:80000000');}
     if(inAudio&&line.startsWith('c=')){out.push('b=AS:256');out.push('b=TIAS:256000');}
@@ -88,7 +92,7 @@ async function applySenderPolicy(sender){
   const configure=(p,extended)=>{
     if(!p.encodings?.length)p.encodings=[{}];
     for(const e of p.encodings){e.active=true;e.maxBitrate=80000000;e.maxFramerate=120;e.scaleResolutionDownBy=1;if(extended){e.priority='high';e.networkPriority='high';}}
-    if(extended)p.degradationPreference='maintain-framerate';
+    if(extended)p.degradationPreference='maintain-resolution';
     return p;
   };
   try{await sender.setParameters(configure(sender.getParameters(),true));}
@@ -187,7 +191,13 @@ async function measure(s){
     s.history=s.history.slice(-30);
     mark('mediaState',`${width}×${height} · ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,fps>=100?'ok':frames?'warn':'');mark('codecState',codec,/H264/i.test(codec)?'ok':'bad');
     const actual120=width===1920&&height===1080&&fps>=115;
-    mark('summary',actual120?'송신/수신 RTP 약 120fps · iPad 표시 FPS는 별도 확인':frames?`영상 동작 중 · 현재 ${width}×${height} ${fps.toFixed(1)}fps (목표 1080p120)`:'연결 및 첫 프레임 대기',actual120?'ok':'warn');
+    const softwareH264=s.role==='sender'&&/OpenH264/i.test(String(s.stats.encoderImplementation||''));
+    if(softwareH264){
+      mark('summary',`GPU H.264 인코더 미사용: OpenH264 CPU 인코딩 · 실제 캡처 ${Number(s.stats.captureActualFPS||0).toFixed(1)}fps · Edge/Chrome 그래픽 가속과 GPU 드라이버를 확인하세요.`,'bad');
+      mark('codecState','H.264 · OpenH264 CPU','bad');
+    }else{
+      mark('summary',actual120?'송신/수신 RTP 약 120fps · iPad 표시 FPS는 별도 확인':frames?`영상 동작 중 · 현재 ${width}×${height} ${fps.toFixed(1)}fps (목표 1080p120)`:'연결 및 첫 프레임 대기',actual120?'ok':'warn');
+    }
   }catch(e){log('통계 오류: '+e.message);}
 }
 function stop(){
@@ -198,5 +208,5 @@ function diagnostic(){const s=active;return JSON.stringify({version:BUILD,build:
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();log('Solaris build34 준비 · Windows 1080p120 H.264 송신/수신 · 시스템 소리 · 마이크 제외');
+window.addEventListener('beforeunload',stop);loadSettings();log('Solaris build35 준비 · Windows 1080p120 H.264 level 5.1 · 20Mbps 빠른 시작 · 시스템 소리');
 </script></main></body></html>

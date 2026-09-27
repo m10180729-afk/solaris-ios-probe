@@ -43,6 +43,9 @@ test('desktop SDP requests H264 level 5.1, 80Mbps video and stereo Opus',()=>{
   const result=h.api.tuneDesktopSDP(input);
   assert.match(result,/b=TIAS:80000000/);
   assert.match(result,/profile-level-id=42e033/);
+  assert.match(result,/x-google-start-bitrate=20000/);
+  assert.match(result,/x-google-min-bitrate=8000/);
+  assert.match(result,/x-google-max-bitrate=80000/);
   assert.match(result,/stereo=1;sprop-stereo=1;maxaveragebitrate=256000/);
 });
 
@@ -53,10 +56,28 @@ test('single desktop build contains the complete 1080p120 sender and receiver po
   assert.match(source,/frameRate:\{ideal:120,max:120\}/);
   assert.match(source,/e\.maxFramerate=120/);
   assert.match(source,/e\.maxBitrate=80000000/);
+  assert.match(source,/degradationPreference='maintain-resolution'/);
   assert.match(source,/direction:'sendonly'/);
   assert.match(source,/systemAudio:'include'/);
   assert.doesNotMatch(source,/getUserMedia/);
   assert.match(source,/핵심 1080p120 정책으로 재시도/);
+});
+
+test('software H264 is reported as a sender bottleneck',async()=>{
+  const h=harness();
+  const report=new Map([
+    ['v',{id:'v',type:'outbound-rtp',kind:'video',codecId:'h',mediaSourceId:'src',
+      framesEncoded:18,bytesSent:5000,frameWidth:1920,frameHeight:1080,
+      totalEncodeTime:.5,encoderImplementation:'OpenH264',powerEfficientEncoder:false}],
+    ['h',{type:'codec',mimeType:'video/H264'}],
+    ['src',{type:'media-source',framesPerSecond:18}]
+  ]);
+  const session={role:'sender',pc:{getStats:async()=>report},lastStatsAt:0,
+    encodeSeconds:0,encodeFrames:0};
+  h.api.setActive(session);
+  await h.api.measure(session);
+  assert.match(h.element('summary').textContent,/OpenH264 CPU/);
+  assert.equal(h.element('summary').className,'bad');
 });
 
 test('desktop receiver answers offered media sections without a duplicate video m-line',()=>{

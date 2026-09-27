@@ -250,14 +250,14 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build34_labels_are_consistent(self):
+    def test_build35_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '34'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '35'", (root / "ios/project.yml").read_text())
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build34-bidirectional-screen", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build34.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build34.html", workflow)
-        self.assertIn("Solaris-0.3.2-build34-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build35-bidirectional-screen", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build35.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build35.html", workflow)
+        self.assertIn("Solaris-0.3.2-build35-resign.ipa", workflow)
 
     def test_desktop_audio_is_output_only(self):
         root = Path(__file__).resolve().parents[1]
@@ -270,6 +270,13 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("- (BOOL)startRecording { return NO; }", device)
         self.assertNotIn("deliverRecordedData", device)
         self.assertIn("App/SolarisApp-Bridging-Header.h", (root / "ios/project.yml").read_text())
+
+    def test_desktop_answer_requests_h264_level_51(self):
+        root = Path(__file__).resolve().parents[1]
+        receiver = (root / "ios/App/DesktopScreenReceiver.swift").read_text()
+        self.assertIn("desktopAnswerSDP(answer.sdp)", receiver)
+        self.assertIn('with: "profile-level-id=\\(line[prefixRange])33"', receiver)
+        self.assertIn('["type": "answer", "sdp": tunedAnswer.sdp]', receiver)
 
 
 if __name__ == "__main__":

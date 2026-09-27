@@ -232,7 +232,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     self.publish("answer 생성 실패", error?.localizedDescription ?? "SDP 없음", running: true)
                     return
                 }
-                self.peer?.setLocalDescription(answer) { [weak self] error in
+                let tunedAnswer = RTCSessionDescription(type: .answer, sdp: self.desktopAnswerSDP(answer.sdp))
+                self.peer?.setLocalDescription(tunedAnswer) { [weak self] error in
                     guard let self else { return }
                     self.queue.async {
                         guard !self.stopped else { return }
@@ -240,7 +241,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                             self.publish("answer 적용 실패", error.localizedDescription, running: true)
                             return
                         }
-                        self.send("answer", ["type": "answer", "sdp": answer.sdp]) { success in
+                        self.send("answer", ["type": "answer", "sdp": tunedAnswer.sdp]) { success in
                             guard success else { return }
                             self.localAnswerPublished = true
                             let candidates = self.pendingLocalCandidates
@@ -252,6 +253,32 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    private func desktopAnswerSDP(_ sdp: String) -> String {
+        var inVideo = false
+        return sdp
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { rawLine -> String in
+                let line = String(rawLine)
+                if line.hasPrefix("m=") { inVideo = line.hasPrefix("m=video ") }
+                guard inVideo, line.hasPrefix("a=fmtp:"),
+                      line.range(of: "profile-level-id=", options: .caseInsensitive) != nil else { return line }
+                guard let expression = try? NSRegularExpression(
+                    pattern: "profile-level-id=([0-9A-Fa-f]{4})[0-9A-Fa-f]{2}",
+                    options: .caseInsensitive
+                ), let match = expression.firstMatch(
+                    in: line,
+                    range: NSRange(line.startIndex..., in: line)
+                ), let fullRange = Range(match.range(at: 0), in: line),
+                   let prefixRange = Range(match.range(at: 1), in: line) else { return line }
+                return line.replacingCharacters(
+                    in: fullRange,
+                    with: "profile-level-id=\(line[prefixRange])33"
+                )
+            }
+            .joined(separator: "\r\n")
     }
 
     private func send(_ kind: String, _ payload: [String: Any], completion: ((Bool) -> Void)? = nil) {
@@ -431,7 +458,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build34.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
+            Text("Windows에서 Solaris-Desktop-Share-build35.html을 열고 같은 방 ID로 ‘내 화면 보내기’를 누르세요. PC 화면 소리만 수신하며 마이크는 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

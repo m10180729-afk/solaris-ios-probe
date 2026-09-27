@@ -1,4 +1,4 @@
-# Solaris 0.3.2 build34
+# Solaris 0.3.2 build35
 
 iPad ReplayKit → Windows와 Windows → iPad/Windows WebRTC 화면공유입니다. 무료 AltStore 재서명용 소스입니다.
 Supabase 설정·기존 테이블·방 ID·ReplayKit sample-buffer 모드는 변경하지 않았습니다.
@@ -7,12 +7,14 @@ build24에서 H.264 VideoToolbox 1920×1324·60fps가 장시간 확인되었습�
 build30은 최고화질 28–60Mbps 영상에 더해 ReplayKit의 **앱 소리만** Opus 48kHz 스테레오로
 전송합니다. 마이크는 이 화면공유 트랙에서 읽거나 전송하지 않습니다.
 
-## build34 변경
+## build35 변경
 
 - 실기기에서 확인된 build30 iPad→Windows H.264 영상과 stereo `renderBlock` 화면소리 경로를 유지.
-- `Solaris-Desktop-Share-build34.html`에 Windows H.264 화면 송신과 다른 Windows 수신을 함께 추가.
+- `Solaris-Desktop-Share-build35.html`에 Windows H.264 화면 송신과 다른 Windows 수신을 함께 제공.
 - Xcode 16.4의 타입 지정 `RTCAudioSession.setCategory` API에 맞춰 iPad 수신기 컴파일 오류를 수정.
 - Windows 송신은 1920×1080·120fps를 직접 요청하고 H.264 level 5.1, 80Mbps 상한, 해상도 축소 없음 정책을 적용.
+- iPad answer도 H.264 level 5.1로 조정하고 20Mbps 시작·8Mbps 최소 힌트로 1080p 승격 지연을 줄임.
+- 진단에서 OpenH264 CPU 인코더가 확인되면 GPU 인코더 미사용을 즉시 오류로 표시.
 - Windows 화면의 시스템 오디오만 Opus 48kHz stereo로 전송하고 마이크는 요청하지 않음.
 - iPad 앱에 네이티브 WebRTC/Metal Windows 화면 수신 화면과 실제 해상도·수신 FPS·Mbps 진단 추가.
 - ReplayKit 반대 방향과 충돌하지 않도록 데스크톱 전송은 별도 `desktop-v1` 신호방 사용.
@@ -38,9 +40,9 @@ build30은 최고화질 28–60Mbps 영상에 더해 ReplayKit의 **앱 소리�
 
 소스를 압축 해제하고 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
 GitHub Actions의 browser-test와 build 모두 성공 후
-Solaris-0.3.2-build34-bidirectional-screen을 다운로드합니다.
-Solaris-0.3.2-build34-resign.ipa, Solaris-Windows-0.3.2-build34.html,
-Solaris-Desktop-Share-build34.html을 함께 사용합니다.
+Solaris-0.3.2-build35-bidirectional-screen을 다운로드합니다.
+Solaris-0.3.2-build35-resign.ipa, Solaris-Windows-0.3.2-build35.html,
+Solaris-Desktop-Share-build35.html을 함께 사용합니다.
 
 [설치 안내](docs/STEP3_WEBRTC_SCREEN_KO.md) · [원인과 검증 범위](docs/BUILD20_VALIDATION.md)
 
