@@ -21,111 +21,22 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
-      - name: Build self-contained Solaris launcher
+      - name: Build self-contained Solaris Windows sender
         shell: pwsh
         run: |
           dotnet restore windows-native/SolarisNativeHost/SolarisNativeHost.csproj
           dotnet publish windows-native/SolarisNativeHost/SolarisNativeHost.csproj -c Release -r win-x64 --self-contained true -o dist/native
-      - name: Bundle official Apollo GPLv3 native engine
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = 'v0.4.6'
-          $headers = @{ 'User-Agent' = 'Solaris-build39' }
-          $release = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/ClassicOldSong/Apollo/releases/tags/$tag"
-          $candidates = @($release.assets | Where-Object { $_.name -match '(?i)(windows|win).*(amd64|x64).*\.exe$' })
-          if ($candidates.Count -eq 0) {
-            $candidates = @($release.assets | Where-Object { $_.name -match '(?i)\.exe$' })
-          }
-          if ($candidates.Count -eq 0) {
-            Write-Host "Release assets: $($release.assets.name -join ', ')"
-            throw '공식 Apollo Windows 설치 자산을 찾지 못했습니다.'
-          }
-          $asset = $candidates[0]
-          New-Item -ItemType Directory -Force build/apollo-extract, dist/native/engine | Out-Null
-          Invoke-WebRequest -Headers $headers $asset.browser_download_url -OutFile build/apollo-installer.exe
-          & 7z x build/apollo-installer.exe '-obuild/apollo-extract' -y | Out-Host
-          if ($LASTEXITCODE -ne 0) { throw "Apollo 패키지 압축 해제 실패: $LASTEXITCODE" }
-          $engine = Get-ChildItem build/apollo-extract -Recurse -File -Filter sunshine.exe | Select-Object -First 1
-          if (-not $engine) { throw '압축 해제 결과에서 sunshine.exe를 찾지 못했습니다.' }
-          Copy-Item "$($engine.Directory.FullName)/*" dist/native/engine -Recurse -Force
-          Invoke-WebRequest -Headers $headers "https://raw.githubusercontent.com/ClassicOldSong/Apollo/$tag/LICENSE" -OutFile dist/native/APOLLO_GPLv3_LICENSE.txt
-          $hash = (Get-FileHash build/apollo-installer.exe -Algorithm SHA256).Hash
-          @"
-          Solaris build39 bundled native engine
-          Upstream: https://github.com/ClassicOldSong/Apollo
-          Release: $tag
-          Asset: $($asset.name)
-          SHA256: $hash
-          License: GPL-3.0
-          Complete corresponding source: https://github.com/ClassicOldSong/Apollo/tree/$tag
-          "@ | Set-Content dist/native/THIRD_PARTY_APOLLO.txt -Encoding UTF8
-      - name: Verify portable package
+      - name: Verify integrated package
         shell: pwsh
         run: |
           & dist/native/SolarisNativeHost.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path dist/native/engine/sunshine.exe)) { throw 'portable engine missing' }
           Copy-Item windows-native/README_KO.md dist/native/START_NATIVE_HOST_KO.md
-      - name: Upload Windows native host
+      - name: Upload Windows Solaris sender
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Native-Host-build39-portable
+          name: Solaris-Windows-Sender-build40
           path: dist/native/
-          if-no-files-found: error
-          retention-days: 7
-  ios-native-receiver:
-    runs-on: macos-15
-    timeout-minutes: 45
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-    steps:
-      - name: Check out Solaris source
-        uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-      - name: Fetch native iOS receiver source
-        run: |
-          git clone --recursive --depth 1 https://github.com/moonlight-stream/moonlight-ios.git build/native-receiver
-          git -C build/native-receiver rev-parse HEAD > build/native-receiver-commit.txt
-      - name: Build Solaris native receiver for local re-signing
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project build/native-receiver/Moonlight.xcodeproj \
-            -scheme Moonlight \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/native-receiver-derived \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
-            build
-          SOLARIS_NATIVE_APP="$(find build/native-receiver-derived/Build/Products -type d -name 'Moonlight.app' -print -quit)"
-          test -n "$SOLARIS_NATIVE_APP"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Solaris Native Receiver" "$SOLARIS_NATIVE_APP/Info.plist" || \
-            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Solaris Native Receiver" "$SOLARIS_NATIVE_APP/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName SolarisNativeReceiver" "$SOLARIS_NATIVE_APP/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.solaris.native.receiver" "$SOLARIS_NATIVE_APP/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 0.3.2" "$SOLARIS_NATIVE_APP/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 39" "$SOLARIS_NATIVE_APP/Info.plist"
-          mkdir -p build/native-package/Payload dist/native-receiver
-          ditto "$SOLARIS_NATIVE_APP" build/native-package/Payload/SolarisNativeReceiver.app
-          codesign --force --deep --sign - --timestamp=none build/native-package/Payload/SolarisNativeReceiver.app
-          codesign --verify --deep --strict build/native-package/Payload/SolarisNativeReceiver.app
-          ditto -c -k --keepParent build/native-package/Payload dist/native-receiver/Solaris-Native-Receiver-build39-resign.ipa
-          cp build/native-receiver/LICENSE.txt dist/native-receiver/MOONLIGHT_GPLv3_LICENSE.txt
-          cp build/native-receiver-commit.txt dist/native-receiver/UPSTREAM_COMMIT.txt
-          printf '%s\n' \
-            'Solaris Native Receiver build39' \
-            'Upstream: https://github.com/moonlight-stream/moonlight-ios' \
-            'License: GPL-3.0' \
-            'This IPA is an ad-hoc re-signing candidate.' \
-            > dist/native-receiver/README_KO.txt
-      - name: Upload Solaris native iOS receiver
-        uses: actions/upload-artifact@v4
-        with:
-          name: Solaris-Native-Receiver-build39
-          path: dist/native-receiver/
           if-no-files-found: error
           retention-days: 7
   browser-test:
@@ -189,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build39-xcode-evidence
+          name: Solaris-build40-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -198,11 +109,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build39-screen-modes
+          name: Solaris-0.3.2-build40-integrated
           path: |
-            dist/Solaris-0.3.2-build39-resign.ipa
-            dist/Solaris-Windows-0.3.2-build39.html
-            dist/Solaris-Desktop-Share-build39.html
+            dist/Solaris-0.3.2-build40-resign.ipa
+            dist/Solaris-Windows-0.3.2-build40.html
+            dist/Solaris-Desktop-Share-build40.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

@@ -40,6 +40,8 @@ def check_sources():
                  "ios/App/Resources/SolarisMark.jpeg",
                  "ios/App/Resources/solaris-desktop.html",
                  "ios/App/DesktopScreenReceiver.swift",
+                 "ios/App/SolarisH264DisplayView.h",
+                 "ios/App/SolarisH264DisplayView.m",
                  "ios/Broadcast/BroadcastWebRTCSender.swift",
                  "windows-native/SolarisNativeHost/SolarisNativeHost.csproj",
                  "windows-native/SolarisNativeHost/Program.cs",
@@ -57,7 +59,13 @@ def check_sources():
     assert "desktop-v1" in desktop_receiver
     desktop_html = (ROOT / "ios/App/Resources/solaris-desktop.html").read_text()
     assert "getDisplayMedia" in desktop_html and "maxFramerate=mode.fps" in desktop_html
-    assert "stable60" in desktop_html and "experimental120" in desktop_html
+    assert "hardware60" in desktop_html and "hardware120" in desktop_html
+    assert "compatibility60" in desktop_html and "webcodecs-h264" in desktop_html
+    assert "MediaStreamTrackProcessor" in desktop_html and "VideoEncoder" in desktop_html
+    assert "solaris-native://" not in desktop_html
+    native_display = (ROOT / "ios/App/SolarisH264DisplayView.m").read_text()
+    assert "AVSampleBufferDisplayLayer" in native_display
+    assert "CMVideoFormatDescriptionCreateFromH264ParameterSets" in native_display
     app_source = (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
     assert "ProbeShared.group()" not in app_source, "Broadcast UI must not require App Group storage"
     print("PASS: Python syntax, plist values, no App Group requirement, real XCFramework dependency")

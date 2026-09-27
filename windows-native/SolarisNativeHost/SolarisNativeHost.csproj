@@ -13,8 +13,14 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.3.2.39</Version>
-    <FileVersion>0.3.2.39</FileVersion>
-    <AssemblyVersion>0.3.2.39</AssemblyVersion>
+    <Version>0.3.2.40</Version>
+    <FileVersion>0.3.2.40</FileVersion>
+    <AssemblyVersion>0.3.2.40</AssemblyVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
+    <EmbeddedResource Include="../../ios/App/Resources/solaris-desktop.html">
+      <LogicalName>SolarisNativeHost.solaris-desktop.html</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

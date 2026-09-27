@@ -9,46 +9,34 @@ class NativeHostTests(unittest.TestCase):
     def setUp(self):
         self.program = (ROOT / "windows-native/SolarisNativeHost/Program.cs").read_text()
         self.form = (ROOT / "windows-native/SolarisNativeHost/MainForm.cs").read_text()
+        self.project = (ROOT / "windows-native/SolarisNativeHost/SolarisNativeHost.csproj").read_text()
         self.workflow = (ROOT / ".github/workflows/build-ios-probe.yml").read_text()
+        self.html = (ROOT / "ios/App/Resources/solaris-desktop.html").read_text()
 
-    def test_uses_bundled_engine_without_separate_install(self):
-        self.assertNotIn("winget.exe", self.program)
-        self.assertNotIn("InstallOrUpdate", self.program)
-        self.assertIn('Path.Combine(AppContext.BaseDirectory, "engine")', self.program)
-        self.assertIn("FindBundledEngine", self.program)
-        self.assertNotIn("WebClient", self.program)
-        self.assertNotIn("DownloadFile", self.program)
+    def test_has_no_apollo_or_moonlight_build_dependency(self):
+        self.assertNotIn("ClassicOldSong/Apollo", self.workflow)
+        self.assertNotIn("moonlight-stream/moonlight-ios", self.workflow)
+        self.assertNotIn("Solaris-Native-Receiver", self.workflow)
+        self.assertNotIn("sunshine.exe", self.program + self.form)
 
-    def test_registers_native_protocol_and_diagnoses_hardware(self):
-        self.assertIn("Software\\Classes\\solaris-native", self.program)
-        self.assertIn("Win32_VideoController", self.program)
-        self.assertIn("CurrentRefreshRate", self.program)
-        self.assertIn("NVIDIA", self.program)
-        self.assertIn("Radeon", self.program)
-        self.assertIn("Intel", self.program)
+    def test_embeds_sender_in_solaris_executable(self):
+        self.assertIn("Microsoft.Web.WebView2", self.project)
+        self.assertIn("EmbeddedResource", self.project)
+        self.assertIn("SetVirtualHostNameToFolderMapping", self.form)
+        self.assertIn("https://solaris.local/solaris-desktop.html", self.form)
 
-    def test_does_not_claim_hardware_encoder_before_stream_test(self):
-        self.assertIn("실제 NVENC/Quick Sync/AMF 사용 여부", self.form)
-        self.assertIn("수신 통계와 Solaris 엔진 로그로 최종 확인", self.form)
-
-    def test_action_pins_and_bundles_official_gpl_engine(self):
-        self.assertIn("ClassicOldSong/Apollo/releases/tags/$tag", self.workflow)
-        self.assertIn("$tag = 'v0.4.6'", self.workflow)
-        self.assertIn("dist/native/engine", self.workflow)
-        self.assertIn("APOLLO_GPLv3_LICENSE.txt", self.workflow)
-        self.assertIn("THIRD_PARTY_APOLLO.txt", self.workflow)
+    def test_hardware_path_and_fallback_exist(self):
+        self.assertIn("VideoEncoder", self.html)
+        self.assertIn("MediaStreamTrackProcessor", self.html)
+        self.assertIn("hardwareAcceleration:'prefer-hardware'", self.html)
+        self.assertIn("webcodecs-h264", self.html)
+        self.assertIn("compatibility60", self.html)
 
     def test_windows_action_builds_and_runs_self_test(self):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Native-Host-build39-portable", self.workflow)
-
-    def test_builds_solaris_branded_native_ios_receiver(self):
-        self.assertIn("moonlight-stream/moonlight-ios.git", self.workflow)
-        self.assertIn("Solaris-Native-Receiver-build39-resign.ipa", self.workflow)
-        self.assertIn("com.solaris.native.receiver", self.workflow)
-        self.assertIn("MOONLIGHT_GPLv3_LICENSE.txt", self.workflow)
+        self.assertIn("Solaris-Windows-Sender-build40", self.workflow)
 
 
 if __name__ == "__main__":

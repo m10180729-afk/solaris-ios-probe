@@ -1,72 +1,31 @@
-# Solaris 0.3.2 build39 — 외부 앱 없는 Solaris 네이티브 송신·수신 시험
+# Solaris 0.3.2 build40 — 단일 앱 통합 화면공유 시험
 
-이 파일은 build39용입니다. 이전 IPA/HTML과 섞지 마세요.
-검사 성공은 실제 기기의 60fps 보장을 의미하지 않습니다.
+build40은 별도 Moonlight/Apollo 앱을 사용하지 않습니다.
 
-1. 소스 ZIP을 Solaris-0.3.2-build39-solaris-native-receiver-source 폴더에 모두 압축 해제합니다.
-2. 해당 폴더에서 Git Bash로 bash UPLOAD_GIT_BASH.sh를 실행합니다.
-3. 해당 커밋의 GitHub Actions에서 browser-test와 build가 모두 성공해야 합니다.
-4. Solaris-0.3.2-build39-screen-modes, Solaris-Native-Host-build39-portable, Solaris-Native-Receiver-build39을 다운로드합니다.
-5. 기존 송출용 `Solaris-0.3.2-build39-resign.ipa`와 네이티브 수신용 `Solaris-Native-Receiver-build39-resign.ipa`를 AltStore로 설치합니다.
-6. iPad→Windows는 Solaris-Windows-0.3.2-build39.html을 Windows에서 엽니다.
-8. 기존 Supabase URL·Publishable key·방 ID solaristest1을 그대로 입력합니다.
-9. 품질 ‘원본 1920급 · 60fps · 화질 우선’, 비트레이트 ‘최고화질 28–60Mbps’, 코덱 ‘H.264 하드웨어 · 권장’을 사용합니다.
-10. Windows ‘설정 저장 + 수신 시작’ → iPad 방송 버튼 → Solaris 화면 시험 → 공유 시작.
-11. 실제 화면이 움직이고 수신 프레임이 증가해야 성공입니다.
+## Actions에서 받을 파일
 
-## 품질 적용
+- `Solaris-0.3.2-build40-integrated`: iPad용 `Solaris-0.3.2-build40-resign.ipa`, 기존 iPad→Windows 수신 HTML
+- `Solaris-Windows-Sender-build40`: Windows용 `SolarisNativeHost.exe`
+- `Solaris-build40-xcode-evidence`: 빌드 실패 때만 확인하는 자료
 
-iPad의 기존 선택기는 공유 저장소 접근 없이 방송 확장에 설정 전달을 보장하지 못해 제거했습니다.
-이제 Windows에서 선택 후 ‘품질 저장 / 방송에 적용’을 누릅니다.
-‘송신기 적용 확인’은 방송 확장이 같은 요청 ID로 확인 응답을 보내야 표시됩니다.
-설정은 브라우저에 저장되며 새 연결 때 다시 전송됩니다.
-방송 중에도 적용할 수 있으며 앱 재설치는 필요하지 않습니다.
+## Windows → iPad 테스트
 
-‘원본’은 ReplayKit이 실제 전달한 픽셀 버퍼 크기입니다. iPad 패널 전체 픽셀 수와
-같다는 보장은 없습니다. 긴 변 제한은 화면 비율을 유지하며 업스케일하지 않습니다.
-build39의 iPad 송출 기본값은 최고화질 28Mbps 최소 요청과 60Mbps 상한입니다. 손실이 늘거나 끊기면
-방송 중 ‘안정형 20–60Mbps’를 선택하고 적용할 수 있습니다. WebRTC 혼잡 제어는 실제
-네트워크 상태가 나쁘면 요청값보다 낮출 수 있으므로 진단의 실제 Mbps를 확인합니다.
+1. 기존 Moonlight 테스트 앱은 삭제합니다.
+2. iPad에 `Solaris-0.3.2-build40-resign.ipa` 하나만 설치합니다.
+3. Windows 아티팩트를 완전히 압축 해제하고 `SolarisNativeHost.exe`를 실행합니다.
+4. iPad Solaris에서 `Windows 화면 받기` → `Windows 화면 수신 시작`을 누릅니다.
+5. Windows에서 `Solaris 하드웨어 1080p60`을 선택하고 `Windows 화면 보내기`를 누릅니다.
+6. 공유할 모니터와 시스템 오디오를 선택합니다.
+7. 화면이 나오면 Windows의 `진단 복사` 결과와 iPad 화면에 표시된 FPS·Mbps·드롭 수치를 확인합니다.
 
-## 자동 복구와 진단
+## 모드
 
-기본 코덱은 H.264 VideoToolbox 하드웨어 경로이며 VP8로 자동 저하하지 않습니다.
-H.264 연결 뒤 실제 영상이 없으면 오류를 표시합니다. VP8은 구형 브라우저 호환성을
-직접 시험할 때만 선택합니다. 무한 재접속하거나 해상도를 몰래 낮추지 않습니다.
-Windows 재시작으로 새 세션을 만든 경우 iPad 방송도 중단 후 다시 시작하세요.
+- Solaris 하드웨어 1080p60: 기본 권장, H.264 WebCodecs → WebRTC 데이터 채널 → iPad VideoToolbox
+- Solaris 하드웨어 1080p120: 120Hz 이상 모니터와 충분한 GPU·네트워크가 있는 PC용
+- 호환 1080p60: 기존 WebRTC RTP 영상 경로, 하드웨어 경로를 지원하지 않을 때 사용
 
-- ReplayKit 콜백 FPS: 캡처 입력. 정지 화면에서는 낮을 수 있습니다.
-- WebRTC 제출 FPS: 인코더 입력이지 실제 인코딩/수신 FPS가 아닙니다.
-- 실제 인코딩: 프레임 수·픽셀 크기·FPS·코덱·전송 바이트·Mbps.
-- Windows RTP: 실제 수신/디코딩 해상도·FPS·비트레이트·패킷 손실.
-- 품질 우선 버퍼: 지원 브라우저에서 750ms를 요청하며 지원하지 않으면 안전하게 건너뜁니다.
-- 네트워크: 가용 송신 Mbps·왕복 지연·누적/최근 손실률·10초 평균/최대 Mbps를 기록합니다.
-- 요청 출력: 지정한 목표 크기로 실제 인코딩 결과와 구분합니다.
-- 화면 소리: WebRTC `renderBlock`으로 스테레오 전체 PCM을 전달하며 최대 콜백 간격·변환기 재설정·실제 디코딩 초·무음 보정 비율을 기록합니다.
+시스템 소리는 기존 WebRTC Opus 스테레오 트랙을 유지합니다. 영상만 별도 Solaris H.264 경로를 사용합니다.
 
-문제가 남으면 ‘진단 한 번에 복사 (키 제외)’에 전체 단계 통계가 포함됩니다.
+## 현재 검증 범위
 
-## 완료 판정
-
-- 10분 이상 1920×1324급 해상도가 유지됩니다.
-- 실제 인코딩과 수신이 대부분 55~60fps를 유지합니다.
-- 빠른 스크롤·게임·전체 화면 전환에서 알아보기 힘들 정도의 뭉개짐이 반복되지 않습니다.
-- 움직이는 장면의 실제 송신 비트레이트가 약 20Mbps 이상으로 올라갑니다.
-- 연결 끊김이나 해상도 자동 축소가 발생하지 않습니다.
-
-## Windows → iPad 또는 Windows · 상황별 모드
-
-1. 수신 iPad 앱에서 ‘Windows 화면 받기’ → ‘Windows 화면 수신 시작’을 누릅니다.
-2. 송신 Windows에서 Solaris-Desktop-Share-build39.html을 엽니다.
-3. 같은 Supabase URL·Publishable key·방 ID를 입력합니다.
-4. 일반적인 PC는 `1080p60 안정 모드`, 하드웨어·캡처 성능을 확인할 때는 `1080p120 실험 모드`를 선택합니다.
-5. ‘선택한 모드로 Windows 화면 보내기’를 누릅니다.
-6. 전체 화면 또는 창을 고르고 화면 소리가 필요하면 브라우저 공유 창의 오디오 공유를 켭니다.
-7. 다른 Windows에서 받을 때는 그 PC에서 같은 HTML과 설정으로 ‘다른 Windows 화면 받기’를 누릅니다.
-8. 120fps 실험 모드는 진단의 실제 값이 1920×1080, 100fps 이상일 때만 성공으로 판단합니다.
-
-송신 화면·GPU·브라우저가 120fps 캡처를 제공하지 않으면 연결을 실패시키지 않고 실제 가능한 FPS로 동작합니다.
-`1080p120 네이티브 모드`는 Windows의 `Solaris-Native-Host-build39-portable`과 iPad의 `Solaris-Native-Receiver-build39-resign.ipa`를 사용합니다. Apollo와 Moonlight 앱을 별도로 설치하지 않습니다. 최초 한 번 방화벽 허용과 관리자 확인은 필요할 수 있습니다.
-
-빌드 실패 시 Solaris-build39-xcode-evidence, ios-native-receiver 또는 windows-native 작업 로그가 필요합니다.
-Apple 계정 비밀번호나 secret/service_role key는 보내지 마세요.
+소스 검사와 자동 테스트, GitHub Actions의 Windows/.NET 및 iOS/Xcode 빌드까지 통과해야 설치 후보가 됩니다. 실제 하드웨어 인코더 선택과 60/120fps는 PC GPU 드라이버와 iPad 실기기에서 진단으로 최종 확인합니다.

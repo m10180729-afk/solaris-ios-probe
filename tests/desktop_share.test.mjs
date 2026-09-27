@@ -34,13 +34,13 @@ test('desktop signaling uses an isolated room and publishable key validation',()
   assert.throws(()=>h.api.validConfig(),/Publishable key/);
 });
 
-test('stable desktop SDP requests H264 level 5.1, 40Mbps video and stereo Opus',()=>{
+test('compatibility desktop SDP requests H264 level 5.1, 40Mbps video and stereo Opus',()=>{
   const h=harness();
   const input=['v=0','m=audio 9 UDP/TLS/RTP/SAVPF 111','c=IN IP4 0.0.0.0',
     'a=rtpmap:111 opus/48000/2','m=video 9 UDP/TLS/RTP/SAVPF 96',
     'c=IN IP4 0.0.0.0','a=rtpmap:96 H264/90000',
     'a=fmtp:96 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f',''].join('\r\n');
-  const result=h.api.tuneDesktopSDP(input);
+  const result=h.api.tuneDesktopSDP(input,h.api.MODES.compatibility60);
   assert.match(result,/b=TIAS:40000000/);
   assert.match(result,/profile-level-id=42e033/);
   assert.match(result,/x-google-start-bitrate=12000/);
@@ -49,14 +49,14 @@ test('stable desktop SDP requests H264 level 5.1, 40Mbps video and stereo Opus',
   assert.match(result,/stereo=1;sprop-stereo=1;maxaveragebitrate=256000/);
 });
 
-test('experimental mode retains the complete 1080p120 sender policy',()=>{
+test('hardware 120 mode retains the complete 1080p120 capture budget',()=>{
   const h=harness();
   const input=['v=0','m=video 9 UDP/TLS/RTP/SAVPF 96','c=IN IP4 0.0.0.0',
     'a=rtpmap:96 H264/90000','a=fmtp:96 packetization-mode=1;profile-level-id=42e01f',''].join('\r\n');
-  const result=h.api.tuneDesktopSDP(input,h.api.MODES.experimental120);
+  const result=h.api.tuneDesktopSDP(input,h.api.MODES.hardware120);
   assert.match(result,/b=TIAS:80000000/);
-  assert.match(result,/x-google-start-bitrate=20000/);
-  assert.match(result,/x-google-min-bitrate=8000/);
+  assert.match(result,/x-google-start-bitrate=35000/);
+  assert.match(result,/x-google-min-bitrate=18000/);
   assert.match(result,/x-google-max-bitrate=80000/);
   assert.match(source,/getDisplayMedia/);
   assert.match(source,/width:\{ideal:1920,max:1920\}/);
@@ -70,13 +70,14 @@ test('experimental mode retains the complete 1080p120 sender policy',()=>{
   assert.match(source,/핵심 \$\{mode\.label\} 정책으로 재시도/);
 });
 
-test('mode UI separates stable, experimental and native host launcher',()=>{
-  assert.match(html,/1080p60 안정 모드/);
-  assert.match(html,/1080p120 실험 모드/);
-  assert.match(html,/1080p120 네이티브 모드/);
-  assert.match(source,/solaris-native:\/\/open\?mode=1080p120/);
-  assert.match(source,/Solaris-Native-Host-build39-portable/);
-  assert.match(source,/Solaris-Native-Receiver-build39/);
+test('mode UI separates Solaris hardware and compatibility paths',()=>{
+  assert.match(html,/Solaris 하드웨어 1080p60/);
+  assert.match(html,/Solaris 하드웨어 1080p120/);
+  assert.match(html,/호환 1080p60/);
+  assert.match(source,/webcodecs-h264/);
+  assert.match(source,/MediaStreamTrackProcessor/);
+  assert.match(source,/hardwareAcceleration:'prefer-hardware'/);
+  assert.doesNotMatch(source,/solaris-native:\/\//);
 });
 
 test('software H264 is reported as a sender bottleneck',async()=>{

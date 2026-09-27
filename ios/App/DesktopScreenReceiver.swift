@@ -11,7 +11,10 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     @Published private(set) var state = "수신 대기"
     @Published private(set) var details = "Windows에서 1080p60 안정 또는 1080p120 실험 송신을 시작한 뒤 수신을 누르세요."
     @Published private(set) var videoTrack: RTCVideoTrack?
+    @Published private(set) var nativeH264 = false
     @Published private(set) var running = false
+
+    let nativeDisplayView = SolarisH264DisplayView(frame: .zero)
 
     private let config: P2PBroadcastConfig
     private let queue = DispatchQueue(label: "org.solaris.probe.desktop-receiver")
@@ -31,7 +34,20 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var previousFrames: Int64 = 0
     private var previousBytes: Int64 = 0
     private var previousStatsTime = 0.0
+    private var nativeChannel: RTCDataChannel?
+    private var nativeFrames: [UInt32: NativeFrame] = [:]
+    private var nativeReceivedFrames: Int64 = 0
+    private var nativeReceivedBytes: Int64 = 0
+    private var nativePreviousFrames: Int64 = 0
+    private var nativePreviousBytes: Int64 = 0
+    private var nativePreviousStatsTime = 0.0
     private let earliestOffer = Date().addingTimeInterval(-300)
+
+    private struct NativeFrame {
+        let timestampUs: Int64
+        let keyFrame: Bool
+        var chunks: [Data?]
+    }
 
     init(config: P2PBroadcastConfig) {
         self.config = config
@@ -68,6 +84,14 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.previousFrames = 0
             self.previousBytes = 0
             self.previousStatsTime = 0
+            self.nativeChannel = nil
+            self.nativeFrames.removeAll()
+            self.nativeReceivedFrames = 0
+            self.nativeReceivedBytes = 0
+            self.nativePreviousFrames = 0
+            self.nativePreviousBytes = 0
+            self.nativePreviousStatsTime = 0
+            self.nativeDisplayView.resetDecoder()
 
             let rtc = RTCConfiguration()
             rtc.sdpSemantics = .unifiedPlan
@@ -111,6 +135,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.pendingLocalCandidates.removeAll()
             DispatchQueue.main.async {
                 self.videoTrack = nil
+                self.nativeH264 = false
                 self.running = false
                 self.state = "수신 중지"
                 self.details = "다시 받을 때 Windows 송신도 중단 후 새로 시작하세요."
@@ -195,9 +220,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
               let incomingSession = payload["sessionID"] as? String,
               UUID(uuidString: incomingSession) != nil else { return }
         if kind == "offer", sessionID == nil,
-           let sdp = payload["sdp"] as? String, sdp.contains("m=video") {
+           let sdp = payload["sdp"] as? String,
+           sdp.contains("m=video") || sdp.contains("m=application") {
             sessionID = incomingSession
-            publish("Windows offer 수신", "H.264 1080p60/120 협상 중", running: true)
+            let native = payload["videoTransport"] as? String == "webcodecs-h264"
+            DispatchQueue.main.async { self.nativeH264 = native }
+            publish("Windows offer 수신", native ? "Solaris 하드웨어 H.264 데이터 경로 협상 중" : "WebRTC H.264 호환 경로 협상 중", running: true)
             peer?.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
                 guard let self else { return }
                 self.queue.async {
@@ -311,6 +339,22 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
 
     private func collectStats() {
         guard !stopped, let peer, sessionID != nil else { return }
+        if nativeH264 {
+            let now = ProcessInfo.processInfo.systemUptime
+            let elapsed = now - nativePreviousStatsTime
+            if nativePreviousStatsTime > 0, elapsed > 0 {
+                let fps = Double(nativeReceivedFrames - nativePreviousFrames) / elapsed
+                let mbps = Double(nativeReceivedBytes - nativePreviousBytes) * 8 / elapsed / 1_000_000
+                publish(
+                    "Solaris 네이티브 H.264 수신 중",
+                    "실제 \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · VideoToolbox 표시 \(nativeDisplayView.decodedFrames)프레임 · 손실/지연 드롭 \(nativeDisplayView.droppedFrames)프레임",
+                    running: true
+                )
+            }
+            nativePreviousStatsTime = now
+            nativePreviousFrames = nativeReceivedFrames
+            nativePreviousBytes = nativeReceivedBytes
+        }
         peer.statistics { [weak self] report in
             guard let self else { return }
             self.queue.async {
@@ -347,6 +391,54 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                         )
                     }
                 }
+            }
+        }
+    }
+
+    private func receiveNativePacket(_ data: Data) {
+        // SLH4 + frame id + chunk index/count + timestamp us + flags/reserved.
+        guard data.count > 24,
+              data[0] == 0x53, data[1] == 0x4C, data[2] == 0x48, data[3] == 0x34 else { return }
+        func u16(_ offset: Int) -> UInt16 {
+            UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+        }
+        func u32(_ offset: Int) -> UInt32 {
+            UInt32(data[offset]) | (UInt32(data[offset + 1]) << 8) |
+                (UInt32(data[offset + 2]) << 16) | (UInt32(data[offset + 3]) << 24)
+        }
+        func u64(_ offset: Int) -> UInt64 {
+            (0..<8).reduce(UInt64(0)) { $0 | (UInt64(data[offset + $1]) << ($1 * 8)) }
+        }
+        let frameID = u32(4)
+        let chunkIndex = Int(u16(8))
+        let chunkCount = Int(u16(10))
+        let timestampUs = Int64(bitPattern: u64(12))
+        let keyFrame = data[20] & 1 == 1
+        guard chunkCount > 0, chunkCount <= 4096, chunkIndex < chunkCount else { return }
+        let payload = data.subdata(in: 24..<data.count)
+        var frame = nativeFrames[frameID] ?? NativeFrame(
+            timestampUs: timestampUs, keyFrame: keyFrame,
+            chunks: Array(repeating: nil, count: chunkCount)
+        )
+        guard frame.chunks.count == chunkCount else { return }
+        frame.chunks[chunkIndex] = payload
+        if frame.chunks.allSatisfy({ $0 != nil }) {
+            var accessUnit = Data()
+            frame.chunks.forEach { accessUnit.append($0!) }
+            nativeFrames.removeValue(forKey: frameID)
+            nativeReceivedFrames += 1
+            nativeReceivedBytes += Int64(accessUnit.count)
+            nativeDisplayView.enqueueAnnexBFrame(
+                accessUnit,
+                presentationTimeUs: frame.timestampUs,
+                keyFrame: frame.keyFrame
+            )
+        } else {
+            nativeFrames[frameID] = frame
+        }
+        if nativeFrames.count > 8 {
+            for id in nativeFrames.keys.sorted().prefix(nativeFrames.count - 8) {
+                nativeFrames.removeValue(forKey: id)
             }
         }
     }
@@ -394,7 +486,33 @@ extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
+        guard dataChannel.label == "solaris-h264-v1" else { return }
+        queue.async {
+            guard !self.stopped else { return }
+            self.nativeChannel = dataChannel
+            dataChannel.delegate = self
+            DispatchQueue.main.async { self.nativeH264 = true }
+            self.publish("Solaris H.264 채널 연결", "Windows 하드웨어 인코더의 첫 프레임 대기", running: true)
+        }
+    }
+}
+
+extension DesktopScreenReceiver: RTCDataChannelDelegate {
+    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
+        queue.async {
+            guard !self.stopped else { return }
+            self.publish("H.264 채널 (dataChannel.readyState)", self.details, running: true)
+        }
+    }
+
+    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
+        guard buffer.isBinary else { return }
+        queue.async {
+            guard !self.stopped, dataChannel === self.nativeChannel else { return }
+            self.receiveNativePacket(buffer.data)
+        }
+    }
 }
 
 private struct DesktopVideoSurface: UIViewRepresentable {
@@ -436,6 +554,13 @@ private struct DesktopVideoSurface: UIViewRepresentable {
     }
 }
 
+private struct DesktopNativeH264Surface: UIViewRepresentable {
+    let view: SolarisH264DisplayView
+
+    func makeUIView(context: Context) -> SolarisH264DisplayView { view }
+    func updateUIView(_ uiView: SolarisH264DisplayView, context: Context) {}
+}
+
 struct DesktopReceiverView: View {
     @StateObject private var receiver: DesktopScreenReceiver
 
@@ -445,7 +570,13 @@ struct DesktopReceiverView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            DesktopVideoSurface(track: receiver.videoTrack)
+            Group {
+                if receiver.nativeH264 {
+                    DesktopNativeH264Surface(view: receiver.nativeDisplayView)
+                } else {
+                    DesktopVideoSurface(track: receiver.videoTrack)
+                }
+            }
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .background(Color.black)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -458,7 +589,7 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
-            Text("Windows에서 Solaris-Desktop-Share-build39.html을 열고 같은 방 ID로 1080p60 안정 또는 1080p120 브라우저 실험 모드를 선택하세요. 네이티브 120fps는 Solaris Native Receiver build39로 시험합니다.")
+            Text("Windows에서 SolarisNativeHost.exe를 열고 같은 방 ID로 ‘Solaris 하드웨어 60’ 또는 ‘Solaris 하드웨어 120’을 선택하세요. 별도 Moonlight/Apollo 앱은 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
