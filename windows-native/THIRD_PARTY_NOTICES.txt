@@ -1,0 +1,9 @@
+Solaris Windows Sender includes FFmpeg for local screen capture and hardware H.264 encoding.
+
+FFmpeg project: https://ffmpeg.org/
+Windows build source: https://www.gyan.dev/ffmpeg/builds/
+Source code and license information: https://www.gyan.dev/ffmpeg/builds/#libraries
+
+FFmpeg is distributed under its applicable GNU LGPL/GPL license terms. Solaris invokes
+ffmpeg.exe as a separate process and does not modify FFmpeg. This notice and the links above
+must remain with redistributed Windows Sender packages.

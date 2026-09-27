@@ -75,11 +75,11 @@ test('mode UI separates Solaris hardware and compatibility paths',()=>{
   assert.match(html,/Solaris 하드웨어 1080p120/);
   assert.match(html,/호환 1080p60/);
   assert.match(source,/webcodecs-h264/);
-  assert.match(source,/MediaStreamTrackProcessor/);
   assert.match(source,/hardwareAcceleration:'prefer-hardware'/);
-  assert.match(source,/for\(const packetFormat of \['annexb','avc'\]\)/);
-  assert.match(source,/parseAVCCDescription/);
-  assert.match(source,/avccChunkToAnnexB/);
+  assert.match(source,/native-start/);
+  assert.match(source,/sharedbufferreceived/);
+  assert.match(source,/releaseBuffer\(sharedBuffer\)/);
+  assert.doesNotMatch(source,/VideoEncoder\.isConfigSupported/);
   assert.doesNotMatch(source,/solaris-native:\/\//);
 });
 

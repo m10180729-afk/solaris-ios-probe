@@ -1,10 +1,12 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using System.Text.Json;
 
 namespace SolarisNativeHost;
 
 internal sealed class MainForm : Form
 {
+    private readonly NativeH264Capture capture;
     private readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     private readonly Label status = new()
     {
@@ -17,6 +19,7 @@ internal sealed class MainForm : Form
 
     internal MainForm()
     {
+        capture = new NativeH264Capture(PostNativeFrame, PostNativeStatus);
         Text = $"Solaris Windows 화면공유 · {Program.Version}";
         MinimumSize = new Size(960, 720);
         StartPosition = FormStartPosition.CenterScreen;
@@ -25,6 +28,7 @@ internal sealed class MainForm : Form
         Controls.Add(browser);
         Controls.Add(status);
         Shown += async (_, _) => await InitializeAsync();
+        FormClosed += (_, _) => capture.Dispose();
     }
 
     private async Task InitializeAsync()
@@ -42,6 +46,7 @@ internal sealed class MainForm : Form
             browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+            browser.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "solaris.local", webRoot, CoreWebView2HostResourceAccessKind.DenyCors);
             browser.CoreWebView2.ProcessFailed += (_, eventArgs) =>
@@ -59,5 +64,74 @@ internal sealed class MainForm : Form
                 "Windows의 Microsoft Edge WebView2 시스템 구성 요소를 확인한 뒤 다시 실행하세요.\n\n" + error.Message,
                 "Solaris", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
+    {
+        try
+        {
+            using var message = JsonDocument.Parse(eventArgs.WebMessageAsJson);
+            var root = message.RootElement;
+            var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
+            if (type == "native-stop")
+            {
+                capture.Stop();
+                PostNativeStatus("stopped", "네이티브 송신 중지", null);
+                return;
+            }
+            if (type != "native-start") return;
+            var fps = root.TryGetProperty("fps", out var fpsValue) ? fpsValue.GetInt32() : 60;
+            var startMbps = root.TryGetProperty("startMbps", out var startValue) ? startValue.GetInt32() : 25;
+            var maxMbps = root.TryGetProperty("maxMbps", out var maxValue) ? maxValue.GetInt32() : 60;
+            await capture.StartAsync(new NativeCaptureOptions(fps, startMbps, maxMbps));
+        }
+        catch (Exception error)
+        {
+            capture.Stop();
+            PostNativeStatus("error", "네이티브 H.264 송신 시작 실패", error.Message);
+        }
+    }
+
+    private void PostNativeFrame(byte[] frame, bool keyFrame, long timestampUs, string encoder)
+    {
+        if (IsDisposed || browser.CoreWebView2 is null) return;
+        void Post()
+        {
+            try
+            {
+                using var shared = browser.CoreWebView2.Environment.CreateSharedBuffer((ulong)frame.LongLength);
+                using (var output = shared.OpenStream()) output.Write(frame);
+                var metadata = JsonSerializer.Serialize(new
+                {
+                    type = "native-h264-frame",
+                    keyFrame,
+                    timestampUs,
+                    encoder,
+                    width = 1920,
+                    height = 1080
+                });
+                browser.CoreWebView2.PostSharedBufferToScript(
+                    shared,
+                    CoreWebView2SharedBufferAccess.ReadOnly,
+                    metadata);
+            }
+            catch (Exception error)
+            {
+                PostNativeStatus("error", "네이티브 프레임 전달 실패", error.Message);
+            }
+        }
+        if (InvokeRequired) BeginInvoke(Post); else Post();
+    }
+
+    private void PostNativeStatus(string state, string message, string? detail)
+    {
+        if (IsDisposed || browser.CoreWebView2 is null) return;
+        void Post()
+        {
+            var json = JsonSerializer.Serialize(new { type = "native-status", state, message, detail });
+            browser.CoreWebView2.PostWebMessageAsJson(json);
+            status.Text = detail is null ? message : $"{message} · {detail}";
+        }
+        if (InvokeRequired) BeginInvoke(Post); else Post();
     }
 }

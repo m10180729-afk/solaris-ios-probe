@@ -4,7 +4,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2 build41";
+    internal const string Version = "0.3.2 build42";
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,7 +27,7 @@ internal static class SolarisContent
     {
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Solaris", "build41", "www");
+            "Solaris", "build42", "www");
         Directory.CreateDirectory(root);
         var output = Path.Combine(root, FileName);
         using var source = OpenEmbeddedPage();
@@ -60,13 +60,23 @@ internal static class SelfTest
             using var page = SolarisContent.OpenEmbeddedPage();
             using var reader = new StreamReader(page);
             var html = reader.ReadToEnd();
-            var valid = Program.Version.Contains("build41", StringComparison.Ordinal) &&
-                        html.Contains("BUILD_NUMBER='41'", StringComparison.Ordinal) &&
+            var parsed = new List<(byte[] Data, bool Key)>();
+            var parser = new AnnexBAccessUnitParser((data, key) => parsed.Add((data, key)));
+            parser.Append(new byte[]
+            {
+                0,0,0,1,0x09,0x10, 0,0,0,1,0x67,0x42,0,0x2a, 0,0,0,1,0x65,1,2,3,
+                0,0,0,1,0x09,0x10, 0,0,0,1,0x41,4,5,6
+            });
+            parser.Complete();
+            var valid = Program.Version.Contains("build42", StringComparison.Ordinal) &&
+                        html.Contains("BUILD_NUMBER='42'", StringComparison.Ordinal) &&
                         html.Contains("webcodecs-h264", StringComparison.Ordinal) &&
+                        html.Contains("native-start", StringComparison.Ordinal) &&
+                        parsed.Count == 2 && parsed[0].Key && !parsed[1].Key &&
                         !html.Contains("solaris-native://", StringComparison.OrdinalIgnoreCase) &&
                         !html.Contains("ClassicOldSong", StringComparison.OrdinalIgnoreCase);
             Console.WriteLine(valid
-                ? "PASS: Solaris build41 integrated sender self-test"
+                ? "PASS: Solaris build42 native hardware sender self-test"
                 : "FAIL: embedded sender/version check");
             return valid ? 0 : 1;
         }

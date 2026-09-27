@@ -4,6 +4,8 @@ __pycache__/
 build/
 dist/
 node_modules/
+bin/
+obj/
 ios/Vendor/
 *.xcodeproj/
 *.xcworkspace/

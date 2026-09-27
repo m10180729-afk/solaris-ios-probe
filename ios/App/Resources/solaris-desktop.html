@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build41</title>
+<title>Solaris Windows 화면공유 · build42</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.mode{min-height:112px;text-align:left}.mode strong,.mode small{display:block}.mode small{font-weight:400;color:#c2cee0;margin-top:7px;line-height:1.35}.mode.selected{outline:2px solid #55b5ff;background:#1c67a8}.mode.native{background:#3b345d}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.recommend{padding:12px;border-radius:9px;background:#102a25;color:#65edb6}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video,canvas{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:760px){.grid,.status,.mode-grid{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build41</h1>
+<h1>Solaris Windows 화면공유 · build42</h1>
 <p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 선택한 화면의 시스템 소리만 전송합니다.</p>
 
 <section class="card">
   <h2>1 · Windows 화면 보내기 모드</h2>
   <div class="mode-grid">
-    <button id="hardware60Btn" class="mode selected"><strong>Solaris 하드웨어 1080p60</strong><small>WebCodecs H.264 + iPad VideoToolbox · 25–60Mbps</small></button>
+    <button id="hardware60Btn" class="mode selected"><strong>Solaris 하드웨어 1080p60</strong><small>Windows 네이티브 H.264 + iPad VideoToolbox · 25–60Mbps</small></button>
     <button id="hardware120Btn" class="mode native"><strong>Solaris 하드웨어 1080p120</strong><small>고성능 PC/120Hz 화면 · 35–80Mbps</small></button>
     <button id="compatibility60Btn" class="mode"><strong>호환 1080p60</strong><small>기존 WebRTC 영상 경로 · 하드웨어 모드 실패 시 사용</small></button>
   </div>
@@ -46,7 +46,7 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='41',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='42',PROTOCOL='desktop-v1';
 const DEFAULT_CONFIG={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',room:'solaristest1'};
 const $=id=>document.getElementById(id);
 let active=null;
@@ -121,7 +121,7 @@ async function applySenderPolicy(sender,mode=selectedMode){
   }
 }
 function baseSession(config,role){
-  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeStats:{frames:0,bytes:0,dropped:0,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 WebCodecs'},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
+  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeHostRequested:false,nativeStatus:'idle',nativeStats:{frames:0,bytes:0,dropped:0,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 Native',encoderImplementation:null,hardwareAcceleration:'required'},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
 }
 function installPeerHandlers(s){
   s.pc.onicecandidate=e=>{if(active!==s||!e.candidate)return;const c=e.candidate.toJSON();if(s.published)sendSignal(s,'ice',c).catch(x=>log('ICE 전송 실패: '+x.message));else s.outgoing.push(c);};
@@ -130,61 +130,45 @@ function installPeerHandlers(s){
   s.pc.ondatachannel=e=>{if(active===s&&e.channel.label==='solaris-h264-v1')setupNativeDecoder(s,e.channel).catch(error=>{mark('summary','Solaris H.264 수신기 시작 실패: '+error.message,'bad');log('H.264 수신기 오류: '+error.message);});};
 }
 async function publishAndFlush(s,kind,description){await sendSignal(s,kind,description);s.published=true;for(const c of s.outgoing)await sendSignal(s,'ice',c);s.outgoing=[];}
-async function chooseHardwareH264(mode){
-  if(!globalThis.VideoEncoder||!globalThis.MediaStreamTrackProcessor)throw Error('이 Edge/Chrome은 Solaris 하드웨어 영상 경로를 지원하지 않습니다. 최신 버전으로 업데이트하거나 호환 1080p60을 선택하세요.');
-  mode.nativeProbeAttempts=[];
-  const profiles=mode.fps>60?['avc1.42e033','avc1.4d0033','avc1.640033','avc1.42e02a']:['avc1.42e02a','avc1.4d002a','avc1.64002a','avc1.42e033'];
-  for(const packetFormat of ['annexb','avc']){
-    for(const codec of profiles){
-      const config={codec,width:1920,height:1080,bitrate:mode.maxBitrate,framerate:mode.fps,latencyMode:'realtime',hardwareAcceleration:'prefer-hardware',avc:{format:packetFormat}};
-      try{
-        const support=await VideoEncoder.isConfigSupported(config);
-        const attempt=codec+' / '+packetFormat+': '+(support.supported?'지원':'미지원');
-        mode.nativeProbeAttempts.push(attempt);
-        if(support.supported){log('H.264 설정 선택: '+attempt);return{config:support.config||config,packetFormat,attempt};}
-        log('H.264 설정 미지원: '+attempt);
-      }catch(e){log(codec+' / '+packetFormat+' 확인 실패: '+e.message);}
-    }
-  }
-  throw Error('이 WebView2는 Solaris H.264 직접 경로의 Annex-B/AVCC 설정을 모두 거부했습니다. 진단 복사 후 보내 주세요.');
-}
-function parseAVCCDescription(description){
-  const data=new Uint8Array(description);if(data.length<7||data[0]!==1)return null;
-  const lengthSize=(data[4]&3)+1;let offset=6;const parameterSets=[];
-  const readUnit=()=>{if(offset+2>data.length)return false;const length=(data[offset]<<8)|data[offset+1];offset+=2;if(!length||offset+length>data.length)return false;parameterSets.push(data.slice(offset,offset+length));offset+=length;return true;};
-  const spsCount=data[5]&31;for(let i=0;i<spsCount;i++)if(!readUnit())return null;
-  if(offset>=data.length)return null;const ppsCount=data[offset++];for(let i=0;i<ppsCount;i++)if(!readUnit())return null;
-  return{lengthSize,parameterSets};
-}
-function avccChunkToAnnexB(bytes,avcc,key){
-  if(!avcc)return null;let offset=0,total=key?avcc.parameterSets.reduce((sum,item)=>sum+4+item.length,0):0;const units=[];
-  while(offset+avcc.lengthSize<=bytes.length){let length=0;for(let i=0;i<avcc.lengthSize;i++)length=(length<<8)|bytes[offset+i];offset+=avcc.lengthSize;if(!length||offset+length>bytes.length)return null;const unit=bytes.subarray(offset,offset+length);units.push(unit);total+=4+unit.length;offset+=length;}
-  if(offset!==bytes.length||!units.length)return null;const annexB=new Uint8Array(total);let write=0;
-  const append=unit=>{annexB.set([0,0,0,1],write);write+=4;annexB.set(unit,write);write+=unit.length;};
-  if(key)for(const unit of avcc.parameterSets)append(unit);for(const unit of units)append(unit);
-  return annexB;
-}
-function sendEncodedFrame(s,chunk,metadata){
+function sendNativeAccessUnit(s,bytes,keyFrame,timestamp){
   const channel=s.nativeChannel;if(!channel||channel.readyState!=='open'){s.nativeStats.dropped++;return;}
   if(channel.bufferedAmount>8*1024*1024){s.nativeStats.dropped++;return;}
-  if(metadata?.decoderConfig?.description&&s.nativePacketFormat==='avc'){
-    const parsed=parseAVCCDescription(metadata.decoderConfig.description);
-    if(parsed){s.nativeAvcc=parsed;log('AVCC → Annex-B 변환 준비 · NAL 길이 '+parsed.lengthSize+'바이트');}
-    else log('AVCC 구성 정보 해석 실패');
-  }
-  let bytes=new Uint8Array(chunk.byteLength);chunk.copyTo(bytes);
-  if(s.nativePacketFormat==='avc'){
-    bytes=avccChunkToAnnexB(bytes,s.nativeAvcc,chunk.type==='key');
-    if(!bytes){s.nativeStats.dropped++;return;}
-  }
   const payloadSize=16*1024,chunkCount=Math.ceil(bytes.length/payloadSize),frameId=(s.nativeStats.frames+1)>>>0;
   if(chunkCount<1||chunkCount>4096){s.nativeStats.dropped++;return;}
   for(let index=0;index<chunkCount;index++){
     const start=index*payloadSize,end=Math.min(bytes.length,start+payloadSize);const packet=new Uint8Array(24+end-start);const view=new DataView(packet.buffer);
-    packet.set([0x53,0x4c,0x48,0x34],0);view.setUint32(4,frameId,true);view.setUint16(8,index,true);view.setUint16(10,chunkCount,true);view.setBigUint64(12,BigInt(Math.max(0,Math.round(chunk.timestamp))),true);packet[20]=chunk.type==='key'?1:0;packet.set(bytes.subarray(start,end),24);
+    packet.set([0x53,0x4c,0x48,0x34],0);view.setUint32(4,frameId,true);view.setUint16(8,index,true);view.setUint16(10,chunkCount,true);view.setBigUint64(12,BigInt(Math.max(0,Math.round(timestamp))),true);packet[20]=keyFrame?1:0;packet.set(bytes.subarray(start,end),24);
     channel.send(packet);
   }
   s.nativeStats.frames++;s.nativeStats.bytes+=bytes.length;
+}
+function nativeBridge(){return globalThis.chrome?.webview||null;}
+function requestNativeEncoder(s){
+  const bridge=nativeBridge();if(!bridge)throw Error('Solaris Windows 네이티브 송신 엔진을 찾지 못했습니다. HTML 파일이 아니라 SolarisNativeHost.exe를 실행하세요.');
+  if(s.nativeHostRequested)return;s.nativeHostRequested=true;s.nativeStatus='starting';
+  bridge.postMessage({type:'native-start',fps:s.mode.fps,startMbps:Math.round(s.mode.startKbps/1000),maxMbps:Math.round(s.mode.maxKbps/1000)});
+  log(`Windows 네이티브 H.264 송신 요청 · ${s.mode.fps}fps · ${Math.round(s.mode.startKbps/1000)}–${Math.round(s.mode.maxKbps/1000)}Mbps`);
+}
+function setupNativeSenderChannel(s){
+  const channel=s.nativeChannel;channel.binaryType='arraybuffer';channel.bufferedAmountLowThreshold=1024*1024;
+  channel.onopen=()=>{if(active!==s)return;log('iPad H.264 데이터 채널 연결');try{requestNativeEncoder(s);}catch(error){mark('summary',error.message,'bad');log('네이티브 송신 시작 실패: '+error.message);}};
+  channel.onclose=()=>{if(active===s)nativeBridge()?.postMessage({type:'native-stop'});};
+}
+if(nativeBridge()){
+  nativeBridge().addEventListener('sharedbufferreceived',event=>{
+    let metadata={};try{metadata=typeof event.additionalData==='string'?JSON.parse(event.additionalData):event.additionalData||{};}catch{}
+    const sharedBuffer=event.getBuffer();const bytes=new Uint8Array(sharedBuffer).slice();nativeBridge().releaseBuffer(sharedBuffer);const s=active;
+    if(!s||s.role!=='sender'||s.mode?.transport!=='webcodecs-h264')return;
+    s.nativeStats.encodedWidth=metadata.width||1920;s.nativeStats.encodedHeight=metadata.height||1080;s.nativeStats.encoderImplementation=metadata.encoder||s.nativeStats.encoderImplementation;s.nativeStats.codec='H264 Native';
+    sendNativeAccessUnit(s,bytes,!!metadata.keyFrame,Number(metadata.timestampUs)||Math.round(performance.now()*1000));
+  });
+  nativeBridge().addEventListener('message',event=>{
+    const message=event.data||{};if(message.type!=='native-status')return;const s=active;
+    log(`${message.message||'네이티브 송신 상태'}${message.detail?' · '+message.detail:''}`);
+    if(!s||s.role!=='sender')return;s.nativeStatus=message.state||'unknown';
+    if(message.detail&&message.state==='running')s.nativeStats.encoderImplementation=message.detail;
+    if(message.state==='error'){mark('summary',`${message.message}: ${message.detail||'원인 불명'}`,'bad');mark('codecState','네이티브 H.264 시작 실패','bad');}
+  });
 }
 async function setupNativeDecoder(s,channel){
   if(!globalThis.VideoDecoder)throw Error('이 Windows 웹 엔진은 H.264 VideoDecoder를 지원하지 않습니다. 최신 Windows/Edge로 업데이트하세요.');
@@ -202,22 +186,6 @@ function receiveEncodedPacket(s,packet){
   if(frame.chunks.every(Boolean)){const size=frame.chunks.reduce((sum,item)=>sum+item.length,0),data=new Uint8Array(size);let offset=0;for(const item of frame.chunks){data.set(item,offset);offset+=item.length;}s.nativeFrames.delete(frameId);try{s.decoder.decode(new EncodedVideoChunk({type:frame.key?'key':'delta',timestamp:frame.timestamp,data}));s.nativeStats.frames++;s.nativeStats.bytes+=size;}catch(error){s.nativeStats.dropped++;log('H.264 프레임 디코드 거부: '+error.message);}}
   if(s.nativeFrames.size>8){const oldest=[...s.nativeFrames.keys()].sort((a,b)=>a-b)[0];s.nativeFrames.delete(oldest);s.nativeStats.dropped++;}
 }
-async function startHardwareEncoder(s,track){
-  const choice=await chooseHardwareH264(s.mode),config=choice.config;let encoderError=null;
-  s.nativePacketFormat=choice.packetFormat;
-  s.encoder=new VideoEncoder({output:(chunk,metadata)=>sendEncodedFrame(s,chunk,metadata),error:error=>{encoderError=error;log('WebCodecs 인코더 오류: '+error.message);}});
-  s.encoder.configure(config);s.nativeStats.codec=config.codec;s.nativeStats.hardwareAcceleration=config.hardwareAcceleration||'prefer-hardware';
-  const processor=new MediaStreamTrackProcessor({track});s.processorReader=processor.readable.getReader();
-  let sequence=0;const keyInterval=Math.max(1,Math.round(s.mode.fps));
-  (async()=>{
-    try{
-      while(active===s&&!encoderError){const result=await s.processorReader.read();if(result.done)break;const frame=result.value;
-        try{if(s.encoder.encodeQueueSize<=2){s.encoder.encode(frame,{keyFrame:sequence%keyInterval===0});sequence++;s.nativeStats.encodedWidth=frame.displayWidth;s.nativeStats.encodedHeight=frame.displayHeight;}else{s.nativeStats.dropped++;}}finally{frame.close();}
-      }
-    }catch(e){if(active===s)log('화면 프레임 처리 오류: '+e.message);}
-  })();
-  log('Solaris H.264 경로 준비: '+config.codec+' · '+choice.packetFormat+' · '+s.mode.fps+'fps · '+(s.mode.maxBitrate/1e6).toFixed(0)+'Mbps 상한 · hardware preferred');
-}
 async function startSender(){
   if(active)return;let config;try{config=validConfig();}catch(e){mark('summary',e.message,'bad');return;}
   try{localStorage.setItem('solarisp2p.url',config.url);localStorage.setItem('solarisp2p.key',config.key);localStorage.setItem('solarisp2p.room',config.room);}catch{}
@@ -231,19 +199,18 @@ async function startSender(){
     const s=baseSession(config,'sender');s.mode=mode;s.stream=stream;active=s;lock(true);installPeerHandlers(s);
     if(mode.transport==='webcodecs-h264'){
       s.nativeChannel=s.pc.createDataChannel('solaris-h264-v1',{ordered:false,maxRetransmits:0});
-      s.nativeChannel.bufferedAmountLowThreshold=1024*1024;
-      await startHardwareEncoder(s,track);
+      setupNativeSenderChannel(s);
     }else{
       const videoTransceiver=s.pc.addTransceiver(track,{direction:'sendonly',streams:[stream]});if(videoTransceiver.setCodecPreferences)videoTransceiver.setCodecPreferences(mediaCodecs('sender'));s.videoSender=videoTransceiver.sender;
     }
     for(const audio of stream.getAudioTracks()){audio.contentHint='music';s.pc.addTransceiver(audio,{direction:'sendonly',streams:[stream]});}
     stream.getTracks().forEach(t=>t.onended=()=>{if(active===s)stop();});
     $('screenVideo').srcObject=stream;$('screenVideo').muted=true;$('screenVideo').play().catch(()=>{});
-    mark('roleState','Windows 송신','ok');mark('codecState',mode.transport==='webcodecs-h264'?'H.264 하드웨어 우선 · Solaris 직접 경로':'H.264 WebRTC 호환','ok');mark('audioState',stream.getAudioTracks().length?'시스템 소리 송신':'소리 미선택','warn');
+    mark('roleState','Windows 송신','ok');mark('codecState',mode.transport==='webcodecs-h264'?'Windows 네이티브 H.264 대기':'H.264 WebRTC 호환','ok');mark('audioState',stream.getAudioTracks().length?'시스템 소리 송신':'소리 미선택','warn');
     mark('modeState',mode.label,'ok');const settings=track.getSettings();mark('captureState',`${settings.width||'?'}×${settings.height||'?'} · 요청 ${settings.frameRate||'?'}fps`,settings.frameRate>=mode.fps*.9?'ok':'warn');
     if(s.videoSender)await applySenderPolicy(s.videoSender,mode).catch(e=>log('초기 송신 정책 대기: '+e.message));
     const offer=await s.pc.createOffer();const tuned={type:offer.type,sdp:tuneDesktopSDP(offer.sdp,mode)};await s.pc.setLocalDescription(tuned);
-    await publishAndFlush(s,'offer',{...s.pc.localDescription.toJSON(),videoTransport:mode.transport,videoCodec:s.nativeStats.codec,targetFPS:mode.fps});
+    await publishAndFlush(s,'offer',{...s.pc.localDescription.toJSON(),videoTransport:mode.transport,videoCodec:mode.transport==='webcodecs-h264'?'avc1.640033':s.nativeStats.codec,targetFPS:mode.fps});
     mark('summary',`${mode.label} offer 전송 완료. iPad 앱의 ‘Windows 화면 받기’ 또는 다른 Windows의 수신 버튼을 누르세요.`,'warn');
     beginTimers(s);
   }catch(e){stream?.getTracks().forEach(t=>t.stop());if(active)stop();mark('summary','송신 시작 실패: '+e.message,'bad');log('송신 시작 실패: '+e.message);}
@@ -281,9 +248,9 @@ async function measure(s){
       const now=performance.now(),frames=s.nativeStats.frames,bytes=s.nativeStats.bytes,elapsed=(now-s.lastStatsAt)/1000;let fps=0,mbps=0;
       if(s.lastStatsAt&&elapsed>0){fps=(frames-s.lastFrames)/elapsed;mbps=(bytes-s.lastBytes)*8/elapsed/1e6;}s.lastStatsAt=now;s.lastFrames=frames;s.lastBytes=bytes;
       const settings=s.stream?.getVideoTracks()[0]?.getSettings?.()||{};let pair=null;const report=await s.pc.getStats();for(const r of report.values())if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;
-      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps,mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',hardwareAcceleration:s.nativeStats.hardwareAcceleration,encodeQueueSize:s.encoder?.encodeQueueSize??null,encoderState:s.encoder?.state??null,decoderState:s.decoder?.state??null,decodedFrames:s.nativeStats.decoded,encoderDrops:s.nativeStats.dropped,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,captureActualFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
+      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps,mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',nativeEngine:s.role==='sender'?'Windows FFmpeg hardware':'WebCodecs decoder',nativeStatus:s.nativeStatus,encoderImplementation:s.nativeStats.encoderImplementation,hardwareAcceleration:s.nativeStats.hardwareAcceleration,decoderState:s.decoder?.state??null,decodedFrames:s.nativeStats.decoded,encoderDrops:s.nativeStats.dropped,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,captureActualFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
       s.history??=[];s.history.push({time:Date.now(),...s.stats});s.history=s.history.slice(-30);
-      const met=frames>0&&fps>=s.mode.fps*.85;mark('mediaState',`${s.stats.width}×${s.stats.height} · ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,met?'ok':frames?'warn':'');mark('codecState',`${s.nativeStats.codec} · HW 우선`,frames?'ok':'warn');
+      const met=frames>0&&fps>=s.mode.fps*.85;mark('mediaState',`${s.stats.width}×${s.stats.height} · ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,met?'ok':frames?'warn':'');mark('codecState',`${s.nativeStats.codec} · ${s.nativeStats.encoderImplementation||'HW 탐색 중'}`,frames?'ok':'warn');
       mark('summary',frames?`${s.mode.label} 동작 중 · 인코더 출력 ${fps.toFixed(1)}fps · 지연 방지 드롭 ${s.nativeStats.dropped}`:'연결 및 첫 하드웨어 H.264 프레임 대기',met?'ok':'warn');
       return;
     }
@@ -328,13 +295,13 @@ async function measure(s){
   }catch(e){log('통계 오류: '+e.message);}
 }
 function stop(){
-  const s=active;active=null;if(s){clearInterval(s.pollTimer);clearInterval(s.statsTimer);s.processorReader?.cancel().catch(()=>{});try{s.encoder?.close();}catch{}try{s.decoder?.close();}catch{}try{s.nativeChannel?.close();}catch{}s.stream?.getTracks().forEach(t=>t.stop());s.pc.ontrack=null;s.pc.onicecandidate=null;s.pc.ondatachannel=null;s.pc.close();}
+  const s=active;active=null;if(s){if(s.role==='sender'&&s.mode?.transport==='webcodecs-h264')nativeBridge()?.postMessage({type:'native-stop'});clearInterval(s.pollTimer);clearInterval(s.statsTimer);s.processorReader?.cancel().catch(()=>{});try{s.encoder?.close();}catch{}try{s.decoder?.close();}catch{}try{s.nativeChannel?.close();}catch{}s.stream?.getTracks().forEach(t=>t.stop());s.pc.ontrack=null;s.pc.onicecandidate=null;s.pc.ondatachannel=null;s.pc.close();}
   const video=$('screenVideo');video.pause();video.srcObject=null;video.muted=false;video.style.display='';const canvas=$('nativeCanvas');canvas.hidden=true;lock(false);for(const id of ['roleState','peerState','codecState','captureState','mediaState','audioState'])mark(id,'중지');mark('modeState',selectedMode.label);mark('summary','중지했습니다. 다시 연결할 때 송신과 수신을 모두 새로 시작하세요.');
 }
-function diagnostic(){const s=active;return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,selectedMode:s?.mode||selectedMode,room:s?.config.room,session:s?.id,role:s?.role,peer:s?.pc.connectionState,signaling:s?.pc.signalingState,capture:s?.stream?.getVideoTracks()[0]?.getSettings(),audioTracks:s?.stream?.getAudioTracks().length||0,webCodecsPacketFormat:s?.nativePacketFormat,webCodecsProbeAttempts:s?.mode?.nativeProbeAttempts||[],actual:s?.stats,history:s?.history,log:$('log').textContent},null,2);}
+function diagnostic(){const s=active;return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,selectedMode:s?.mode||selectedMode,room:s?.config.room,session:s?.id,role:s?.role,peer:s?.pc.connectionState,signaling:s?.pc.signalingState,capture:s?.stream?.getVideoTracks()[0]?.getSettings(),audioTracks:s?.stream?.getAudioTracks().length||0,nativeStatus:s?.nativeStatus,nativeEncoder:s?.nativeStats?.encoderImplementation,actual:s?.stats,history:s?.history,log:$('log').textContent},null,2);}
 $('hardware60Btn').onclick=()=>selectMode('hardware60');$('hardware120Btn').onclick=()=>selectMode('hardware120');$('compatibility60Btn').onclick=()=>selectMode('compatibility60');
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build41 준비 · 통합 WebCodecs H.264 송신 + iPad VideoToolbox 수신 · Moonlight/Apollo 없음');
+window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build42 준비 · Windows 네이티브 GPU H.264 송신 + iPad VideoToolbox 수신 · 별도 설치 없음');
 </script></main></body></html>

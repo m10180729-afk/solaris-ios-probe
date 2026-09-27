@@ -26,9 +26,9 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("https://solaris.local/solaris-desktop.html", self.form)
 
     def test_hardware_path_and_fallback_exist(self):
-        self.assertIn("VideoEncoder", self.html)
-        self.assertIn("MediaStreamTrackProcessor", self.html)
-        self.assertIn("hardwareAcceleration:'prefer-hardware'", self.html)
+        self.assertIn("native-start", self.html)
+        self.assertIn("sharedbufferreceived", self.html)
+        self.assertIn("NativeH264Capture", (ROOT / "windows-native/SolarisNativeHost/NativeH264Capture.cs").read_text())
         self.assertIn("webcodecs-h264", self.html)
         self.assertIn("compatibility60", self.html)
 
@@ -36,7 +36,8 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Windows-Sender-build41", self.workflow)
+        self.assertIn("Solaris-Windows-Sender-build42", self.workflow)
+        self.assertIn("ffmpeg-release-essentials.zip", self.workflow)
 
 
 if __name__ == "__main__":

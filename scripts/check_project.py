@@ -45,7 +45,8 @@ def check_sources():
                  "ios/Broadcast/BroadcastWebRTCSender.swift",
                  "windows-native/SolarisNativeHost/SolarisNativeHost.csproj",
                  "windows-native/SolarisNativeHost/Program.cs",
-                 "windows-native/SolarisNativeHost/MainForm.cs"):
+                 "windows-native/SolarisNativeHost/MainForm.cs",
+                 "windows-native/SolarisNativeHost/NativeH264Capture.cs"):
         assert (ROOT / path).is_file(), path
     project = (ROOT / "ios/project.yml").read_text(encoding="utf-8")
     assert "framework: Vendor/WebRTC.xcframework" in project
@@ -61,7 +62,8 @@ def check_sources():
     assert "getDisplayMedia" in desktop_html and "maxFramerate=mode.fps" in desktop_html
     assert "hardware60" in desktop_html and "hardware120" in desktop_html
     assert "compatibility60" in desktop_html and "webcodecs-h264" in desktop_html
-    assert "MediaStreamTrackProcessor" in desktop_html and "VideoEncoder" in desktop_html
+    assert "native-start" in desktop_html and "sharedbufferreceived" in desktop_html
+    assert "VideoEncoder.isConfigSupported" not in desktop_html
     assert "solaris-native://" not in desktop_html
     native_display = (ROOT / "ios/App/SolarisH264DisplayView.m").read_text()
     assert "AVSampleBufferDisplayLayer" in native_display
