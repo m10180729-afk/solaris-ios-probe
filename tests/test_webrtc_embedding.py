@@ -250,14 +250,18 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build42_labels_are_consistent(self):
+    def test_build43_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '42'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '43'", (root / "ios/project.yml").read_text())
+        browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
+        self.assertIn("BUILD_NUMBER = '43'", browser_receiver)
+        self.assertIn("0.3.2 build43", browser_receiver)
+        self.assertNotIn("앱 build40", browser_receiver)
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build42-integrated", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build42.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build42.html", workflow)
-        self.assertIn("Solaris-0.3.2-build42-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build43-integrated", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build43.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build43.html", workflow)
+        self.assertIn("Solaris-0.3.2-build43-resign.ipa", workflow)
 
     def test_desktop_audio_is_output_only(self):
         root = Path(__file__).resolve().parents[1]

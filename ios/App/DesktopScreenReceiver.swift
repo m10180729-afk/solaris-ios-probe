@@ -38,6 +38,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var nativeFrames: [UInt32: NativeFrame] = [:]
     private var nativeReceivedFrames: Int64 = 0
     private var nativeReceivedBytes: Int64 = 0
+    private var nativeReceivedPackets: Int64 = 0
+    private var nativeIncompleteFramesDropped: Int64 = 0
     private var nativePreviousFrames: Int64 = 0
     private var nativePreviousBytes: Int64 = 0
     private var nativePreviousStatsTime = 0.0
@@ -88,6 +90,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.nativeFrames.removeAll()
             self.nativeReceivedFrames = 0
             self.nativeReceivedBytes = 0
+            self.nativeReceivedPackets = 0
+            self.nativeIncompleteFramesDropped = 0
             self.nativePreviousFrames = 0
             self.nativePreviousBytes = 0
             self.nativePreviousStatsTime = 0
@@ -140,6 +144,33 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 self.state = "수신 중지"
                 self.details = "다시 받을 때 Windows 송신도 중단 후 새로 시작하세요."
             }
+        }
+    }
+
+    func copyDiagnostic() {
+        queue.async {
+            let payload: [String: Any] = [
+                "version": "0.3.2",
+                "build": "43",
+                "protocol": desktopProtocolVersion,
+                "role": "receiver",
+                "session": self.sessionID ?? "",
+                "peerState": self.peer.map { String(describing: $0.connectionState) } ?? "none",
+                "iceState": self.peer.map { String(describing: $0.iceConnectionState) } ?? "none",
+                "channelState": self.nativeChannel.map { String(describing: $0.readyState) } ?? "none",
+                "nativeH264": self.nativeH264,
+                "completedAccessUnits": self.nativeReceivedFrames,
+                "receivedBytes": self.nativeReceivedBytes,
+                "receivedPackets": self.nativeReceivedPackets,
+                "pendingIncompleteFrames": self.nativeFrames.count,
+                "incompleteFramesEvicted": self.nativeIncompleteFramesDropped,
+                "framesEnqueuedToDisplayLayer": self.nativeDisplayView.enqueuedFrames,
+                "displayLayerDroppedFrames": self.nativeDisplayView.droppedFrames,
+                "displayLayerError": self.nativeDisplayView.lastError
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                  let text = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async { UIPasteboard.general.string = text }
         }
     }
 
@@ -347,7 +378,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 let mbps = Double(nativeReceivedBytes - nativePreviousBytes) * 8 / elapsed / 1_000_000
                 publish(
                     "Solaris 네이티브 H.264 수신 중",
-                    "실제 \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · VideoToolbox 표시 \(nativeDisplayView.decodedFrames)프레임 · 손실/지연 드롭 \(nativeDisplayView.droppedFrames)프레임",
+                    "수신 완성 \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · 화면 표시 큐 \(nativeDisplayView.enqueuedFrames) · 미완성 프레임 폐기 \(nativeIncompleteFramesDropped)",
                     running: true
                 )
             }
@@ -415,6 +446,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         let timestampUs = Int64(bitPattern: u64(12))
         let keyFrame = data[20] & 1 == 1
         guard chunkCount > 0, chunkCount <= 4096, chunkIndex < chunkCount else { return }
+        nativeReceivedPackets += 1
         let payload = data.subdata(in: 24..<data.count)
         var frame = nativeFrames[frameID] ?? NativeFrame(
             timestampUs: timestampUs, keyFrame: keyFrame,
@@ -439,6 +471,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         if nativeFrames.count > 8 {
             for id in nativeFrames.keys.sorted().prefix(nativeFrames.count - 8) {
                 nativeFrames.removeValue(forKey: id)
+                nativeIncompleteFramesDropped += 1
             }
         }
     }
@@ -589,6 +622,8 @@ struct DesktopReceiverView: View {
                 receiver.running ? receiver.stop() : receiver.start()
             }
             .buttonStyle(.borderedProminent)
+            Button("Windows→iPad 수신 진단 복사") { receiver.copyDiagnostic() }
+                .buttonStyle(.bordered)
             Text("Windows에서 SolarisNativeHost.exe를 열고 같은 방 ID로 ‘Solaris 하드웨어 60’ 또는 ‘Solaris 하드웨어 120’을 선택하세요. 별도 Moonlight/Apollo 앱은 사용하지 않습니다.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

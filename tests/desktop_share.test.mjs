@@ -20,7 +20,7 @@ function harness(){
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     RTCRtpSender:{getCapabilities:()=>({codecs:[]})},RTCRtpReceiver:{getCapabilities:()=>({codecs:[]})},
     RTCPeerConnection:class{},MediaStream:class{}});
-  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,setActive:s=>active=s};',context);
+  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,sendNativeAccessUnit,setActive:s=>active=s};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -111,6 +111,19 @@ test('diagnostics omit Supabase URL and publishable key',()=>{
   const report=h.api.diagnostic();
   assert.doesNotMatch(report,/test\.supabase\.co|sb_publishable_TEST_ONLY/);
   assert.match(report,/desktop-v1/);
+});
+
+test('native transport drops a complete frame before enqueueing partial chunks',()=>{
+  const h=harness(),sent=[];
+  const session={nativeChannel:{readyState:'open',bufferedAmount:2*1024*1024-100,send:p=>sent.push(p)},nativeStats:{frames:0,dropped:0,bytes:0,queueHighWaterBytes:0}};
+  h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),false,10);
+  assert.equal(sent.length,0);
+  assert.equal(session.nativeStats.dropped,1);
+  session.nativeChannel.bufferedAmount=0;
+  h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),false,20);
+  assert.equal(sent.length,2);
+  assert.equal(session.nativeStats.frames,1);
+  assert.equal(session.nativeStats.queueHighWaterBytes,20*1024+48);
 });
 
 

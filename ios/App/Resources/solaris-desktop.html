@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build42</title>
+<title>Solaris Windows 화면공유 · build43</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.mode{min-height:112px;text-align:left}.mode strong,.mode small{display:block}.mode small{font-weight:400;color:#c2cee0;margin-top:7px;line-height:1.35}.mode.selected{outline:2px solid #55b5ff;background:#1c67a8}.mode.native{background:#3b345d}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.recommend{padding:12px;border-radius:9px;background:#102a25;color:#65edb6}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video,canvas{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:760px){.grid,.status,.mode-grid{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build42</h1>
+<h1>Solaris Windows 화면공유 · build43</h1>
 <p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 선택한 화면의 시스템 소리만 전송합니다.</p>
 
 <section class="card">
@@ -46,7 +46,7 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='42',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='43',PROTOCOL='desktop-v1';
 const DEFAULT_CONFIG={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',room:'solaristest1'};
 const $=id=>document.getElementById(id);
 let active=null;
@@ -121,7 +121,7 @@ async function applySenderPolicy(sender,mode=selectedMode){
   }
 }
 function baseSession(config,role){
-  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeHostRequested:false,nativeStatus:'idle',nativeStats:{frames:0,bytes:0,dropped:0,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 Native',encoderImplementation:null,hardwareAcceleration:'required'},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
+  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeHostRequested:false,nativeStatus:'idle',nativeStats:{frames:0,bytes:0,dropped:0,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 Native',encoderImplementation:null,hardwareAcceleration:'required',nativeEncodedFPS:null,nativeEncodedFrames:0,queueHighWaterBytes:0},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
 }
 function installPeerHandlers(s){
   s.pc.onicecandidate=e=>{if(active!==s||!e.candidate)return;const c=e.candidate.toJSON();if(s.published)sendSignal(s,'ice',c).catch(x=>log('ICE 전송 실패: '+x.message));else s.outgoing.push(c);};
@@ -132,9 +132,12 @@ function installPeerHandlers(s){
 async function publishAndFlush(s,kind,description){await sendSignal(s,kind,description);s.published=true;for(const c of s.outgoing)await sendSignal(s,'ice',c);s.outgoing=[];}
 function sendNativeAccessUnit(s,bytes,keyFrame,timestamp){
   const channel=s.nativeChannel;if(!channel||channel.readyState!=='open'){s.nativeStats.dropped++;return;}
-  if(channel.bufferedAmount>8*1024*1024){s.nativeStats.dropped++;return;}
-  const payloadSize=16*1024,chunkCount=Math.ceil(bytes.length/payloadSize),frameId=(s.nativeStats.frames+1)>>>0;
+  const payloadSize=16*1024,chunkCount=Math.ceil(bytes.length/payloadSize),frameId=(s.nativeStats.frames+s.nativeStats.dropped+1)>>>0;
   if(chunkCount<1||chunkCount>4096){s.nativeStats.dropped++;return;}
+  const queuedBytes=bytes.length+chunkCount*24;
+  // Admit or drop a whole access unit, never a partial frame. Keep latency bounded.
+  if(channel.bufferedAmount+queuedBytes>2*1024*1024){s.nativeStats.dropped++;return;}
+  s.nativeStats.queueHighWaterBytes=Math.max(s.nativeStats.queueHighWaterBytes,channel.bufferedAmount+queuedBytes);
   for(let index=0;index<chunkCount;index++){
     const start=index*payloadSize,end=Math.min(bytes.length,start+payloadSize);const packet=new Uint8Array(24+end-start);const view=new DataView(packet.buffer);
     packet.set([0x53,0x4c,0x48,0x34],0);view.setUint32(4,frameId,true);view.setUint16(8,index,true);view.setUint16(10,chunkCount,true);view.setBigUint64(12,BigInt(Math.max(0,Math.round(timestamp))),true);packet[20]=keyFrame?1:0;packet.set(bytes.subarray(start,end),24);
@@ -164,8 +167,13 @@ if(nativeBridge()){
   });
   nativeBridge().addEventListener('message',event=>{
     const message=event.data||{};if(message.type!=='native-status')return;const s=active;
-    log(`${message.message||'네이티브 송신 상태'}${message.detail?' · '+message.detail:''}`);
-    if(!s||s.role!=='sender')return;s.nativeStatus=message.state||'unknown';
+    if(message.state!=='metrics')log(`${message.message||'네이티브 송신 상태'}${message.detail?' · '+message.detail:''}`);
+    if(!s||s.role!=='sender')return;
+    if(message.state==='metrics'){
+      const detail=String(message.detail||''),fps=detail.match(/output\s+([\d.]+)fps/i),frames=detail.match(/frames\s+(\d+)/i);
+      if(fps)s.nativeStats.nativeEncodedFPS=Number(fps[1]);if(frames)s.nativeStats.nativeEncodedFrames=Number(frames[1]);return;
+    }
+    s.nativeStatus=message.state||'unknown';
     if(message.detail&&message.state==='running')s.nativeStats.encoderImplementation=message.detail;
     if(message.state==='error'){mark('summary',`${message.message}: ${message.detail||'원인 불명'}`,'bad');mark('codecState','네이티브 H.264 시작 실패','bad');}
   });
@@ -248,10 +256,11 @@ async function measure(s){
       const now=performance.now(),frames=s.nativeStats.frames,bytes=s.nativeStats.bytes,elapsed=(now-s.lastStatsAt)/1000;let fps=0,mbps=0;
       if(s.lastStatsAt&&elapsed>0){fps=(frames-s.lastFrames)/elapsed;mbps=(bytes-s.lastBytes)*8/elapsed/1e6;}s.lastStatsAt=now;s.lastFrames=frames;s.lastBytes=bytes;
       const settings=s.stream?.getVideoTracks()[0]?.getSettings?.()||{};let pair=null;const report=await s.pc.getStats();for(const r of report.values())if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;
-      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps,mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',nativeEngine:s.role==='sender'?'Windows FFmpeg hardware':'WebCodecs decoder',nativeStatus:s.nativeStatus,encoderImplementation:s.nativeStats.encoderImplementation,hardwareAcceleration:s.nativeStats.hardwareAcceleration,decoderState:s.decoder?.state??null,decodedFrames:s.nativeStats.decoded,encoderDrops:s.nativeStats.dropped,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,captureActualFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
+      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps:s.role==='sender'?s.nativeStats.nativeEncodedFPS:fps,dataChannelAdmittedFPS:s.role==='sender'?fps:null,completeAccessUnitsReceivedFPS:s.role==='receiver'?fps:null,queuedMbps:mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',nativeEngine:s.role==='sender'?'Windows FFmpeg hardware':'WebCodecs decoder',nativeStatus:s.nativeStatus,encoderImplementation:s.nativeStats.encoderImplementation,hardwareAcceleration:s.nativeStats.hardwareAcceleration,decoderState:s.decoder?.state??null,decodedFrames:s.role==='receiver'?s.nativeStats.decoded:null,encoderDrops:s.nativeStats.dropped,nativeEncodedFPS:s.nativeStats.nativeEncodedFPS,nativeEncodedFrames:s.nativeStats.nativeEncodedFrames,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,dataChannelQueueHighWaterBytes:s.nativeStats.queueHighWaterBytes,captureRequestedFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
       s.history??=[];s.history.push({time:Date.now(),...s.stats});s.history=s.history.slice(-30);
-      const met=frames>0&&fps>=s.mode.fps*.85;mark('mediaState',`${s.stats.width}×${s.stats.height} · ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,met?'ok':frames?'warn':'');mark('codecState',`${s.nativeStats.codec} · ${s.nativeStats.encoderImplementation||'HW 탐색 중'}`,frames?'ok':'warn');
-      mark('summary',frames?`${s.mode.label} 동작 중 · 인코더 출력 ${fps.toFixed(1)}fps · 지연 방지 드롭 ${s.nativeStats.dropped}`:'연결 및 첫 하드웨어 H.264 프레임 대기',met?'ok':'warn');
+      const measuredOutputFPS=Number(s.nativeStats.nativeEncodedFPS||0),met=frames>0&&(s.role==='sender'?measuredOutputFPS>=s.mode.fps*.85:fps>=s.mode.fps*.85);
+      mark('mediaState',s.role==='sender'?`${s.stats.width}×${s.stats.height} · 인코더 ${measuredOutputFPS.toFixed(1)}fps · 채널 투입 ${fps.toFixed(1)}fps · 큐 ${((s.nativeChannel?.bufferedAmount||0)/1048576).toFixed(2)}MiB`:`${s.stats.width}×${s.stats.height} · 수신 ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,met?'ok':frames?'warn':'');mark('codecState',`${s.nativeStats.codec} · ${s.nativeStats.encoderImplementation||'HW 탐색 중'}`,frames?'ok':'warn');
+      mark('summary',frames?`${s.mode.label} 동작 중 · 실제 FFmpeg 출력 ${measuredOutputFPS.toFixed(1)}fps · 데이터채널 투입 ${fps.toFixed(1)}fps · 큐 드롭 ${s.nativeStats.dropped}`:'연결 및 첫 하드웨어 H.264 프레임 대기',met?'ok':'warn');
       return;
     }
     const report=await s.pc.getStats();let video=null;for(const r of report.values()){if(r.type===(s.role==='sender'?'outbound-rtp':'inbound-rtp')&&(r.kind==='video'||r.mediaType==='video')&&!r.isRemote)video=r;}
@@ -303,5 +312,5 @@ $('hardware60Btn').onclick=()=>selectMode('hardware60');$('hardware120Btn').oncl
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build42 준비 · Windows 네이티브 GPU H.264 송신 + iPad VideoToolbox 수신 · 별도 설치 없음');
+window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build43 준비 · Windows 네이티브 GPU H.264 · 전송 큐 2MB 상한 · iPad 재생 진단 분리');
 </script></main></body></html>

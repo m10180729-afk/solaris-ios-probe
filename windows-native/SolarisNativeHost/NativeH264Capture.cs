@@ -136,12 +136,26 @@ internal sealed class NativeH264Capture : IDisposable
         int localGeneration,
         CancellationToken token)
     {
+        var fpsWindowStart = Stopwatch.GetTimestamp();
+        var fpsWindowFrames = 0;
+        long emittedFrames = 0;
         var parser = new AnnexBAccessUnitParser((bytes, keyFrame) =>
         {
             if (generation != localGeneration || token.IsCancellationRequested) return;
             firstFrame.TrySetResult(true);
+            emittedFrames++;
+            fpsWindowFrames++;
             var timestampUs = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency;
             onFrame(bytes, keyFrame, timestampUs, encoder);
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = (now - fpsWindowStart) / (double)Stopwatch.Frequency;
+            if (elapsed >= 1)
+            {
+                var fps = fpsWindowFrames / elapsed;
+                onStatus("metrics", $"output {fps:F1}fps · frames {emittedFrames}", encoder);
+                fpsWindowStart = now;
+                fpsWindowFrames = 0;
+            }
         });
         var buffer = new byte[256 * 1024];
         while (!token.IsCancellationRequested)
@@ -164,7 +178,7 @@ internal sealed class NativeH264Capture : IDisposable
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
                      "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
                      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
-                     $"-profile:v high -level:v 5.1 -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps * 2} -bf 0 " +
+                     $"-profile:v high -level:v 5.1 -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps} -keyint_min {fps} -force_key_frames \"expr:gte(t,n_forced*1)\" -bf 0 " +
                      "-bsf:v h264_metadata=aud=insert -f h264 pipe:1";
         yield return ("NVIDIA NVENC", $"{common.Replace("-bsf:v", "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -forced-idr 1 -bsf:v")}");
         yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -bsf:v")}");

@@ -7,7 +7,7 @@
 @property(nonatomic) CMVideoFormatDescriptionRef formatDescription;
 @property(nonatomic, strong) NSData *sps;
 @property(nonatomic, strong) NSData *pps;
-@property(nonatomic, readwrite) NSInteger decodedFrames;
+@property(nonatomic, readwrite) NSInteger enqueuedFrames;
 @property(nonatomic, readwrite) NSInteger droppedFrames;
 @property(nonatomic, copy, readwrite) NSString *lastError;
 @end
@@ -43,7 +43,7 @@
         }
         self.sps = nil;
         self.pps = nil;
-        self.decodedFrames = 0;
+        self.enqueuedFrames = 0;
         self.droppedFrames = 0;
         self.lastError = @"";
     });
@@ -163,7 +163,7 @@ static NSArray<NSData *> *SolarisNALUnits(NSData *annexB) {
         if (layer.status == AVQueuedSampleBufferRenderingStatusFailed) [layer flush];
         if (layer.isReadyForMoreMediaData) {
             [layer enqueueSampleBuffer:sample];
-            self.decodedFrames++;
+            self.enqueuedFrames++;
             self.lastError = @"";
         } else {
             self.droppedFrames++;

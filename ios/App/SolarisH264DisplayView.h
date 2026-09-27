@@ -7,7 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// as Annex-B access units and are decoded by VideoToolbox/AVFoundation.
 @interface SolarisH264DisplayView : UIView
 
-@property(nonatomic, readonly) NSInteger decodedFrames;
+@property(nonatomic, readonly) NSInteger enqueuedFrames;
 @property(nonatomic, readonly) NSInteger droppedFrames;
 @property(nonatomic, copy, readonly) NSString *lastError;
 
