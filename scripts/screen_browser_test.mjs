@@ -12,6 +12,8 @@ catch {
   ({chromium}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES+'/playwright'));
 }
 const html=readFileSync(new URL('../ios/App/Resources/solaris-p2p.html',import.meta.url),'utf8');
+const buildNumber=html.match(/const BUILD_NUMBER = '(\d+)'/)?.[1];
+if(!buildNumber) throw Error('Could not read receiver build number for the synthetic sender fixture.');
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(html);});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 let browser, page, sender;
@@ -80,7 +82,7 @@ try {
           window.stream.getTracks().forEach(track=>peer.addTrack(track,window.stream));
           peer.ondatachannel=e=>{
             const dc=e.channel;
-            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:'39',sessionID:envelope.sessionID,
+            dc.onopen=()=>dc.send(JSON.stringify({version:'0.3.2',build:envelope.testBuild,sessionID:envelope.sessionID,
               state:'synthetic sender',framesSubmitted:1,lastError:''}));
             dc.onmessage=async event=>{
               const request=JSON.parse(event.data);
@@ -91,7 +93,7 @@ try {
               // not ReplayKit's or iOS's quality controls.
               canvas.width=limit;canvas.height=Math.floor(limit*1324/1920/2)*2;
               draw();
-              dc.send(JSON.stringify({version:'0.3.2',build:'39',sessionID:envelope.sessionID,
+              dc.send(JSON.stringify({version:'0.3.2',build:envelope.testBuild,sessionID:envelope.sessionID,
                 state:'synthetic quality acknowledgement',qualityID:request.qualityID,bitrateID:request.bitrateID,
                 settingsRequestID:request.requestID,targetFPS:request.qualityID==='720p30'?30:60}));
             };
@@ -107,7 +109,7 @@ try {
             });
           });
           return {answer:peer.localDescription.toJSON(),candidates};
-        },row.payload);
+        },{...row.payload,testBuild:buildNumber});
         const wrap=(kind,payload)=>({id:++sequence,kind,payload:{...payload,
           sessionID:row.payload.sessionID,protocol:'screen-v031',source:'replaykit'}});
         inbox=[

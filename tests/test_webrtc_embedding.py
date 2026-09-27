@@ -221,12 +221,17 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("senderQueueDrops", receiver)
 
     def test_browser_fixture_separates_source_from_adaptive_encoding(self):
-        script = (Path(__file__).resolve().parents[1] /
+        root = Path(__file__).resolve().parents[1]
+        script = (root /
                   "scripts/screen_browser_test.mjs").read_text()
+        receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertNotIn("assert.equal(report.video.width,1920)", script)
         self.assertIn("fixtureReport.sourceWidth", script)
         self.assertIn("fixtureReport.framesEncoded>0", script)
         self.assertIn("report.video.width>0&&report.video.height>0", script)
+        self.assertIn("const buildNumber=html.match", script)
+        self.assertIn("build:envelope.testBuild", script)
+        self.assertRegex(receiver, r"const BUILD_NUMBER = '(\d+)'")
 
     def test_sender_quality_uses_acknowledged_control_not_shared_defaults(self):
         root = Path(__file__).resolve().parents[1]
