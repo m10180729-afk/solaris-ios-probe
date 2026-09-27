@@ -1,26 +1,26 @@
-# Solaris 0.3.2 build40
+# Solaris 0.3.2 build41
 
 Solaris is a two-person iPad/iPhone ↔ Windows screen-sharing probe. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build40
+## build41
 
 - One iOS app: the existing Solaris app sends ReplayKit video and receives Windows video.
 - One Windows sender: `SolarisNativeHost.exe` contains the Solaris sender UI.
 - No separate Moonlight or Apollo application.
-- Windows hardware mode uses WebCodecs H.264 Annex-B output over an unreliable WebRTC data channel.
+- Windows hardware mode probes WebCodecs H.264 Annex-B and AVC/AVCC output, then sends normalized Annex-B over an unreliable WebRTC data channel.
 - iPad renders that stream with `AVSampleBufferDisplayLayer`, backed by VideoToolbox.
 - System audio remains an Opus stereo WebRTC track.
 - Compatibility 1080p60 keeps the previous standard WebRTC video sender.
 
 ## Build outputs
 
-- `Solaris-0.3.2-build40-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build40`: self-contained .NET Windows sender. Windows 11's Edge WebView2 system component is used for capture permission and WebCodecs.
-- `Solaris-build40-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build41-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build41`: self-contained .NET Windows sender. Windows 11's Edge WebView2 system component is used for capture permission and WebCodecs.
+- `Solaris-build41-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build40-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build41-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

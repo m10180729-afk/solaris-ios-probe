@@ -77,6 +77,9 @@ test('mode UI separates Solaris hardware and compatibility paths',()=>{
   assert.match(source,/webcodecs-h264/);
   assert.match(source,/MediaStreamTrackProcessor/);
   assert.match(source,/hardwareAcceleration:'prefer-hardware'/);
+  assert.match(source,/for\(const packetFormat of \['annexb','avc'\]\)/);
+  assert.match(source,/parseAVCCDescription/);
+  assert.match(source,/avccChunkToAnnexB/);
   assert.doesNotMatch(source,/solaris-native:\/\//);
 });
 

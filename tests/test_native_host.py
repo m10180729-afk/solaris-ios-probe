@@ -36,7 +36,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Windows-Sender-build40", self.workflow)
+        self.assertIn("Solaris-Windows-Sender-build41", self.workflow)
 
 
 if __name__ == "__main__":
