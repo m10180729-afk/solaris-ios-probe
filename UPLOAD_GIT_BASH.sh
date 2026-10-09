@@ -8,7 +8,7 @@ trap 'echo "Upload stopped. Read the Git error above; no force push was used." >
 command -v git >/dev/null
 test -f "$SOLARIS_SOURCE/.github/workflows/build-ios-probe.yml"
 test -f "$SOLARIS_SOURCE/ios/project.yml"
-echo "Uploading Solaris 0.3.2 build 45: adaptive 1080p60 sender and retained diagnostics"
+echo "Uploading Solaris 0.3.2 build 46: fix adaptive encoder restart at 4Mbps"
 SOLARIS_CHECKOUT="$(mktemp -d "${TMPDIR:-/tmp}/solaris-upload-XXXXXX")"
 echo "Preparing a fresh checkout: $SOLARIS_CHECKOUT"
 git clone --branch main --single-branch "$SOLARIS_REMOTE" "$SOLARIS_CHECKOUT/repo"
@@ -22,7 +22,7 @@ if git diff --cached --quiet; then
 else
   git config user.name >/dev/null || git config user.name "Solaris local build"
   git config user.email >/dev/null || git config user.email "solaris-build@localhost"
-  git commit -m "Adapt native bitrate under congestion and retain diagnostics (build45)"
+  git commit -m "Fix adaptive native encoder restart at 4Mbps (build46)"
   git push origin HEAD:main
   echo "Uploaded. GitHub Actions will run the checks and build automatically."
 fi

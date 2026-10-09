@@ -4,7 +4,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2 build45";
+    internal const string Version = "0.3.2 build46";
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,7 +27,7 @@ internal static class SolarisContent
     {
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Solaris", "build45", "www");
+            "Solaris", "build46", "www");
         Directory.CreateDirectory(root);
         var output = Path.Combine(root, FileName);
         using var source = OpenEmbeddedPage();
@@ -68,15 +68,17 @@ internal static class SelfTest
                 0,0,0,1,0x09,0x10, 0,0,0,1,0x41,4,5,6
             });
             parser.Complete();
-            var valid = Program.Version.Contains("build45", StringComparison.Ordinal) &&
-                        html.Contains("BUILD_NUMBER='45'", StringComparison.Ordinal) &&
+            var lowRate = NativeH264Capture.EncoderCandidates(new NativeCaptureOptions(60, 4, 6)).First().Arguments;
+            var valid = Program.Version.Contains("build46", StringComparison.Ordinal) &&
+                        html.Contains("BUILD_NUMBER='46'", StringComparison.Ordinal) &&
                         html.Contains("webcodecs-h264", StringComparison.Ordinal) &&
                         html.Contains("native-start", StringComparison.Ordinal) &&
                         parsed.Count == 2 && parsed[0].Key && !parsed[1].Key &&
+                        lowRate.Contains("-b:v 4M -maxrate 6M", StringComparison.Ordinal) &&
                         !html.Contains("solaris-native://", StringComparison.OrdinalIgnoreCase) &&
                         !html.Contains("ClassicOldSong", StringComparison.OrdinalIgnoreCase);
             Console.WriteLine(valid
-                ? "PASS: Solaris build45 native hardware sender self-test"
+                ? "PASS: Solaris build46 native hardware sender self-test"
                 : "FAIL: embedded sender/version check");
             return valid ? 0 : 1;
         }

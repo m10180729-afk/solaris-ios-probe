@@ -1,9 +1,10 @@
-# Solaris 0.3.2 build45
+# Solaris 0.3.2 build46
 
 Solaris currently supports a single sender and a single receiver per session. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build45
+## build46
 
+- Fix adaptive restart at 4Mbps: the Windows encoder now accepts the 4Mbps target and 6Mbps peak instead of throwing a reversed `Math.Clamp` bound error. The Windows self-test checks this exact case.
 - One iOS app: the existing Solaris app sends ReplayKit video and receives Windows video.
 - One Windows sender: `SolarisNativeHost.exe` contains the Solaris sender UI.
 - No separate Moonlight or Apollo application.
@@ -17,13 +18,13 @@ Solaris currently supports a single sender and a single receiver per session. Si
 
 ## Build outputs
 
-- `Solaris-0.3.2-build45-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build45`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
-- `Solaris-build45-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build46-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build46`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
+- `Solaris-build46-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build45-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build46-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

@@ -170,11 +170,12 @@ internal sealed class NativeH264Capture : IDisposable
             onStatus("stopped", "하드웨어 송신 엔진이 종료되었습니다.", encoder);
     }
 
-    private static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
+    internal static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
     {
         var fps = Math.Clamp(options.FramesPerSecond, 30, 120);
-        var start = Math.Clamp(options.StartMbps, 8, options.MaxMbps);
-        var max = Math.Clamp(options.MaxMbps, start, 100);
+        // Adaptive mode can legitimately request 4M/6M. Keep Clamp bounds ordered.
+        var max = Math.Clamp(options.MaxMbps, 4, 100);
+        var start = Math.Clamp(options.StartMbps, 4, max);
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
                      "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
                      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +

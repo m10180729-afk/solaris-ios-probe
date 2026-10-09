@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build45</title>
+<title>Solaris Windows 화면공유 · build46</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.mode{min-height:112px;text-align:left}.mode strong,.mode small{display:block}.mode small{font-weight:400;color:#c2cee0;margin-top:7px;line-height:1.35}.mode.selected{outline:2px solid #55b5ff;background:#1c67a8}.mode.native{background:#3b345d}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.recommend{padding:12px;border-radius:9px;background:#102a25;color:#65edb6}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video,canvas{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:760px){.grid,.status,.mode-grid{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build45</h1>
+<h1>Solaris Windows 화면공유 · build46</h1>
 <p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 선택한 화면의 시스템 소리만 전송합니다.</p>
 
 <section class="card">
@@ -46,7 +46,7 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='45',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='46',PROTOCOL='desktop-v1';
 const DEFAULT_CONFIG={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',room:'solaristest1'};
 const $=id=>document.getElementById(id);
 let active=null,lastDiagnostic=null;
@@ -342,5 +342,5 @@ $('hardware60Btn').onclick=()=>selectMode('hardware60');$('hardware120Btn').oncl
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build45 준비 · 혼잡 대응 비트레이트 조절 · 마지막 세션 진단 보존');
+window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build46 준비 · 혼잡 대응 비트레이트 조절 · 마지막 세션 진단 보존');
 </script></main></body></html>
