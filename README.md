@@ -1,13 +1,16 @@
-# Solaris 0.3.2 build48
+# Solaris 0.3.2 build49
 
 Solaris currently supports a single sender and a single receiver per session. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build48
+## build49
 
-The build47 Windows sender diagnostic reported a WebRTC candidate-pair estimate of 0.1–0.26Mbps and RTT spikes over one second. It dropped 487 access units and restarted the Intel encoder twice. The sender report alone does not establish the physical network capacity or the iPad's received FPS.
+The build48 Windows diagnostic used a host-to-host UDP path and admitted roughly 7Mbps and about 60fps in its last 30 seconds; the reported `availableOutgoingMbps` was far smaller than the observed data-channel admission rate and is not a valid standalone capacity measurement for this path. A separate iPad session completed 1,951 access units in 49 seconds (39.6fps average, 65fps recently) and enqueued all completed units, without incomplete-frame eviction or display-layer drops. These reports have different session IDs and cannot be subtracted frame by frame.
+
+- Bound the Windows FFmpeg→WebView2 UI dispatch queue to two complete access units. Discard frames waiting more than 250ms on that queue and resume at the next keyframe. Report `hostQueueDrops` and `hostQueueDepth` separately from WebRTC data-channel drops.
+- A frame admitted by the sender is not proof of decoding or display on iPad. Compare both diagnostics under one session ID; this change targets stale frames before the existing data-channel queue.
 
 - Refresh the iPad H.264 format description when the SPS/PPS changes after an encoder restart, flushing the old display layer before enqueuing the new stream.
-- Report the selected ICE candidate types and protocol without copying device IP addresses; highlight an unusable estimated route. Reset the displayed encoder FPS while FFmpeg is stopped or adjusting.
+- Report the selected ICE candidate types and protocol without copying device IP addresses. Reset the displayed encoder FPS while FFmpeg is stopped or adjusting. The UI warns on actual queue drops instead of the misleading outgoing-bit-rate estimate.
 - This does not replace the native data-channel transport with RTP. It cannot guarantee 1080p60 on a route whose usable throughput is below the encoded video rate. Compare the iPad receiver diagnostic for the same session before attributing all stalls to the sender.
 
 This is a latency candidate for Windows→iPad, not the planned RTP/multi-viewer release. The hardware path still uses a WebRTC data channel and can interrupt playback when bitrate changes restart FFmpeg.
@@ -30,13 +33,13 @@ This is a latency candidate for Windows→iPad, not the planned RTP/multi-viewer
 
 ## Build outputs
 
-- `Solaris-0.3.2-build48-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build48`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
-- `Solaris-build48-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build49-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build49`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
+- `Solaris-build49-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build48-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build49-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

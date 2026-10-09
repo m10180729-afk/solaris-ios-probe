@@ -255,20 +255,20 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build48_labels_are_consistent(self):
+    def test_build49_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '48'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '49'", (root / "ios/project.yml").read_text())
         browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("BUILD_NUMBER = '48'", browser_receiver)
-        self.assertIn("0.3.2 build48", browser_receiver)
+        self.assertIn("BUILD_NUMBER = '49'", browser_receiver)
+        self.assertIn("0.3.2 build49", browser_receiver)
         self.assertNotIn("앱 build40", browser_receiver)
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build48-integrated", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build48.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build48.html", workflow)
-        self.assertIn("Solaris-0.3.2-build48-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build49-integrated", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build49.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build49.html", workflow)
+        self.assertIn("Solaris-0.3.2-build49-resign.ipa", workflow)
 
-    def test_build48_native_diagnostics_expose_real_progress(self):
+    def test_build49_native_diagnostics_expose_real_progress(self):
         root = Path(__file__).resolve().parents[1]
         desktop = (root / "ios/App/Resources/solaris-desktop.html").read_text()
         receiver = (root / "ios/App/DesktopScreenReceiver.swift").read_text()

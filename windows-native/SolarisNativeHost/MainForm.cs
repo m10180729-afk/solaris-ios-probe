@@ -1,5 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace SolarisNativeHost;
@@ -8,6 +9,9 @@ internal sealed class MainForm : Form
 {
     private readonly NativeH264Capture capture;
     private long captureRequest;
+    private int pendingFramePosts;
+    private int awaitingKeyFrame = 1;
+    private long hostQueueDrops;
     private readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     private readonly Label status = new()
     {
@@ -20,7 +24,12 @@ internal sealed class MainForm : Form
 
     internal MainForm()
     {
-        capture = new NativeH264Capture(PostNativeFrame, PostNativeStatus);
+        capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>
+        {
+            if (state == "metrics")
+                message += $" · hostDrops {Interlocked.Read(ref hostQueueDrops)} · hostQueue {Volatile.Read(ref pendingFramePosts)}";
+            PostNativeStatus(state, message, detail);
+        });
         Text = $"Solaris Windows 화면공유 · {Program.Version}";
         MinimumSize = new Size(960, 720);
         StartPosition = FormStartPosition.CenterScreen;
@@ -77,12 +86,14 @@ internal sealed class MainForm : Form
             if (type == "native-stop")
             {
                 Interlocked.Increment(ref captureRequest);
+                Interlocked.Exchange(ref awaitingKeyFrame, 1);
                 capture.Stop();
                 PostNativeStatus("stopped", "네이티브 송신 중지", null);
                 return;
             }
             if (type != "native-start") return;
             var request = Interlocked.Increment(ref captureRequest);
+            Interlocked.Exchange(ref awaitingKeyFrame, 1);
             var fps = root.TryGetProperty("fps", out var fpsValue) ? fpsValue.GetInt32() : 60;
             var startMbps = root.TryGetProperty("startMbps", out var startValue) ? startValue.GetInt32() : 25;
             var maxMbps = root.TryGetProperty("maxMbps", out var maxValue) ? maxValue.GetInt32() : 60;
@@ -109,10 +120,32 @@ internal sealed class MainForm : Form
     private void PostNativeFrame(byte[] frame, bool keyFrame, long timestampUs, string encoder)
     {
         if (IsDisposed || browser.CoreWebView2 is null) return;
+        if (FramePostPolicy.DropBeforeQueue(Volatile.Read(ref awaitingKeyFrame) != 0, keyFrame, 0))
+        {
+            Interlocked.Increment(ref hostQueueDrops);
+            return;
+        }
+        if (FramePostPolicy.DropBeforeQueue(false, keyFrame, Interlocked.Increment(ref pendingFramePosts)))
+        {
+            Interlocked.Decrement(ref pendingFramePosts);
+            Interlocked.Exchange(ref awaitingKeyFrame, 1);
+            Interlocked.Increment(ref hostQueueDrops);
+            return;
+        }
+        var request = Interlocked.Read(ref captureRequest);
         void Post()
         {
             try
             {
+                var ageUs = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency - timestampUs;
+                if (FramePostPolicy.DropAtUi(request == Interlocked.Read(ref captureRequest), ageUs,
+                    Volatile.Read(ref awaitingKeyFrame) != 0, keyFrame))
+                {
+                    Interlocked.Exchange(ref awaitingKeyFrame, 1);
+                    Interlocked.Increment(ref hostQueueDrops);
+                    return;
+                }
+                if (keyFrame) Interlocked.Exchange(ref awaitingKeyFrame, 0);
                 using var shared = browser.CoreWebView2.Environment.CreateSharedBuffer((ulong)frame.LongLength);
                 using (var output = shared.OpenStream()) output.Write(frame);
                 var metadata = JsonSerializer.Serialize(new
@@ -133,8 +166,13 @@ internal sealed class MainForm : Form
             {
                 PostNativeStatus("error", "네이티브 프레임 전달 실패", error.Message);
             }
+            finally
+            {
+                Interlocked.Decrement(ref pendingFramePosts);
+            }
         }
-        if (InvokeRequired) BeginInvoke(Post); else Post();
+        try { if (InvokeRequired) BeginInvoke(Post); else Post(); }
+        catch (InvalidOperationException) { Interlocked.Decrement(ref pendingFramePosts); }
     }
 
     private void PostNativeStatus(string state, string message, string? detail)

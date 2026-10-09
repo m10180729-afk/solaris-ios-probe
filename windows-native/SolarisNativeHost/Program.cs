@@ -4,7 +4,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2 build48";
+    internal const string Version = "0.3.2 build49";
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,7 +27,7 @@ internal static class SolarisContent
     {
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Solaris", "build48", "www");
+            "Solaris", "build49", "www");
         Directory.CreateDirectory(root);
         var output = Path.Combine(root, FileName);
         using var source = OpenEmbeddedPage();
@@ -72,17 +72,22 @@ internal static class SelfTest
             var reused = NativeH264Capture.OrderEncoders(
                 NativeH264Capture.EncoderCandidates(new NativeCaptureOptions(60, 7, 11)),
                 "Intel Quick Sync").First().Name;
-            var valid = Program.Version.Contains("build48", StringComparison.Ordinal) &&
-                        html.Contains("BUILD_NUMBER='48'", StringComparison.Ordinal) &&
+            var valid = Program.Version.Contains("build49", StringComparison.Ordinal) &&
+                        html.Contains("BUILD_NUMBER='49'", StringComparison.Ordinal) &&
                         html.Contains("webcodecs-h264", StringComparison.Ordinal) &&
                         html.Contains("native-start", StringComparison.Ordinal) &&
                         parsed.Count == 2 && parsed[0].Key && !parsed[1].Key &&
                         lowRate.Contains("-b:v 4M -maxrate 6M", StringComparison.Ordinal) &&
                         reused == "Intel Quick Sync" &&
+                        FramePostPolicy.DropBeforeQueue(false, false, 3) &&
+                        FramePostPolicy.DropBeforeQueue(true, false, 0) &&
+                        !FramePostPolicy.DropBeforeQueue(true, true, 1) &&
+                        FramePostPolicy.DropAtUi(true, 250_001, false, true) &&
+                        !FramePostPolicy.DropAtUi(true, 50_000, false, false) &&
                         !html.Contains("solaris-native://", StringComparison.OrdinalIgnoreCase) &&
                         !html.Contains("ClassicOldSong", StringComparison.OrdinalIgnoreCase);
             Console.WriteLine(valid
-                ? "PASS: Solaris build48 native hardware sender self-test"
+                ? "PASS: Solaris build49 native hardware sender self-test"
                 : "FAIL: embedded sender/version check");
             return valid ? 0 : 1;
         }

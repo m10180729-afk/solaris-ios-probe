@@ -140,7 +140,7 @@ test('native transport waits for a keyframe after queue saturation',()=>{
   assert.equal(session.nativeStats.queueHighWaterBytes,20*1024+48);
 });
 
-test('native diagnostics expose the selected ICE route and warn on unusable throughput',async()=>{
+test('native diagnostics expose the ICE route and warn only on observed queue saturation',async()=>{
   const h=harness();
   const report=new Map([
     ['pair',{id:'pair',type:'candidate-pair',state:'succeeded',nominated:true,
@@ -153,15 +153,18 @@ test('native diagnostics expose the selected ICE route and warn on unusable thro
     stream:{getVideoTracks:()=>[{getSettings:()=>({width:1920,height:1080,frameRate:60})}]},
     nativeChannel:{readyState:'open',bufferedAmount:419901},
     nativeStats:{frames:25,bytes:1000000,dropped:12,queueHighWaterBytes:700000,nativeEncodedFPS:0},
-    nativeStatus:'stopped',lastStatsAt:0,lastFrames:0,lastBytes:0};
+    nativeStatus:'stopped',lastStatsAt:0,lastFrames:0,lastBytes:0,previousTransportDrops:10};
   h.api.setActive(s);
   await h.api.measure(s);
   assert.equal(s.stats.availableOutgoingMbps,.265212);
   assert.equal(s.stats.localCandidateType,'srflx');
   assert.equal(s.stats.remoteCandidateType,'srflx');
   assert.equal(s.stats.iceProtocol,'udp');
-  assert.match(h.element('summary').textContent,/연결 병목/);
+  assert.match(h.element('summary').textContent,/송신 대기열 포화/);
   assert.equal(h.element('summary').className,'bad');
+  s.nativeStats.dropped=12;s.previousTransportDrops=12;
+  await h.api.measure(s);
+  assert.doesNotMatch(h.element('summary').textContent,/송신 대기열 포화/);
 });
 
 test('native bitrate falls after sustained congestion and rises only after a quiet interval',()=>{
