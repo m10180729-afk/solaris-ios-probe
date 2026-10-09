@@ -3,7 +3,7 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT.parent / "Solaris-0.3.2-build44-queue-recovery-source.zip"
+OUTPUT = ROOT.parent / "Solaris-0.3.2-build47-latency-candidate-source.zip"
 SKIP = {".git", "__pycache__", "build", "dist", "bin", "obj", "node_modules", "Vendor"}
 TOP = {".github", "ios", "receiver", "scripts", "tests", "docs", "windows-native",
        "README.md", ".gitignore", "UPLOAD_GIT_BASH.sh"}
@@ -18,15 +18,15 @@ with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
         if path.suffix in {".pyc", ".ipa", ".p12", ".mobileprovision"} or path.name.startswith(".env"):
             continue
         archive.write(path, relative)
-    archive.write(ROOT / "ios/App/Resources/solaris-p2p.html", "Solaris-Windows-0.3.2-build44.html")
-    archive.write(ROOT / "ios/App/Resources/solaris-desktop.html", "Solaris-Desktop-Share-build44.html")
+    archive.write(ROOT / "ios/App/Resources/solaris-p2p.html", "Solaris-Windows-0.3.2-build47.html")
+    archive.write(ROOT / "ios/App/Resources/solaris-desktop.html", "Solaris-Desktop-Share-build47.html")
 with zipfile.ZipFile(OUTPUT) as archive:
     assert archive.testzip() is None
     assert ".github/workflows/build-ios-probe.yml" in archive.namelist()
     print(f"Packaged {len(archive.namelist())} files: {OUTPUT}")
-receiver = ROOT.parent / "Solaris-Windows-0.3.2-build44.html"
+receiver = ROOT.parent / "Solaris-Windows-0.3.2-build47.html"
 receiver.write_bytes((ROOT / "ios/App/Resources/solaris-p2p.html").read_bytes())
 print(f"Windows receiver: {receiver}")
-desktop = ROOT.parent / "Solaris-Desktop-Share-build44.html"
+desktop = ROOT.parent / "Solaris-Desktop-Share-build47.html"
 desktop.write_bytes((ROOT / "ios/App/Resources/solaris-desktop.html").read_bytes())
 print(f"Desktop share: {desktop}")

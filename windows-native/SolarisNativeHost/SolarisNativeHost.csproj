@@ -13,9 +13,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.3.2.43</Version>
-    <FileVersion>0.3.2.43</FileVersion>
-    <AssemblyVersion>0.3.2.43</AssemblyVersion>
+    <Version>0.3.2.47</Version>
+    <FileVersion>0.3.2.47</FileVersion>
+    <AssemblyVersion>0.3.2.47</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />

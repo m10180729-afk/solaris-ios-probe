@@ -9,7 +9,7 @@ private let desktopProtocolVersion = "desktop-v1"
 
 final class DesktopScreenReceiver: NSObject, ObservableObject {
     @Published private(set) var state = "수신 대기"
-    @Published private(set) var details = "Windows에서 1080p60 안정 또는 1080p120 실험 송신을 시작한 뒤 수신을 누르세요."
+    @Published private(set) var details = "Windows에서 화면 송신을 시작한 뒤 수신을 누르세요. 목표는 1080p60입니다."
     @Published private(set) var videoTrack: RTCVideoTrack?
     @Published private(set) var nativeH264 = false
     @Published private(set) var running = false
@@ -26,6 +26,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var stopped = true
     private var polling = false
     private var sessionID: String?
+    private var viewerID = UUID().uuidString
     private var lastID: Int64 = 0
     private var remoteReady = false
     private var localAnswerPublished = false
@@ -34,6 +35,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var previousFrames: Int64 = 0
     private var previousBytes: Int64 = 0
     private var previousStatsTime = 0.0
+    private var rtpRecentFPS = 0.0
+    private var rtpRecentMbps = 0.0
+    private var rtpWidth = 0
+    private var rtpHeight = 0
+    private var rtpFramesDecoded: Int64 = 0
+    private var rtpPacketsLost: Int64 = 0
     private var nativeChannel: RTCDataChannel?
     private var nativeFrames: [UInt32: NativeFrame] = [:]
     private var nativeReceivedFrames: Int64 = 0
@@ -81,6 +88,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             guard self.stopped else { return }
             self.stopped = false
             self.sessionID = nil
+            self.viewerID = UUID().uuidString
             self.lastID = 0
             self.remoteReady = false
             self.localAnswerPublished = false
@@ -89,6 +97,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.previousFrames = 0
             self.previousBytes = 0
             self.previousStatsTime = 0
+            self.rtpRecentFPS = 0
+            self.rtpRecentMbps = 0
+            self.rtpWidth = 0
+            self.rtpHeight = 0
+            self.rtpFramesDecoded = 0
+            self.rtpPacketsLost = 0
             self.nativeChannel = nil
             self.nativeFrames.removeAll()
             self.nativeReceivedFrames = 0
@@ -119,7 +133,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 self.stopped = true
                 return
             }
-            self.publish("Windows 송신 대기", "방 ID: \(self.config.roomID) · 목표 1920×1080 120fps", running: true)
+            self.publish("Windows 송신 대기", "방 ID: \(self.config.roomID) · 목표 1920×1080 60fps", running: true)
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
             timer.schedule(deadline: .now(), repeating: 1)
             timer.setEventHandler { [weak self] in
@@ -157,10 +171,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         queue.async {
             let payload: [String: Any] = [
                 "version": "0.3.2",
-                "build": "44",
+                "build": "47",
                 "protocol": desktopProtocolVersion,
                 "role": "receiver",
                 "session": self.sessionID ?? "",
+                "viewerID": self.viewerID,
+                "videoTransport": self.nativeH264 ? "webcodecs-h264" : "webrtc-video",
                 "peerState": self.peer.map { String(describing: $0.connectionState) } ?? "none",
                 "iceState": self.peer.map { String(describing: $0.iceConnectionState) } ?? "none",
                 "channelState": self.nativeChannel.map { String(describing: $0.readyState) } ?? "none",
@@ -177,6 +193,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 "displayLayerError": self.nativeDisplayView.lastError,
                 "recentCompletedFPS": self.nativeRecentFPS,
                 "recentReceiveMbps": self.nativeRecentMbps,
+                "rtpRecentFPS": self.rtpRecentFPS,
+                "rtpRecentMbps": self.rtpRecentMbps,
+                "rtpWidth": self.rtpWidth,
+                "rtpHeight": self.rtpHeight,
+                "rtpFramesDecoded": self.rtpFramesDecoded,
+                "rtpPacketsLost": self.rtpPacketsLost,
                 "measurementSeconds": self.nativeFirstFrameTime > 0 ? ProcessInfo.processInfo.systemUptime - self.nativeFirstFrameTime : 0,
                 "averageCompletedFPS": self.nativeFirstFrameTime > 0 ? Double(self.nativeReceivedFrames) / max(0.001, ProcessInfo.processInfo.systemUptime - self.nativeFirstFrameTime) : 0
             ]
@@ -358,6 +380,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         envelope["protocol"] = desktopProtocolVersion
         envelope["source"] = "ios-desktop-receiver"
         envelope["sessionID"] = sessionID
+        envelope["viewerID"] = viewerID
         let body: [String: Any] = [
             "room_id": config.desktopSignalingRoom,
             "sender": "callee",
@@ -416,6 +439,10 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     let bytes = (values["bytesReceived"] as? NSNumber)?.int64Value ?? 0
                     let width = (values["frameWidth"] as? NSNumber)?.intValue ?? 0
                     let height = (values["frameHeight"] as? NSNumber)?.intValue ?? 0
+                    self.rtpFramesDecoded = frames
+                    self.rtpPacketsLost = (values["packetsLost"] as? NSNumber)?.int64Value ?? 0
+                    self.rtpWidth = width
+                    self.rtpHeight = height
                     let elapsed = now - self.previousStatsTime
                     var fps = 0.0
                     var mbps = 0.0
@@ -427,11 +454,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     self.previousStatsTime = now
                     self.previousFrames = frames
                     self.previousBytes = bytes
+                    self.rtpRecentFPS = fps
+                    self.rtpRecentMbps = mbps
                     if frames > 0 {
-                        let displayHz = 120
                         self.publish(
                             "화면 수신 중",
-                            "실제 \(width)×\(height) · \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · 표시 요청 \(displayHz)Hz",
+                            "실제 \(width)×\(height) · \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · 목표 60fps",
                             running: true
                         )
                     }
@@ -520,7 +548,7 @@ extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
         DispatchQueue.main.async {
             self.videoTrack = track
             self.state = "영상 트랙 수신"
-            self.details = "첫 디코딩 프레임 대기 · 목표 1920×1080 120fps"
+            self.details = "첫 디코딩 프레임 대기 · 목표 1920×1080 60fps"
         }
     }
 

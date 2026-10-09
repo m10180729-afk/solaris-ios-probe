@@ -44,7 +44,7 @@ jobs:
       - name: Upload Windows Solaris sender
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-Sender-build44
+          name: Solaris-Windows-Sender-build47
           path: dist/native/
           if-no-files-found: error
           retention-days: 7
@@ -109,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build44-xcode-evidence
+          name: Solaris-build47-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -118,11 +118,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build44-integrated
+          name: Solaris-0.3.2-build47-integrated
           path: |
-            dist/Solaris-0.3.2-build44-resign.ipa
-            dist/Solaris-Windows-0.3.2-build44.html
-            dist/Solaris-Desktop-Share-build44.html
+            dist/Solaris-0.3.2-build47-resign.ipa
+            dist/Solaris-Windows-0.3.2-build47.html
+            dist/Solaris-Desktop-Share-build47.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

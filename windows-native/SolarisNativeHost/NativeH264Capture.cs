@@ -13,6 +13,7 @@ internal sealed class NativeH264Capture : IDisposable
     private CancellationTokenSource? cancellation;
     private Process? process;
     private int generation;
+    private string? preferredEncoder;
 
     internal NativeH264Capture(
         Action<byte[], bool, long, string> onFrame,
@@ -38,7 +39,9 @@ internal sealed class NativeH264Capture : IDisposable
         var token = cancellation.Token;
         var failures = new List<string>();
 
-        foreach (var encoder in EncoderCandidates(options))
+        // A bitrate adjustment restarts FFmpeg. Probe the last working GPU first
+        // instead of spending seconds retrying an unavailable NVENC device.
+        foreach (var encoder in OrderEncoders(EncoderCandidates(options), preferredEncoder))
         {
             token.ThrowIfCancellationRequested();
             onStatus("probing", $"{encoder.Name} 하드웨어 인코더 확인 중", encoder.Name);
@@ -76,6 +79,7 @@ internal sealed class NativeH264Capture : IDisposable
                 if (winner == firstFrame.Task && firstFrame.Task.Result && !candidate.HasExited)
                 {
                     selected = true;
+                    preferredEncoder = encoder.Name;
                     onStatus("running", $"{encoder.Name} · 1920×1080 · {options.FramesPerSecond}fps 요청", encoder.Name);
                     _ = reader.ContinueWith(t =>
                     {
@@ -170,11 +174,12 @@ internal sealed class NativeH264Capture : IDisposable
             onStatus("stopped", "하드웨어 송신 엔진이 종료되었습니다.", encoder);
     }
 
-    private static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
+    internal static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
     {
         var fps = Math.Clamp(options.FramesPerSecond, 30, 120);
-        var start = Math.Clamp(options.StartMbps, 8, options.MaxMbps);
-        var max = Math.Clamp(options.MaxMbps, start, 100);
+        // Adaptive mode can legitimately request 4M/6M. Keep Clamp bounds ordered.
+        var max = Math.Clamp(options.MaxMbps, 4, 100);
+        var start = Math.Clamp(options.StartMbps, 4, max);
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
                      "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
                      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
@@ -185,6 +190,10 @@ internal sealed class NativeH264Capture : IDisposable
         yield return ("AMD AMF", $"{common.Replace("-bsf:v", "-c:v h264_amf -usage lowlatency_high_quality -quality speed -rc vbr_peak -bsf:v")}");
         yield return ("Windows Media Foundation", $"{common.Replace("-bsf:v", "-c:v h264_mf -hw_encoding 1 -rate_control cbr -bsf:v")}");
     }
+
+    internal static IEnumerable<(string Name, string Arguments)> OrderEncoders(
+        IEnumerable<(string Name, string Arguments)> candidates, string? preferred) =>
+        candidates.OrderByDescending(candidate => candidate.Name == preferred);
 
     private static string LastUsefulLine(string text)
     {

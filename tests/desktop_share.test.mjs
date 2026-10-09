@@ -10,7 +10,7 @@ const source=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][0][1];
 function harness(){
   const elements=new Map(),storage=new Map();
   const element=id=>{
-    if(!elements.has(id))elements.set(id,{value:'',textContent:'',className:'',disabled:false,hidden:false,
+    if(!elements.has(id))elements.set(id,{value:'',textContent:'',className:'',disabled:false,hidden:false,style:{},
       scrollTop:0,scrollHeight:0,muted:false,srcObject:null,pause(){},play(){return Promise.resolve();},select(){}});
     return elements.get(id);
   };
@@ -20,7 +20,7 @@ function harness(){
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     RTCRtpSender:{getCapabilities:()=>({codecs:[]})},RTCRtpReceiver:{getCapabilities:()=>({codecs:[]})},
     RTCPeerConnection:class{},MediaStream:class{}});
-  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,sendNativeAccessUnit,setActive:s=>active=s};',context);
+  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,sendNativeAccessUnit,nativeBitrateControl,nextNativeBitrate,stop,setActive:s=>active=s};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -113,9 +113,18 @@ test('diagnostics omit Supabase URL and publishable key',()=>{
   assert.match(report,/desktop-v1/);
 });
 
+test('receiver diagnostics keep a viewer identity distinct from the broadcast session',()=>{
+  const h=harness();
+  h.api.setActive({id:'broadcast-session',viewerID:'viewer-a',role:'receiver',config:{room:'room-one'},pc:{connectionState:'connected',signalingState:'stable'},stats:{frames:3}});
+  const report=JSON.parse(h.api.diagnostic());
+  assert.equal(report.session,'broadcast-session');
+  assert.equal(report.viewerID,'viewer-a');
+  assert.equal(report.role,'receiver');
+});
+
 test('native transport waits for a keyframe after queue saturation',()=>{
   const h=harness(),sent=[];
-  const session={nativeChannel:{readyState:'open',bufferedAmount:2*1024*1024-100,send:p=>sent.push(p)},nativeStats:{frames:0,dropped:0,bytes:0,queueHighWaterBytes:0,resyncDrops:0,awaitingKeyFrame:false}};
+  const session={nativeChannel:{readyState:'open',bufferedAmount:768*1024-100,send:p=>sent.push(p)},nativeStats:{frames:0,dropped:0,bytes:0,queueHighWaterBytes:0,resyncDrops:0,awaitingKeyFrame:false}};
   h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),false,10);
   assert.equal(sent.length,0);
   assert.equal(session.nativeStats.dropped,1);
@@ -129,6 +138,35 @@ test('native transport waits for a keyframe after queue saturation',()=>{
   assert.equal(session.nativeStats.frames,1);
   assert.equal(session.nativeStats.awaitingKeyFrame,false);
   assert.equal(session.nativeStats.queueHighWaterBytes,20*1024+48);
+});
+
+test('native bitrate falls after sustained congestion and rises only after a quiet interval',()=>{
+  const h=harness(),c=h.api.nativeBitrateControl(h.api.MODES.hardware60,0);
+  for(let t=1000;t<=12000;t+=1000){
+    const target=h.api.nextNativeBitrate(c,1_500_000,t*4,t);
+    if(t<10000)assert.equal(target,null);
+    else if(t===10000)assert.equal(target,7);
+  }
+  assert.equal(c.targetMbps,7);
+  for(let t=13000;t<=57000;t+=1000){
+    const target=h.api.nextNativeBitrate(c,0,48,t);
+    if(t<57000)assert.equal(target,null);
+    else assert.equal(target,9);
+  }
+  assert.equal(c.restarts,2);
+});
+
+test('diagnostic survives stopping and keeps the last session',()=>{
+  const h=harness();const s={id:'last-session',role:'sender',config:{room:'test-room'},mode:h.api.MODES.hardware60,
+    pc:{connectionState:'connected',signalingState:'stable',close(){}},
+    stream:{getVideoTracks:()=>[{getSettings:()=>({width:1920,height:1080})}],getAudioTracks:()=>[{}],getTracks:()=>[]},
+    nativeStats:{encoderImplementation:'Intel Quick Sync'},stats:{frames:500,fps:58},history:[{time:1000,frames:500}]};
+  h.api.setActive(s);h.api.stop();
+  const report=JSON.parse(h.api.diagnostic());
+  assert.equal(report.session,'last-session');
+  assert.equal(report.actual.frames,500);
+  assert.equal(report.audioTracks,1);
+  assert.equal(report.stopped,true);
 });
 
 
