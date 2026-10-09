@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build43</title>
+<title>Solaris Windows 화면공유 · build44</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.mode{min-height:112px;text-align:left}.mode strong,.mode small{display:block}.mode small{font-weight:400;color:#c2cee0;margin-top:7px;line-height:1.35}.mode.selected{outline:2px solid #55b5ff;background:#1c67a8}.mode.native{background:#3b345d}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.recommend{padding:12px;border-radius:9px;background:#102a25;color:#65edb6}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video,canvas{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:760px){.grid,.status,.mode-grid{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build43</h1>
+<h1>Solaris Windows 화면공유 · build44</h1>
 <p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 선택한 화면의 시스템 소리만 전송합니다.</p>
 
 <section class="card">
@@ -46,7 +46,7 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='43',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='44',PROTOCOL='desktop-v1';
 const DEFAULT_CONFIG={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',room:'solaristest1'};
 const $=id=>document.getElementById(id);
 let active=null;
@@ -121,11 +121,11 @@ async function applySenderPolicy(sender,mode=selectedMode){
   }
 }
 function baseSession(config,role){
-  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeHostRequested:false,nativeStatus:'idle',nativeStats:{frames:0,bytes:0,dropped:0,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 Native',encoderImplementation:null,hardwareAcceleration:'required',nativeEncodedFPS:null,nativeEncodedFrames:0,queueHighWaterBytes:0},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
+  return{id:role==='sender'?crypto.randomUUID():null,config,role,mode:{...selectedMode},pc:new RTCPeerConnection(peerConfig()),controllers:new Set(),pending:[],outgoing:[],published:false,polling:false,lastID:0,started:Date.now(),statsTimer:0,pollTimer:0,stream:null,videoSender:null,nativeChannel:null,encoder:null,decoder:null,processorReader:null,nativeFrames:new Map(),nativePacketFormat:'annexb',nativeAvcc:null,nativeProbeAttempts:[],nativeHostRequested:false,nativeStatus:'idle',nativeStats:{frames:0,bytes:0,dropped:0,resyncDrops:0,awaitingKeyFrame:false,decoded:0,encodedWidth:0,encodedHeight:0,codec:'H264 Native',encoderImplementation:null,hardwareAcceleration:'required',nativeEncodedFPS:null,nativeEncodedFrames:0,queueHighWaterBytes:0},lastStatsAt:0,lastFrames:0,lastBytes:0,stats:{}};
 }
 function installPeerHandlers(s){
   s.pc.onicecandidate=e=>{if(active!==s||!e.candidate)return;const c=e.candidate.toJSON();if(s.published)sendSignal(s,'ice',c).catch(x=>log('ICE 전송 실패: '+x.message));else s.outgoing.push(c);};
-  s.pc.onconnectionstatechange=()=>{if(active!==s)return;const state=s.pc.connectionState;mark('peerState',state,state==='connected'?'ok':state==='failed'?'bad':'warn');log('WebRTC: '+state);if(state==='connected'&&s.videoSender)applySenderPolicy(s.videoSender,s.mode).catch(e=>log('송신 정책 재적용 실패: '+e.message));};
+  s.pc.onconnectionstatechange=()=>{if(active!==s)return;const state=s.pc.connectionState;mark('peerState',state,state==='connected'?'ok':state==='failed'?'bad':'warn');log('WebRTC: '+state);if(state==='connected'&&s.videoSender)applySenderPolicy(s.videoSender,s.mode).catch(e=>log('송신 정책 재적용 실패: '+e.message));if(state==='failed'&&s.role==='sender'&&s.mode?.transport==='webcodecs-h264'){nativeBridge()?.postMessage({type:'native-stop'});s.nativeStatus='failed';mark('summary','연결 실패로 하드웨어 인코더를 중지했습니다. 송신을 중지한 뒤 다시 시작하세요.','bad');}};
   s.pc.ontrack=e=>{if(active!==s)return;const video=$('screenVideo');if(!s.remoteStream)s.remoteStream=new MediaStream();if(!s.remoteStream.getTracks?.().some(t=>t.id===e.track.id))s.remoteStream.addTrack(e.track);video.srcObject=s.remoteStream;video.play().catch(()=>{});if(e.track.kind==='video'){try{if(e.receiver&&'jitterBufferTarget'in e.receiver)e.receiver.jitterBufferTarget=500;}catch{}mark('mediaState','영상 트랙 수신','ok');}else{mark('audioState','화면 소리 수신','ok');}};
   s.pc.ondatachannel=e=>{if(active===s&&e.channel.label==='solaris-h264-v1')setupNativeDecoder(s,e.channel).catch(error=>{mark('summary','Solaris H.264 수신기 시작 실패: '+error.message,'bad');log('H.264 수신기 오류: '+error.message);});};
 }
@@ -135,8 +135,10 @@ function sendNativeAccessUnit(s,bytes,keyFrame,timestamp){
   const payloadSize=16*1024,chunkCount=Math.ceil(bytes.length/payloadSize),frameId=(s.nativeStats.frames+s.nativeStats.dropped+1)>>>0;
   if(chunkCount<1||chunkCount>4096){s.nativeStats.dropped++;return;}
   const queuedBytes=bytes.length+chunkCount*24;
+  if(s.nativeStats.awaitingKeyFrame&&!keyFrame){s.nativeStats.dropped++;s.nativeStats.resyncDrops++;return;}
   // Admit or drop a whole access unit, never a partial frame. Keep latency bounded.
-  if(channel.bufferedAmount+queuedBytes>2*1024*1024){s.nativeStats.dropped++;return;}
+  if(channel.bufferedAmount+queuedBytes>2*1024*1024){s.nativeStats.dropped++;s.nativeStats.awaitingKeyFrame=true;return;}
+  if(keyFrame)s.nativeStats.awaitingKeyFrame=false;
   s.nativeStats.queueHighWaterBytes=Math.max(s.nativeStats.queueHighWaterBytes,channel.bufferedAmount+queuedBytes);
   for(let index=0;index<chunkCount;index++){
     const start=index*payloadSize,end=Math.min(bytes.length,start+payloadSize);const packet=new Uint8Array(24+end-start);const view=new DataView(packet.buffer);
@@ -170,7 +172,7 @@ if(nativeBridge()){
     if(message.state!=='metrics')log(`${message.message||'네이티브 송신 상태'}${message.detail?' · '+message.detail:''}`);
     if(!s||s.role!=='sender')return;
     if(message.state==='metrics'){
-      const detail=String(message.detail||''),fps=detail.match(/output\s+([\d.]+)fps/i),frames=detail.match(/frames\s+(\d+)/i);
+      const metrics=`${message.message||''} ${message.detail||''}`,fps=metrics.match(/output\s+([\d.]+)fps/i),frames=metrics.match(/frames\s+(\d+)/i);
       if(fps)s.nativeStats.nativeEncodedFPS=Number(fps[1]);if(frames)s.nativeStats.nativeEncodedFrames=Number(frames[1]);return;
     }
     s.nativeStatus=message.state||'unknown';
@@ -256,7 +258,7 @@ async function measure(s){
       const now=performance.now(),frames=s.nativeStats.frames,bytes=s.nativeStats.bytes,elapsed=(now-s.lastStatsAt)/1000;let fps=0,mbps=0;
       if(s.lastStatsAt&&elapsed>0){fps=(frames-s.lastFrames)/elapsed;mbps=(bytes-s.lastBytes)*8/elapsed/1e6;}s.lastStatsAt=now;s.lastFrames=frames;s.lastBytes=bytes;
       const settings=s.stream?.getVideoTracks()[0]?.getSettings?.()||{};let pair=null;const report=await s.pc.getStats();for(const r of report.values())if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;
-      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps:s.role==='sender'?s.nativeStats.nativeEncodedFPS:fps,dataChannelAdmittedFPS:s.role==='sender'?fps:null,completeAccessUnitsReceivedFPS:s.role==='receiver'?fps:null,queuedMbps:mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',nativeEngine:s.role==='sender'?'Windows FFmpeg hardware':'WebCodecs decoder',nativeStatus:s.nativeStatus,encoderImplementation:s.nativeStats.encoderImplementation,hardwareAcceleration:s.nativeStats.hardwareAcceleration,decoderState:s.decoder?.state??null,decodedFrames:s.role==='receiver'?s.nativeStats.decoded:null,encoderDrops:s.nativeStats.dropped,nativeEncodedFPS:s.nativeStats.nativeEncodedFPS,nativeEncodedFrames:s.nativeStats.nativeEncodedFrames,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,dataChannelQueueHighWaterBytes:s.nativeStats.queueHighWaterBytes,captureRequestedFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
+      s.stats={role:s.role,width:s.nativeStats.encodedWidth||settings.width||$('nativeCanvas').width||0,height:s.nativeStats.encodedHeight||settings.height||$('nativeCanvas').height||0,fps:s.role==='sender'?s.nativeStats.nativeEncodedFPS:fps,dataChannelAdmittedFPS:s.role==='sender'?fps:null,completeAccessUnitsReceivedFPS:s.role==='receiver'?fps:null,queuedMbps:mbps,frames,bytes,codec:s.nativeStats.codec,videoTransport:'webcodecs-h264',nativeEngine:s.role==='sender'?'Windows FFmpeg hardware':'WebCodecs decoder',nativeStatus:s.nativeStatus,encoderImplementation:s.nativeStats.encoderImplementation,hardwareAcceleration:s.nativeStats.hardwareAcceleration,decoderState:s.decoder?.state??null,decodedFrames:s.role==='receiver'?s.nativeStats.decoded:null,encoderDrops:s.nativeStats.dropped,resyncDrops:s.nativeStats.resyncDrops,awaitingKeyFrame:s.nativeStats.awaitingKeyFrame,nativeEncodedFPS:s.nativeStats.nativeEncodedFPS,nativeEncodedFrames:s.nativeStats.nativeEncodedFrames,dataChannelBufferedBytes:s.nativeChannel?.bufferedAmount??0,dataChannelQueueHighWaterBytes:s.nativeStats.queueHighWaterBytes,captureRequestedFPS:settings.frameRate??null,availableOutgoingMbps:pair?.availableOutgoingBitrate!=null?pair.availableOutgoingBitrate/1e6:null,roundTripMilliseconds:pair?.currentRoundTripTime!=null?pair.currentRoundTripTime*1000:null};
       s.history??=[];s.history.push({time:Date.now(),...s.stats});s.history=s.history.slice(-30);
       const measuredOutputFPS=Number(s.nativeStats.nativeEncodedFPS||0),met=frames>0&&(s.role==='sender'?measuredOutputFPS>=s.mode.fps*.85:fps>=s.mode.fps*.85);
       mark('mediaState',s.role==='sender'?`${s.stats.width}×${s.stats.height} · 인코더 ${measuredOutputFPS.toFixed(1)}fps · 채널 투입 ${fps.toFixed(1)}fps · 큐 ${((s.nativeChannel?.bufferedAmount||0)/1048576).toFixed(2)}MiB`:`${s.stats.width}×${s.stats.height} · 수신 ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,met?'ok':frames?'warn':'');mark('codecState',`${s.nativeStats.codec} · ${s.nativeStats.encoderImplementation||'HW 탐색 중'}`,frames?'ok':'warn');
@@ -312,5 +314,5 @@ $('hardware60Btn').onclick=()=>selectMode('hardware60');$('hardware120Btn').oncl
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build43 준비 · Windows 네이티브 GPU H.264 · 전송 큐 2MB 상한 · iPad 재생 진단 분리');
+window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build44 준비 · 키프레임 재동기화 · 실제 인코더 FPS · iPad 수신 FPS 진단');
 </script></main></body></html>

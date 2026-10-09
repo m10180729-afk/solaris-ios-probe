@@ -1,26 +1,28 @@
-# Solaris 0.3.2 build43
+# Solaris 0.3.2 build44
 
 Solaris is a two-person iPad/iPhone ↔ Windows screen-sharing probe. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build43
+## build44
 
 - One iOS app: the existing Solaris app sends ReplayKit video and receives Windows video.
 - One Windows sender: `SolarisNativeHost.exe` contains the Solaris sender UI.
 - No separate Moonlight or Apollo application.
 - Windows hardware mode captures the primary monitor through bundled FFmpeg and tries NVENC, Quick Sync, AMF, then Media Foundation H.264 before sending Annex-B over an unreliable WebRTC data channel. The sender admits or drops each whole frame under a 2MiB queue cap and requests a one-second keyframe interval to bound recovery after packet loss.
+- After queue saturation, delta frames are discarded until the next keyframe. This prevents an incomplete prediction chain from being displayed after congestion.
 - iPad renders that stream with `AVSampleBufferDisplayLayer`, backed by VideoToolbox.
+- Diagnostics now report the native encoder's parsed output FPS plus iPad recent/average completed-frame FPS and receive Mbps.
 - System audio remains an Opus stereo WebRTC track.
 - Compatibility 1080p60 keeps the previous standard WebRTC video sender.
 
 ## Build outputs
 
-- `Solaris-0.3.2-build43-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build43`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
-- `Solaris-build43-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build44-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build44`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
+- `Solaris-build44-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build43-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build44-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

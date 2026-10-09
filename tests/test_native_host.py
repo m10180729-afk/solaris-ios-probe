@@ -36,10 +36,10 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Windows-Sender-build43", self.workflow)
+        self.assertIn("Solaris-Windows-Sender-build44", self.workflow)
         self.assertIn("ffmpeg-release-essentials.zip", self.workflow)
         self.assertIn("-force_key_frames", (ROOT / "windows-native/SolarisNativeHost/NativeH264Capture.cs").read_text())
-        self.assertIn("BUILD_NUMBER='43'", self.html)
+        self.assertIn("BUILD_NUMBER='44'", self.html)
         self.assertIn("dataChannelQueueHighWaterBytes", self.html)
 
 

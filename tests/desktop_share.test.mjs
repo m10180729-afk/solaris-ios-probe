@@ -113,16 +113,21 @@ test('diagnostics omit Supabase URL and publishable key',()=>{
   assert.match(report,/desktop-v1/);
 });
 
-test('native transport drops a complete frame before enqueueing partial chunks',()=>{
+test('native transport waits for a keyframe after queue saturation',()=>{
   const h=harness(),sent=[];
-  const session={nativeChannel:{readyState:'open',bufferedAmount:2*1024*1024-100,send:p=>sent.push(p)},nativeStats:{frames:0,dropped:0,bytes:0,queueHighWaterBytes:0}};
+  const session={nativeChannel:{readyState:'open',bufferedAmount:2*1024*1024-100,send:p=>sent.push(p)},nativeStats:{frames:0,dropped:0,bytes:0,queueHighWaterBytes:0,resyncDrops:0,awaitingKeyFrame:false}};
   h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),false,10);
   assert.equal(sent.length,0);
   assert.equal(session.nativeStats.dropped,1);
+  assert.equal(session.nativeStats.awaitingKeyFrame,true);
   session.nativeChannel.bufferedAmount=0;
   h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),false,20);
+  assert.equal(sent.length,0);
+  assert.equal(session.nativeStats.resyncDrops,1);
+  h.api.sendNativeAccessUnit(session,new Uint8Array(20*1024),true,30);
   assert.equal(sent.length,2);
   assert.equal(session.nativeStats.frames,1);
+  assert.equal(session.nativeStats.awaitingKeyFrame,false);
   assert.equal(session.nativeStats.queueHighWaterBytes,20*1024+48);
 });
 

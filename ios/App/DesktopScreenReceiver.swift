@@ -43,6 +43,9 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var nativePreviousFrames: Int64 = 0
     private var nativePreviousBytes: Int64 = 0
     private var nativePreviousStatsTime = 0.0
+    private var nativeFirstFrameTime = 0.0
+    private var nativeRecentFPS = 0.0
+    private var nativeRecentMbps = 0.0
     private let earliestOffer = Date().addingTimeInterval(-300)
 
     private struct NativeFrame {
@@ -95,6 +98,9 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.nativePreviousFrames = 0
             self.nativePreviousBytes = 0
             self.nativePreviousStatsTime = 0
+            self.nativeFirstFrameTime = 0
+            self.nativeRecentFPS = 0
+            self.nativeRecentMbps = 0
             self.nativeDisplayView.resetDecoder()
 
             let rtc = RTCConfiguration()
@@ -151,7 +157,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         queue.async {
             let payload: [String: Any] = [
                 "version": "0.3.2",
-                "build": "43",
+                "build": "44",
                 "protocol": desktopProtocolVersion,
                 "role": "receiver",
                 "session": self.sessionID ?? "",
@@ -159,6 +165,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 "iceState": self.peer.map { String(describing: $0.iceConnectionState) } ?? "none",
                 "channelState": self.nativeChannel.map { String(describing: $0.readyState) } ?? "none",
                 "nativeH264": self.nativeH264,
+                "encodedWidth": self.nativeH264 ? 1920 : 0,
+                "encodedHeight": self.nativeH264 ? 1080 : 0,
                 "completedAccessUnits": self.nativeReceivedFrames,
                 "receivedBytes": self.nativeReceivedBytes,
                 "receivedPackets": self.nativeReceivedPackets,
@@ -166,7 +174,11 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 "incompleteFramesEvicted": self.nativeIncompleteFramesDropped,
                 "framesEnqueuedToDisplayLayer": self.nativeDisplayView.enqueuedFrames,
                 "displayLayerDroppedFrames": self.nativeDisplayView.droppedFrames,
-                "displayLayerError": self.nativeDisplayView.lastError
+                "displayLayerError": self.nativeDisplayView.lastError,
+                "recentCompletedFPS": self.nativeRecentFPS,
+                "recentReceiveMbps": self.nativeRecentMbps,
+                "measurementSeconds": self.nativeFirstFrameTime > 0 ? ProcessInfo.processInfo.systemUptime - self.nativeFirstFrameTime : 0,
+                "averageCompletedFPS": self.nativeFirstFrameTime > 0 ? Double(self.nativeReceivedFrames) / max(0.001, ProcessInfo.processInfo.systemUptime - self.nativeFirstFrameTime) : 0
             ]
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
                   let text = String(data: data, encoding: .utf8) else { return }
@@ -376,6 +388,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             if nativePreviousStatsTime > 0, elapsed > 0 {
                 let fps = Double(nativeReceivedFrames - nativePreviousFrames) / elapsed
                 let mbps = Double(nativeReceivedBytes - nativePreviousBytes) * 8 / elapsed / 1_000_000
+                nativeRecentFPS = fps
+                nativeRecentMbps = mbps
                 publish(
                     "Solaris 네이티브 H.264 수신 중",
                     "수신 완성 \(String(format: "%.1f", fps))fps · \(String(format: "%.1f", mbps))Mbps · 화면 표시 큐 \(nativeDisplayView.enqueuedFrames) · 미완성 프레임 폐기 \(nativeIncompleteFramesDropped)",
@@ -458,6 +472,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             var accessUnit = Data()
             frame.chunks.forEach { accessUnit.append($0!) }
             nativeFrames.removeValue(forKey: frameID)
+            if nativeFirstFrameTime == 0 { nativeFirstFrameTime = ProcessInfo.processInfo.systemUptime }
             nativeReceivedFrames += 1
             nativeReceivedBytes += Int64(accessUnit.count)
             nativeDisplayView.enqueueAnnexBFrame(

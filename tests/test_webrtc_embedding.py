@@ -255,18 +255,29 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build43_labels_are_consistent(self):
+    def test_build44_labels_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '43'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '44'", (root / "ios/project.yml").read_text())
         browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
-        self.assertIn("BUILD_NUMBER = '43'", browser_receiver)
-        self.assertIn("0.3.2 build43", browser_receiver)
+        self.assertIn("BUILD_NUMBER = '44'", browser_receiver)
+        self.assertIn("0.3.2 build44", browser_receiver)
         self.assertNotIn("앱 build40", browser_receiver)
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.3.2-build43-integrated", workflow)
-        self.assertIn("Solaris-Windows-0.3.2-build43.html", workflow)
-        self.assertIn("Solaris-Desktop-Share-build43.html", workflow)
-        self.assertIn("Solaris-0.3.2-build43-resign.ipa", workflow)
+        self.assertIn("Solaris-0.3.2-build44-integrated", workflow)
+        self.assertIn("Solaris-Windows-0.3.2-build44.html", workflow)
+        self.assertIn("Solaris-Desktop-Share-build44.html", workflow)
+        self.assertIn("Solaris-0.3.2-build44-resign.ipa", workflow)
+
+    def test_build44_native_diagnostics_expose_real_progress(self):
+        root = Path(__file__).resolve().parents[1]
+        desktop = (root / "ios/App/Resources/solaris-desktop.html").read_text()
+        receiver = (root / "ios/App/DesktopScreenReceiver.swift").read_text()
+        self.assertIn("message.message", desktop)
+        self.assertIn("awaitingKeyFrame", desktop)
+        self.assertIn("resyncDrops", desktop)
+        self.assertIn('"recentCompletedFPS": self.nativeRecentFPS', receiver)
+        self.assertIn('"averageCompletedFPS":', receiver)
+        self.assertIn('"recentReceiveMbps": self.nativeRecentMbps', receiver)
 
     def test_desktop_audio_is_output_only(self):
         root = Path(__file__).resolve().parents[1]
