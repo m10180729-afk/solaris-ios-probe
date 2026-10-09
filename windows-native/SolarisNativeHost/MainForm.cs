@@ -7,7 +7,6 @@ namespace SolarisNativeHost;
 internal sealed class MainForm : Form
 {
     private readonly NativeH264Capture capture;
-    private long captureRequest;
     private readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     private readonly Label status = new()
     {
@@ -76,32 +75,19 @@ internal sealed class MainForm : Form
             var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
             if (type == "native-stop")
             {
-                Interlocked.Increment(ref captureRequest);
                 capture.Stop();
                 PostNativeStatus("stopped", "네이티브 송신 중지", null);
                 return;
             }
             if (type != "native-start") return;
-            var request = Interlocked.Increment(ref captureRequest);
             var fps = root.TryGetProperty("fps", out var fpsValue) ? fpsValue.GetInt32() : 60;
             var startMbps = root.TryGetProperty("startMbps", out var startValue) ? startValue.GetInt32() : 25;
             var maxMbps = root.TryGetProperty("maxMbps", out var maxValue) ? maxValue.GetInt32() : 60;
-            try
-            {
-                await capture.StartAsync(new NativeCaptureOptions(fps, startMbps, maxMbps));
-            }
-            catch (Exception error) when (request != Interlocked.Read(ref captureRequest))
-            {
-                // A newer start/stop superseded this encoder probe.
-            }
-            catch (Exception error)
-            {
-                capture.Stop();
-                PostNativeStatus("error", "네이티브 H.264 송신 시작 실패", error.Message);
-            }
+            await capture.StartAsync(new NativeCaptureOptions(fps, startMbps, maxMbps));
         }
         catch (Exception error)
         {
+            capture.Stop();
             PostNativeStatus("error", "네이티브 H.264 송신 시작 실패", error.Message);
         }
     }
