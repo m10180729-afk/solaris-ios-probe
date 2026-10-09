@@ -1,8 +1,14 @@
-# Solaris 0.3.2 build47
+# Solaris 0.3.2 build48
 
 Solaris currently supports a single sender and a single receiver per session. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build47
+## build48
+
+The build47 Windows sender diagnostic reported a WebRTC candidate-pair estimate of 0.1–0.26Mbps and RTT spikes over one second. It dropped 487 access units and restarted the Intel encoder twice. The sender report alone does not establish the physical network capacity or the iPad's received FPS.
+
+- Refresh the iPad H.264 format description when the SPS/PPS changes after an encoder restart, flushing the old display layer before enqueuing the new stream.
+- Report the selected ICE candidate types and protocol without copying device IP addresses; highlight an unusable estimated route. Reset the displayed encoder FPS while FFmpeg is stopped or adjusting.
+- This does not replace the native data-channel transport with RTP. It cannot guarantee 1080p60 on a route whose usable throughput is below the encoded video rate. Compare the iPad receiver diagnostic for the same session before attributing all stalls to the sender.
 
 This is a latency candidate for Windows→iPad, not the planned RTP/multi-viewer release. The hardware path still uses a WebRTC data channel and can interrupt playback when bitrate changes restart FFmpeg.
 
@@ -24,13 +30,13 @@ This is a latency candidate for Windows→iPad, not the planned RTP/multi-viewer
 
 ## Build outputs
 
-- `Solaris-0.3.2-build47-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build47`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
-- `Solaris-build47-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build48-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build48`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
+- `Solaris-build48-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build47-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build48-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

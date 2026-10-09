@@ -78,11 +78,23 @@ static NSArray<NSData *> *SolarisNALUnits(NSData *annexB) {
 }
 
 - (BOOL)updateFormatFromUnits:(NSArray<NSData *> *)units {
+    NSData *nextSPS = self.sps;
+    NSData *nextPPS = self.pps;
     for (NSData *unit in units) {
         if (unit.length == 0) continue;
         uint8_t type = ((const uint8_t *)unit.bytes)[0] & 0x1F;
-        if (type == 7) self.sps = unit;
-        else if (type == 8) self.pps = unit;
+        if (type == 7) nextSPS = unit;
+        else if (type == 8) nextPPS = unit;
+    }
+    BOOL changed = self.formatDescription != NULL &&
+        ((!nextSPS && self.sps) || (nextSPS && ![nextSPS isEqualToData:self.sps]) ||
+         (!nextPPS && self.pps) || (nextPPS && ![nextPPS isEqualToData:self.pps]));
+    self.sps = nextSPS;
+    self.pps = nextPPS;
+    if (changed) {
+        CFRelease(self.formatDescription);
+        self.formatDescription = NULL;
+        dispatch_async(dispatch_get_main_queue(), ^{ [self.displayLayer flushAndRemoveImage]; });
     }
     if (!self.sps || !self.pps) return self.formatDescription != NULL;
     if (self.formatDescription != NULL) return YES;

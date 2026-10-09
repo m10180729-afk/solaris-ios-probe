@@ -140,6 +140,30 @@ test('native transport waits for a keyframe after queue saturation',()=>{
   assert.equal(session.nativeStats.queueHighWaterBytes,20*1024+48);
 });
 
+test('native diagnostics expose the selected ICE route and warn on unusable throughput',async()=>{
+  const h=harness();
+  const report=new Map([
+    ['pair',{id:'pair',type:'candidate-pair',state:'succeeded',nominated:true,
+      localCandidateId:'local',remoteCandidateId:'remote',availableOutgoingBitrate:265212,
+      currentRoundTripTime:1.98}],
+    ['local',{id:'local',type:'local-candidate',candidateType:'srflx',networkType:'wifi',protocol:'udp'}],
+    ['remote',{id:'remote',type:'remote-candidate',candidateType:'srflx',protocol:'udp'}]
+  ]);
+  const s={role:'sender',mode:h.api.MODES.hardware60,pc:{getStats:async()=>report,connectionState:'connected'},
+    stream:{getVideoTracks:()=>[{getSettings:()=>({width:1920,height:1080,frameRate:60})}]},
+    nativeChannel:{readyState:'open',bufferedAmount:419901},
+    nativeStats:{frames:25,bytes:1000000,dropped:12,queueHighWaterBytes:700000,nativeEncodedFPS:0},
+    nativeStatus:'stopped',lastStatsAt:0,lastFrames:0,lastBytes:0};
+  h.api.setActive(s);
+  await h.api.measure(s);
+  assert.equal(s.stats.availableOutgoingMbps,.265212);
+  assert.equal(s.stats.localCandidateType,'srflx');
+  assert.equal(s.stats.remoteCandidateType,'srflx');
+  assert.equal(s.stats.iceProtocol,'udp');
+  assert.match(h.element('summary').textContent,/연결 병목/);
+  assert.equal(h.element('summary').className,'bad');
+});
+
 test('native bitrate falls after sustained congestion and rises only after a quiet interval',()=>{
   const h=harness(),c=h.api.nativeBitrateControl(h.api.MODES.hardware60,0);
   for(let t=1000;t<=12000;t+=1000){
