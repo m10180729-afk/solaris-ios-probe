@@ -1,37 +1,32 @@
-# Solaris 0.3.2 build51
+# Solaris 0.3.2 build53
 
-Target: Windows→iPad and Windows→Windows, 1920×1080 at 60fps with system audio, no microphone. Solaris contains the Windows sender and iOS receiver; no Moonlight/Apollo installation is required. iPad→Windows ReplayKit sharing remains available.
+Solaris shares screens peer to peer using Supabase for signaling. Current working target: Windows hardware H.264/Opus sender → iPad and Windows receiver at 1080p60, with iPad ReplayKit → Windows screen and app sound on its previously validated path. No Moonlight or Apollo installation is needed.
 
-## Current hardware60 path
+## build53 additions
 
-- Windows: bundled FFmpeg captures the primary monitor, selects NVENC / Quick Sync / AMF / Media Foundation H.264 hardware encoding.
-- One encoder feeds a separate SIPSorcery SRTP peer per viewer, up to four viewer slots. H.264 video and Opus stereo audio use standard RTP tracks. Supabase carries signaling only.
-- iPad uses its native WebRTC receiver; Windows uses the integrated/browser WebRTC receiver.
-- The browser compatibility sender can select software OpenH264 and is not the recommended performance test.
-- The legacy DataChannel/120fps path is retained internally but hidden; build51 targets hardware60 only.
+- Android receiver APK project with **Windows 화면 받기** and **iPad 화면 받기**. Both reuse the matching build53 WebRTC receiver pages inside a secure-origin WebView. Android is a receiver in this build; Galaxy phone playback must be checked after Actions builds the APK.
+- The Windows native sender allows up to five P2P viewer connections from one hardware encoder. The encoding load is shared, but each receiver has its own RTP/ICE peer and uses upload bandwidth. Five real-device 1080p60 streams are a goal, not an established result.
+- Build52's room-signaling gate for two Windows browser receivers, H.264/Opus decode and recovery is retained in CI. It must pass along with the Android, Windows and iOS builds.
 
-## build51 correction
+## GitHub Actions files
 
-The build50 hardware diagnostic showed connected peers and fresh RTCP while the sender discarded most video frames. A three-frame queue could reset while a large IDR was still being paced. build51 preserves prediction chains within a time/byte budget, retains a newer IDR suffix on overload, and paces across frames with bounded credit that tolerates coarse timers. Raw H.264 pipe arrival times no longer act as frame timestamps: explicit CFR output has a sequence-based media clock. This does not prove the capture source produces 60 distinct pictures each second.
+- `Solaris-Windows-Sender-build53`: extract all files and run `SolarisNativeHost.exe`.
+- `Solaris-0.3.2-build53-integrated`: install the IPA using the existing re-signing process; the HTML receivers are also included.
+- `Solaris-Android-Receiver-build53-debug`: APK for Galaxy device tests. This is a debug-signed test build, not a production release.
+- Test evidence artifacts contain logs, not apps.
 
-See [validation and diagnostic interpretation](docs/BUILD51_VALIDATION.md).
+The source ZIP is for GitHub upload and cannot itself be installed. See [installation](docs/START_BUILD53_KO.md) and [validation boundaries](docs/BUILD53_VALIDATION.md).
 
-## GitHub Actions outputs
+## Platform scope and release gate
 
-- `Solaris-Windows-Sender-build51`: extract the entire artifact and run `SolarisNativeHost.exe` (keep bundled files together).
-- `Solaris-0.3.2-build51-integrated`: install `Solaris-0.3.2-build51-resign.ipa` through your existing re-signing workflow. HTML receivers are also included.
-- `Solaris-build51-rtp-test-evidence` and `Solaris-build51-xcode-evidence`: test/build logs, not apps.
+| Direction | Current state |
+| --- | --- |
+| Windows → iPad | build51 was confirmed by the user; retest build53 with other concurrent receivers |
+| Windows → Windows | RTP room test in CI; physical device performance pending |
+| Windows → Android | receiver APK source added; APK build and Galaxy playback pending |
+| iPad/iPhone → Windows | existing ReplayKit path |
+| iPad/iPhone → Android | receiver page reused; physical Galaxy playback pending |
+| iPad/iPhone → multiple viewers | not implemented; ReplayKit sender has one peer |
+| Android → other platforms | not implemented; native MediaProjection and system audio sender required |
 
-The source ZIP must be uploaded to GitHub and built; it is not an installable Windows/iPad app.
-
-## Device test
-
-1. Use build51 on sender and receiver. Run the Windows sender and select **Solaris 하드웨어 1080p60**. Set the room and system-audio option, then start sharing.
-2. iPad: **Windows 화면 받기**. Another Windows PC: **다른 Windows 화면 받기** in the same room.
-3. Play continuous 60fps motion and sound for two minutes. Copy both diagnostics during sharing, before stopping. Match session, viewerID and connectionID.
-4. Windows should report `native-rtp`, a GPU encoder, advancing `rtpFramesSent`, and no recurring `backlogRecoveries`. Compare iPad `rtpAverageDecodedFPS`/`rtpRecentFPS`, not legacy DataChannel counters. The first join may discard deltas until the next IDR.
-5. Then try two receivers together and disconnect/rejoin one; the other should continue. Four physical viewers have not been validated.
-
-## Verification boundary
-
-Linux .NET scheduling tests and actual Chrome H.264/Opus SRTP interoperability have passed locally, including large IDRs and two viewers with recovery. GitHub Actions must run the Windows timer test, Windows publish/self-test, and Xcode iOS build. Actual Windows GPU capture, WASAPI audio, iPad rendering, end-to-end latency and sustained multi-device performance remain device checks. P2P upload usage grows with the viewer count; TURN and Internet-scale congestion control are not added in this build.
+The full four-platform, bidirectional five-viewer release also needs multi-peer iOS and Android senders, five-device stress tests, mixed-network recovery, room access controls, app signing and usable UI. Do not treat passing CI alone as that release gate.

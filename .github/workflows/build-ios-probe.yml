@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build51-rtp-test-evidence
+          name: Solaris-build53-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -86,7 +86,7 @@ jobs:
       - name: Upload Windows Solaris sender
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-Sender-build51
+          name: Solaris-Windows-Sender-build53
           path: dist/native/
           if-no-files-found: error
           retention-days: 7
@@ -114,6 +114,34 @@ jobs:
           path: build/browser-diagnostics/
           if-no-files-found: ignore
           retention-days: 3
+  android-receiver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build Android receiver
+        run: |
+          python3 scripts/prepare_android_receiver.py
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          gradle -p android :app:assembleDebug
+          mkdir -p dist/android
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-Receiver-build53-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Solaris-Android-Receiver-build53-debug
+          path: dist/android/Solaris-Android-Receiver-build53-debug.apk
+          if-no-files-found: error
+          retention-days: 7
   build:
     needs: [browser-test, native-rtp-test]
     runs-on: macos-15
@@ -151,7 +179,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build51-xcode-evidence
+          name: Solaris-build53-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -160,11 +188,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build51-integrated
+          name: Solaris-0.3.2-build53-integrated
           path: |
-            dist/Solaris-0.3.2-build51-resign.ipa
-            dist/Solaris-Windows-0.3.2-build51.html
-            dist/Solaris-Desktop-Share-build51.html
+            dist/Solaris-0.3.2-build53-resign.ipa
+            dist/Solaris-Windows-0.3.2-build53.html
+            dist/Solaris-Desktop-Share-build53.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

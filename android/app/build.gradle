@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.solaris.receiver'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'org.solaris.receiver'
+        minSdk 30
+        targetSdk 35
+        versionCode 53
+        versionName '0.3.2-build53'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'androidx.webkit:webkit:1.14.0' }

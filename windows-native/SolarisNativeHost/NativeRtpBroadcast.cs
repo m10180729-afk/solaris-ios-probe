@@ -70,7 +70,7 @@ internal sealed class NativeRtpBroadcast : IDisposable
                     if (old.ConnectionID != cid) return; // stale recovery must not kill the replacement.
                     viewers.TryRemove(viewer, out _); old.Dispose();
                 }
-                if (viewers.Count >= 4) { emit(new { type = "rtp-status", session, state = "viewer-limit", message = "시청자는 최대 4명입니다." }); return; }
+                if (viewers.Count >= 5) { emit(new { type = "rtp-status", session, state = "viewer-limit", message = "시청자는 최대 5명입니다." }); return; }
                 var peer = new RtpViewer(viewer, withAudio, 18);
                 viewers[viewer] = peer; var currentSession = session; var generation = ++nextGeneration; peer.Generation = generation;
                 peer.Signal += (kind, payload) => emit(new { type = "rtp-signal", session = currentSession, viewerID = viewer, connectionID = peer.ConnectionID, generation, kind, payload });

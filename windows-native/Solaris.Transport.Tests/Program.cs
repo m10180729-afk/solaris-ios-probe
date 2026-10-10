@@ -62,6 +62,29 @@ if (args.Contains("--large-idr")) {
 }
 Console.WriteLine($"Fixture frames={accessUnits.Count} maxIDR={accessUnits.Where(u=>u.Key).Max(u=>u.Data.Length)}");
 var peers=new Dictionary<string,RtpViewer>();var gate=new object();
+var roomPeers=new Dictionary<string,RtpViewer>();
+var signals=new List<(int Id, string Sender, string Kind, JsonElement Payload)>();
+int nextSignal=0;long nextGeneration=0;
+const string roomSession="room-fixture-session";
+void Publish(string sender,string kind,object payload) {
+    lock(gate) signals.Add((++nextSignal,sender,kind,JsonSerializer.SerializeToElement(payload)));
+}
+async Task RoomOffer(string viewer) {
+    var peer=new RtpViewer(viewer,true,useStun:false);
+    peer.Generation=Interlocked.Increment(ref nextGeneration);
+    lock(gate) roomPeers[viewer]=peer;
+    peer.Signal+=(kind,payload)=>{
+        if(kind!="ice")return;
+        var candidate=JsonSerializer.SerializeToElement(payload);
+        Publish("caller",kind,new {protocol="desktop-v1",source="windows-desktop",
+            sessionID=roomSession,viewerID=viewer,connectionID=peer.ConnectionID,generation=peer.Generation,videoTransport="native-rtp",
+            candidate=candidate.GetProperty("candidate").GetString(),sdpMid=candidate.GetProperty("sdpMid").GetString(),
+            sdpMLineIndex=candidate.GetProperty("sdpMLineIndex").GetUInt16()});
+    };
+    await peer.CreateOffer();
+    Publish("caller","offer",new {protocol="desktop-v1",source="windows-desktop",sessionID=roomSession,
+        viewerID=viewer,connectionID=peer.ConnectionID,generation=peer.Generation,videoTransport="native-rtp",sdp=peer.OfferSDP});
+}
 using var server=new HttpListener();server.Prefixes.Add("http://127.0.0.1:18950/");server.Start();
 using var tokenSource=new CancellationTokenSource();
 var pump=Task.Run(async()=>{
@@ -71,12 +94,12 @@ var pump=Task.Run(async()=>{
         long now=RtpViewer.NowUs;
         if(now-began>=frameIndex*1_000_000/60){
             var source=accessUnits[(int)(frameIndex%accessUnits.Count)];var unit=source with{TimestampUs=began+frameIndex*1_000_000/60};
-            lock(gate)foreach(var p in peers.Values)p.Enqueue(unit);frameIndex++;
+            lock(gate){foreach(var p in peers.Values)p.Enqueue(unit);foreach(var p in roomPeers.Values)p.Enqueue(unit);}frameIndex++;
         }
         if(now-began>=audioIndex*20_000){
             for(int i=0;i<960;i++){pcm[2*i]=(short)(Math.Sin((audioIndex*960+i)*2*Math.PI*440/48000)*4000);pcm[2*i+1]=(short)(Math.Sin((audioIndex*960+i)*2*Math.PI*660/48000)*4000);}
             int len=encoder.Encode(pcm,960,outAudio,outAudio.Length);var chunk=outAudio.AsSpan(0,len).ToArray();
-            lock(gate)foreach(var p in peers.Values)p.SendAudio(chunk,now);audioIndex++;
+            lock(gate){foreach(var p in peers.Values)p.SendAudio(chunk,now);foreach(var p in roomPeers.Values)p.SendAudio(chunk,now);}audioIndex++;
         }
         await Task.Delay(1);
     }
@@ -96,10 +119,50 @@ while(true){
             var body=json.RootElement;
             peers[id].Ice(new RTCIceCandidateInit{candidate=body.GetProperty("candidate").GetString(),sdpMid=body.GetProperty("sdpMid").GetString(),sdpMLineIndex=body.GetProperty("sdpMLineIndex").GetUInt16()});
         }else if(route=="/stats"){lock(gate)result=peers.ToDictionary(x=>x.Key,x=>x.Value.Snapshot());}
+        else if(route=="/room/announce"){
+            Publish("caller","offer",new{protocol="desktop-v1",source="windows-desktop",sessionID=roomSession,
+                videoTransport="native-rtp",action="announce",audio=true,targetFPS=60});
+        }
+        else if(route=="/room/stats"){lock(gate)result=roomPeers.ToDictionary(x=>x.Key,x=>x.Value.Snapshot());}
+        else if(route=="/room/close"){
+            lock(gate)if(roomPeers.TryGetValue(id,out var closing))closing.Peer.Close("test viewer failure");
+        }
+        else if(route=="/rest/v1/solaris_signals"&&ctx.Request.HttpMethod=="GET"){
+            string sender=ctx.Request.QueryString["sender"]?.Replace("eq.","")??"";
+            string? kind=ctx.Request.QueryString["kind"]?.Replace("eq.","");
+            string? sid=ctx.Request.QueryString["payload->>sessionID"]?.Replace("eq.","");
+            int after=int.TryParse(ctx.Request.QueryString["id"]?.Replace("gt.",""),out var n)?n:0;
+            lock(gate)result=signals.Where(x=>x.Id>after&&x.Sender==sender&&(kind==null||x.Kind==kind)
+                &&(sid==null||x.Payload.GetProperty("sessionID").GetString()==sid))
+                .Select(x=>new{id=x.Id,kind=x.Kind,payload=x.Payload}).ToArray();
+        }
+        else if(route=="/rest/v1/solaris_signals"&&ctx.Request.HttpMethod=="POST"){
+            using var reader=new StreamReader(ctx.Request.InputStream);using var json=JsonDocument.Parse(await reader.ReadToEndAsync());
+            var body=json.RootElement;var signalPayload=body.GetProperty("payload");
+            string sender=body.GetProperty("sender").GetString()!;
+            string kind=body.GetProperty("kind").GetString()!;
+            Publish(sender,kind,signalPayload);
+            if(sender=="callee"&&signalPayload.TryGetProperty("viewerID",out var v)&&Guid.TryParse(v.GetString(),out _)){
+                string viewer=v.GetString()!;
+                string? action=signalPayload.TryGetProperty("action",out var a)?a.GetString():null;
+                RtpViewer? target;lock(gate)roomPeers.TryGetValue(viewer,out target);
+                if(action=="join"&&target==null)await RoomOffer(viewer);
+                if(action=="recover"&&target!=null&&signalPayload.GetProperty("connectionID").GetString()==target.ConnectionID){
+                    lock(gate)roomPeers.Remove(viewer);target.Dispose();await RoomOffer(viewer);
+                }
+                if(action=="leave"&&target!=null){lock(gate)roomPeers.Remove(viewer);target.Dispose();}
+                if(target!=null&&signalPayload.TryGetProperty("connectionID",out var c)&&c.GetString()==target.ConnectionID){
+                    if(kind=="answer"&&signalPayload.TryGetProperty("sdp",out var sdp))target.Answer(sdp.GetString()!);
+                    if(kind=="ice"&&signalPayload.TryGetProperty("candidate",out var candidate))target.Ice(new RTCIceCandidateInit{
+                        candidate=candidate.GetString(),sdpMid=signalPayload.GetProperty("sdpMid").GetString(),
+                        sdpMLineIndex=signalPayload.GetProperty("sdpMLineIndex").GetUInt16()});
+                }
+            }
+        }
         else if(route=="/close"){lock(gate)if(peers.Remove(id,out var peer))peer.Dispose();}
         else if(route=="/done"){ctx.Response.Close();break;}
         else {ctx.Response.ContentType="text/html";var page=Encoding.UTF8.GetBytes("<!doctype html><video autoplay muted playsinline></video>");ctx.Response.OutputStream.Write(page);ctx.Response.Close();continue;}
         ctx.Response.ContentType="application/json";var payload=JsonSerializer.SerializeToUtf8Bytes(result);await ctx.Response.OutputStream.WriteAsync(payload);ctx.Response.Close();
     }catch(Exception e){ctx.Response.StatusCode=500;await ctx.Response.OutputStream.WriteAsync(Encoding.UTF8.GetBytes(e.ToString()));ctx.Response.Close();}
 }
-tokenSource.Cancel();lock(gate)foreach(var peer in peers.Values)peer.Dispose();await pump;
+tokenSource.Cancel();lock(gate){foreach(var peer in peers.Values)peer.Dispose();foreach(var peer in roomPeers.Values)peer.Dispose();}await pump;

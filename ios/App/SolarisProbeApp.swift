@@ -30,16 +30,16 @@ struct ProbeView: View {
             Form {
                 Section {
                     Text("Solaris \(ProbeShared.appVersion)").font(.title2.bold())
-                    Text("아이패드 ↔ Windows 화면공유")
-                    Text("iPad 송출 1920급 60fps / Windows 송출 Solaris 하드웨어 1080p60·120fps")
+                    Text("iPad ↔ Windows 화면공유 · Android 수신")
+                    Text("iPad 송출 1920급 최대 60fps / Windows 하드웨어 송출 1080p60")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 if let c = config {
                     Section("Windows → iPad") {
-                        NavigationLink("Windows 화면 받기 · 1080p60/120") {
+                        NavigationLink("Windows 화면 받기 · 1080p60") {
                             DesktopReceiverView(config: c)
                         }
-                        Text("Windows의 SolarisNativeHost.exe에서 하드웨어 1080p60 또는 1080p120을 선택하세요. H.264는 Solaris가 직접 전달하고 iPad의 VideoToolbox가 재생합니다.")
+                        Text("Windows의 SolarisNativeHost.exe에서 하드웨어 1080p60을 선택하세요. H.264는 Solaris가 직접 전달하고 iPad의 VideoToolbox가 재생합니다.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -63,7 +63,7 @@ struct ProbeView: View {
                     }
                 }
                 Section("iPad → Windows · 검증된 60fps 경로") {
-                    Text("Windows에서 Solaris-Windows-0.3.2-build40.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
+                    Text("Windows에서 Solaris-Windows-0.3.2-build53.html을 열고 ‘설정 저장 + 수신 시작’을 누르세요.")
                     if config != nil, ProbeShared.extensionID() != nil {
                         Text("아래 버튼 → Solaris 화면 시험 → 공유 시작")
                         BroadcastPicker().frame(width: 60, height: 60)
@@ -73,7 +73,7 @@ struct ProbeView: View {
                 }
                 Section("Windows 송신 모드 안내") {
                     Text("Solaris 하드웨어 1080p60: 기본 권장 모드입니다.")
-                    Text("Solaris 하드웨어 1080p120: 실제 캡처·인코딩 FPS가 100 이상인 PC에서 사용합니다.")
+                    Text("120fps 모드는 현재 검증 중이며 기본 화면에는 표시하지 않습니다.")
                     Text("호환 1080p60: WebCodecs가 지원되지 않는 PC에서만 사용합니다. 별도 스트리밍 앱은 설치하지 않습니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

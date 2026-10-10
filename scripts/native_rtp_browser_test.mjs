@@ -78,8 +78,47 @@ try{
   const finalB=await stats(b);assert.ok(finalB.framesDecoded>initialB.framesDecoded+60,'other viewer continued during recovery');
   const native=await (await fetch(base+'/stats')).json();
   for(const v of Object.values(native))assert.equal(v.lastError,'');
-  writeFileSync(new URL('build/rtp-diagnostics/result.json',root),JSON.stringify({initialA,initialB,throughput,finalA:await stats(a),finalB,native},null,2));
-  console.log('PASS: actual H264/Opus SRTP decode, two viewers, 420KB IDRs, sustained decode',JSON.stringify(Object.fromEntries(Object.entries(throughput).map(([k,v])=>[k,v.fps]))),'receiver watchdog and peer replacement');
+  // The direct SDP test above bypasses Solaris room signaling. Exercise the
+  // actual Windows "receive" button, poll filters, join, per-viewer offers,
+  // ICE, answers and heartbeat through a local Supabase-compatible fixture.
+  async function roomViewer(id){
+    const page=await browser.newPage();pages.push(page);
+    page.on('pageerror',e=>browserEvents.push({id,error:e.stack}));
+    await page.goto(base);await page.setContent(html);
+    await page.evaluate(async()=>{
+      validConfig=()=>({url:location.origin,key:'test',room:'test',transport:'test'});
+      await startReceiver();
+    });
+    return page;
+  }
+  const roomA=await roomViewer('roomA'),roomB=await roomViewer('roomB');
+  await fetch(base+'/room/announce');
+  for(const page of [roomA,roomB])await waitUntil(async()=>{
+    const s=await stats(page);return s.peer==='connected'&&s.width===1920&&s.height===1080&&s.framesDecoded>=60&&s.audio.bytesReceived>1000;
+  },'production room flow must decode video and audio on both Windows receivers',35000);
+  const roomStartA=await stats(roomA),roomStartB=await stats(roomB);
+  assert.notEqual(roomStartA.connectionID,roomStartB.connectionID,'viewers need independent peers');
+  const startTime=Date.now();await new Promise(r=>setTimeout(r,10000));
+  const roomEndA=await stats(roomA),roomEndB=await stats(roomB);
+  const roomSeconds=(Date.now()-startTime)/1000;
+  const roomFPS={a:(roomEndA.framesDecoded-roomStartA.framesDecoded)/roomSeconds,
+    b:(roomEndB.framesDecoded-roomStartB.framesDecoded)/roomSeconds};
+  assert.ok(roomFPS.a>=54&&roomFPS.b>=54,`room receivers must sustain 1080p60: ${JSON.stringify(roomFPS)}`);
+  const roomPeersBefore=await (await fetch(base+'/room/stats')).json();
+  assert.equal(Object.keys(roomPeersBefore).length,2);
+  const viewerA=await roomA.evaluate(()=>active.viewerID);
+  await fetch(base+'/room/close?id='+encodeURIComponent(viewerA));
+  await roomA.evaluate(()=>{active.rtpOfferAt=Date.now()-20000;active.lastRtpFrameAt=Date.now()-20000;});
+  await waitUntil(async()=>{const s=await stats(roomA);return s.connectionID!==roomEndA.connectionID&&s.framesDecoded>=60;},
+    'room signaling failed to replace only the disconnected viewer',35000);
+  const roomFinalB=await stats(roomB);
+  assert.equal(roomFinalB.connectionID,roomEndB.connectionID,'other room viewer peer was replaced');
+  assert.ok(roomFinalB.framesDecoded>roomEndB.framesDecoded+60,'other room viewer stopped decoding during recovery');
+  const roomNative=await (await fetch(base+'/room/stats')).json();
+  for(const v of Object.values(roomNative))assert.equal(v.lastError,'');
+  writeFileSync(new URL('build/rtp-diagnostics/result.json',root),JSON.stringify({initialA,initialB,throughput,finalA:await stats(a),finalB,native,
+    room:{roomFPS,roomStartA,roomStartB,roomEndA,roomEndB,roomFinalB,roomNative}},null,2));
+  console.log('PASS: H264/Opus RTP direct and production room signaling, two independent Windows viewers, 1080p60',JSON.stringify(roomFPS),'and isolated peer recovery');
 }catch(e){
   const snapshots=await Promise.all(pages.map(async(page,index)=>{
     try{return{index,...await page.evaluate(async()=>{
