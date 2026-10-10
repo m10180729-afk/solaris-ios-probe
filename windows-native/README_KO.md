@@ -1,28 +1,25 @@
-# Solaris Windows 화면공유 · build50
+# Solaris Windows 화면공유 · build51
 
-Moonlight와 Apollo를 설치하지 않습니다. ZIP을 한 폴더에 압축 해제한 뒤 `SolarisNativeHost.exe`를 실행하면 됩니다. 함께 들어 있는 `ffmpeg.exe`는 Solaris가 Windows의 NVIDIA NVENC, Intel Quick Sync, AMD AMF 또는 Media Foundation H.264 인코더를 직접 사용하기 위한 내부 구성요소입니다.
+## 실행
 
-## Windows → iPad
+1. Actions의 `Solaris-Windows-Sender-build51` 전체를 한 폴더에 압축 해제하고 `SolarisNativeHost.exe`를 실행합니다. `ffmpeg.exe` 등 동봉 파일을 함께 둡니다.
+2. iPad에는 같은 빌드의 `Solaris-0.3.2-build51-resign.ipa`를 기존 방법으로 설치합니다.
+3. Windows에서 **Solaris 하드웨어 1080p60**, 방 ID, **시스템 소리 포함**을 확인하고 송신을 시작합니다. 현재 주 모니터와 기본 재생 장치 소리를 공유합니다. 마이크는 포함하지 않습니다.
+4. iPad의 **Windows 화면 받기**, 또는 다른 Windows의 **다른 Windows 화면 받기**에서 같은 방으로 들어갑니다.
 
-1. GitHub Actions의 `Solaris-Windows-Sender-build50`를 내려받아 압축을 풉니다.
-2. `SolarisNativeHost.exe`를 실행합니다.
-3. iPad에는 `Solaris-0.3.2-build50-resign.ipa` 하나만 설치합니다.
-4. iPad Solaris에서 `Windows 화면 받기` → `Windows 화면 수신 시작`을 누릅니다.
-5. Windows에서 기본값인 `Solaris 하드웨어 1080p60` → `Windows 화면 보내기`를 누릅니다.
-6. 공유할 화면과 `시스템 오디오 공유`를 선택합니다. 네이티브 영상은 현재 Windows 주 모니터를 전송합니다.
+Moonlight/Apollo는 설치하지 않습니다. 이번 목표는 1080p60입니다. 호환 모드는 CPU 인코딩을 사용할 수 있으므로 이번 수정 검증에는 하드웨어 모드를 사용하세요.
 
-1080p60이 안정적으로 동작하고 진단의 실제 인코더 출력이 100fps 이상이면 `Solaris 하드웨어 1080p120`을 시험하세요. `호환 1080p60`은 WebCodecs H.264가 없는 PC용 기존 경로입니다.
+## 진단
 
-## 확인할 진단
+공유 중 Windows와 iPad에서 모두 복사하세요. session과 connectionID가 같은지 확인합니다.
 
-- 코덱: `H264 Native`
-- `nativeEncoder`: `NVIDIA NVENC`, `Intel Quick Sync`, `AMD AMF`, `Windows Media Foundation` 중 실제 선택값
-- `videoTransport`: `webcodecs-h264`
-- 인코더 출력 FPS
-- `encoderDrops`
-- `dataChannelBufferedBytes`
-- `adaptiveTargetMbps`, `adaptiveRestartCount`
-- `awaitingKeyFrame`와 `resyncDrops`
-- iPad 화면의 `VideoToolbox 표시 프레임`과 `손실/지연 드롭`
+- `videoTransport`: `native-rtp`
+- `encoderImplementation`: 실제 NVENC / Quick Sync / AMF / Media Foundation
+- `nativeEncodedFPS`: 인코더 파이프에서 도착한 프레임 속도. 순간 100fps 이상이어도 120fps 캡처의 증거가 아닙니다.
+- `viewers[].rtpSendFPS`, `rtpFramesSent`: 실제 RTP 송신 진행
+- `backlogRecoveries`, `waitingKeyDrops`, `lastQueueReset`: 대기열 폐기 원인
+- `lastKeyFrameBytes`, `lastSendDurationMilliseconds`, `queueOldestMilliseconds`: 큰 키프레임과 대기 시간
+- `receiverReportAgeMilliseconds`: Windows에 표시한 수신 FPS 보고의 나이
+- iPad `rtpAverageDecodedFPS`, `rtpRecentFPS`, `rtpStatsAgeMilliseconds`: 디코딩 속도와 진단 시점
 
-이번 버전은 큐 포화가 지속될 때 H.264 인코더를 더 낮은 비트레이트로 다시 시작합니다. 재시작 중 화면이 잠깐 멈출 수 있습니다. 송신을 중지한 뒤에도 `진단 복사`에서 마지막 세션의 통계를 볼 수 있습니다. 60fps 안정 확인을 우선하세요.
+대기열 복구는 새 키프레임에서 시작하며, 수신 정지는 기존 수신기 감시기가 감지해 해당 시청자 연결만 재생성합니다. 완전한 해결 판정은 실제 기기 진단 후에 합니다.

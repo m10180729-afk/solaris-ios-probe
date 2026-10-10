@@ -74,7 +74,7 @@ internal sealed class NativeH264Capture : IDisposable
                 if (!candidate.Start()) throw new InvalidOperationException("FFmpeg 프로세스를 시작하지 못했습니다.");
                 candidate.BeginErrorReadLine();
                 process = candidate;
-                var reader = ReadFramesAsync(candidate, encoder.Name, firstFrame, localGeneration, token);
+                var reader = ReadFramesAsync(candidate, encoder.Name, firstFrame, localGeneration, options.FramesPerSecond, token);
                 var winner = await Task.WhenAny(firstFrame.Task, candidate.WaitForExitAsync(token), Task.Delay(8000, token));
                 if (winner == firstFrame.Task && firstFrame.Task.Result && !candidate.HasExited)
                 {
@@ -138,11 +138,13 @@ internal sealed class NativeH264Capture : IDisposable
         string encoder,
         TaskCompletionSource<bool> firstFrame,
         int localGeneration,
+        int fps,
         CancellationToken token)
     {
         var fpsWindowStart = Stopwatch.GetTimestamp();
         var fpsWindowFrames = 0;
         long emittedFrames = 0;
+        var mediaClock = new Solaris.Transport.ConstantFrameClock(Math.Clamp(fps, 30, 120));
         var parser = new AnnexBAccessUnitParser((bytes, keyFrame) =>
         {
             if (generation != localGeneration || token.IsCancellationRequested) return;
@@ -150,7 +152,7 @@ internal sealed class NativeH264Capture : IDisposable
             emittedFrames++;
             fpsWindowFrames++;
             var timestampUs = (long)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency));
-            onFrame(bytes, keyFrame, timestampUs, encoder);
+            onFrame(bytes, keyFrame, mediaClock.Next(timestampUs), encoder);
             var now = Stopwatch.GetTimestamp();
             var elapsed = (now - fpsWindowStart) / (double)Stopwatch.Frequency;
             if (elapsed >= 1)
@@ -184,7 +186,7 @@ internal sealed class NativeH264Capture : IDisposable
                      "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
                      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
                      $"-profile:v baseline -level:v {(fps > 60 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
-                     "-bsf:v h264_metadata=aud=insert -f h264 pipe:1";
+                     $"-r {fps} -fps_mode cfr -flush_packets 1 -bsf:v h264_metadata=aud=insert -f h264 pipe:1";
         yield return ("NVIDIA NVENC", $"{common.Replace("-bsf:v", "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -forced-idr 1 -bsf:v")}");
         yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -forced_idr 1 -repeat_pps 1 -bsf:v")}");
         yield return ("AMD AMF", $"{common.Replace("-bsf:v", "-c:v h264_amf -usage lowlatency_high_quality -quality speed -rc vbr_peak -bsf:v")}");

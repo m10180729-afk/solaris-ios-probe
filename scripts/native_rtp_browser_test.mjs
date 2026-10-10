@@ -9,7 +9,7 @@ const dll=new URL('windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Sol
 const fixture=new URL('build/rtp-fixture.h264',root).pathname;
 const html=readFileSync(new URL('ios/App/Resources/solaris-desktop.html',root),'utf8');
 mkdirSync(new URL('build/rtp-diagnostics/',root),{recursive:true});
-const server=spawn(process.env.DOTNET||'dotnet',[dll,'--serve',fixture],{cwd:root,stdio:['ignore','pipe','pipe']});
+const server=spawn(process.env.DOTNET||'dotnet',[dll,'--serve',fixture,'--large-idr'],{cwd:root,stdio:['ignore','pipe','pipe']});
 let serverLog='',browser;
 const pages=[];
 const browserEvents=[];
@@ -53,6 +53,21 @@ try{
   const initialA=await stats(a),initialB=await stats(b);
   assert.doesNotMatch(initialA.sdp,/m=application/,'media must not use DataChannel');
   assert.match(initialA.sdp,/nack pli/);assert.match(initialA.sdp,/opus\/48000\/2/);
+  // Sustained throughput gate: initial decode alone missed the build50
+  // keyframe/queue starvation. Large valid SEI makes IDRs exceed 420KB.
+  const beforeNative=await (await fetch(base+'/stats')).json();
+  const throughputStart=Date.now();
+  await new Promise(r=>setTimeout(r,12000));
+  const elapsed=(Date.now()-throughputStart)/1000;
+  const steadyA=await stats(a),steadyB=await stats(b);
+  const afterNative=await (await fetch(base+'/stats')).json();
+  const throughput={};
+  for(const [id,before,after] of [['a',initialA,steadyA],['b',initialB,steadyB]]) {
+    const fps=(after.framesDecoded-before.framesDecoded)/elapsed;
+    throughput[id]={fps,seconds:elapsed,native:afterNative[id]};
+    assert.ok(fps>=54,`viewer ${id} sustained decode ${fps.toFixed(1)}fps, expected >=54`);
+    assert.equal(afterNative[id].backlogRecoveries-beforeNative[id].backlogRecoveries,0,'normal IDR bursts must not reset dependency queue');
+  }
   // Force loss of one peer. Production watchdog must request recovery; the
   // unaffected viewer must continue without capture/encoder restart.
   await fetch(base+'/close?id=a');
@@ -63,8 +78,8 @@ try{
   const finalB=await stats(b);assert.ok(finalB.framesDecoded>initialB.framesDecoded+60,'other viewer continued during recovery');
   const native=await (await fetch(base+'/stats')).json();
   for(const v of Object.values(native))assert.equal(v.lastError,'');
-  writeFileSync(new URL('build/rtp-diagnostics/result.json',root),JSON.stringify({initialA,initialB,finalA:await stats(a),finalB,native},null,2));
-  console.log('PASS: actual H264/Opus SRTP decode, two viewers, production receiver watchdog and peer replacement');
+  writeFileSync(new URL('build/rtp-diagnostics/result.json',root),JSON.stringify({initialA,initialB,throughput,finalA:await stats(a),finalB,native},null,2));
+  console.log('PASS: actual H264/Opus SRTP decode, two viewers, 420KB IDRs, sustained decode',JSON.stringify(Object.fromEntries(Object.entries(throughput).map(([k,v])=>[k,v.fps]))),'receiver watchdog and peer replacement');
 }catch(e){
   const snapshots=await Promise.all(pages.map(async(page,index)=>{
     try{return{index,...await page.evaluate(async()=>{

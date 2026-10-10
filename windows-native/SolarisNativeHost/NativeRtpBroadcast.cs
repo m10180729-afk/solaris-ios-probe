@@ -81,8 +81,8 @@ internal sealed class NativeRtpBroadcast : IDisposable
             }
             if (!viewers.TryGetValue(viewer, out var selected) || selected.ConnectionID != cid) return;
             if (type == "rtp-heartbeat") {
-                if (message.TryGetProperty("fps", out var fps) && fps.TryGetDouble(out var value)) selected.ReceiverFPS = value;
-                if (message.TryGetProperty("framesDecoded", out var frames) && frames.TryGetInt64(out var count)) selected.ReceiverFramesDecoded = count;
+                if (message.TryGetProperty("fps", out var fps) && fps.TryGetDouble(out var value) &&
+                    message.TryGetProperty("framesDecoded", out var frames) && frames.TryGetInt64(out var count)) selected.ReceiverReport(value, count);
             }
             if (type == "rtp-answer") selected.Answer(message.GetProperty("sdp").GetString()!);
             if (type == "rtp-ice") selected.Ice(new RTCIceCandidateInit {

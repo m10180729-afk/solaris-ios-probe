@@ -9,6 +9,8 @@ using Solaris.Transport;
 using SolarisNativeHost;
 
 static void Check(bool value, string message) { if (!value) throw new Exception(message); Console.WriteLine("PASS " + message); }
+SchedulingTests.Run(Check);
+await SchedulingTests.CheckRealTimer(Check);
 var bytes = new List<byte>();
 bytes.AddRange(new byte[] {0,0,0,1,0x67,0x42,0xe0,0x2a,0,0,1,0x68,0x44,0,0,1,0x65});
 bytes.AddRange(Enumerable.Repeat((byte)0x55, 8000));
@@ -44,6 +46,21 @@ if (!args.Contains("--serve")) return;
 var path=args[Array.IndexOf(args,"--serve")+1];
 var accessUnits=new List<VideoUnit>();var fixtureParser=new AnnexBAccessUnitParser((d,k)=>accessUnits.Add(new(d,k,0)));
 fixtureParser.Append(File.ReadAllBytes(path));fixtureParser.Complete();
+// Valid unregistered-user-data SEI exercises large IDR wire size without
+// changing picture content or depending on a particular hardware encoder.
+if (args.Contains("--large-idr")) {
+    accessUnits = accessUnits.Select(u => {
+        if (!u.Key || u.Data.Length >= 420000) return u;
+        int length = Math.Max(16, 420000 - u.Data.Length);
+        var sei = new List<byte> {0,0,0,1,6,5};
+        for (int remain=length; remain>=255; remain-=255) sei.Add(255);
+        sei.Add((byte)(length%255));
+        sei.AddRange(Enumerable.Repeat((byte)0xab, length)); sei.Add(0x80);
+        sei.AddRange(u.Data);
+        return u with {Data=sei.ToArray()};
+    }).ToList();
+}
+Console.WriteLine($"Fixture frames={accessUnits.Count} maxIDR={accessUnits.Where(u=>u.Key).Max(u=>u.Data.Length)}");
 var peers=new Dictionary<string,RtpViewer>();var gate=new object();
 using var server=new HttpListener();server.Prefixes.Add("http://127.0.0.1:18950/");server.Start();
 using var tokenSource=new CancellationTokenSource();
@@ -53,7 +70,7 @@ var pump=Task.Run(async()=>{
     while(!tokenSource.IsCancellationRequested){
         long now=RtpViewer.NowUs;
         if(now-began>=frameIndex*1_000_000/60){
-            var source=accessUnits[(int)(frameIndex%accessUnits.Count)];var unit=source with{TimestampUs=now};
+            var source=accessUnits[(int)(frameIndex%accessUnits.Count)];var unit=source with{TimestampUs=began+frameIndex*1_000_000/60};
             lock(gate)foreach(var p in peers.Values)p.Enqueue(unit);frameIndex++;
         }
         if(now-began>=audioIndex*20_000){

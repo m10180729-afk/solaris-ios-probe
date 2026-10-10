@@ -12,18 +12,23 @@ public sealed class RtpViewer : IDisposable
     public readonly string ViewerID;
     public readonly string ConnectionID = Guid.NewGuid().ToString();
     private readonly object gate = new();
-    private readonly Queue<VideoUnit> frames = new();
+    private readonly VideoBacklog frames;
+    private readonly PacketPacer pacer;
     private readonly SemaphoreSlim ready = new(0, 1);
     private readonly CancellationTokenSource cancel = new();
     private readonly ConcurrentQueue<ushort> retransmit = new();
     private readonly Dictionary<ushort, Cached> cache = new();
     private readonly Queue<(ushort Seq, long At)> cacheOrder = new();
     private readonly List<RTCIceCandidateInit> pendingIce = new();
-    private bool remoteReady, waitingKey = true, disposed;
+    private bool remoteReady, disposed;
     private ushort sequence = (ushort)Random.Shared.Next(65536);
     private int videoPayload = 96, audioPayload = 111;
-    private long sentFrames, sentBytes, packets, drops, retransmits, pli, nack;
+    private long sentFrames, sentBytes, packets, retransmits, pli, nack;
     private long lastReportUs, lastFrameUs, snapshotAt, snapshotFrames, snapshotBytes;
+    private long inputFrames, inputBytes, lastInputUs, lastReceiverUs, lastKeyBytes;
+    private long pacingWaits, maxPacingOvershootUs, lastSendDurationUs, maxSendDurationUs, lastMediaOffsetUs;
+    private int inFlightBytes;
+    public void ReceiverReport(double fps, long count) { ReceiverFPS = fps; ReceiverFramesDecoded = count; Interlocked.Exchange(ref lastReceiverUs, NowUs); }
     public long Generation { get; set; }
     public string? OfferSDP { get; private set; }
     public double ReceiverFPS { get; set; }
@@ -39,6 +44,8 @@ public sealed class RtpViewer : IDisposable
     public RtpViewer(string viewerID, bool audio, int pacingMbps = 18, bool useStun = true)
     {
         ViewerID = viewerID; this.pacingMbps = Math.Clamp(pacingMbps, 4, 80);
+        frames = new VideoBacklog(this.pacingMbps);
+        pacer = new PacketPacer(this.pacingMbps, NowUs);
         var config = new RTCConfiguration();
         if (useStun) config.iceServers = new List<RTCIceServer> { new() { urls = "stun:stun.l.google.com:19302" } };
         Peer = new RTCPeerConnection(config);
@@ -51,7 +58,7 @@ public sealed class RtpViewer : IDisposable
         Peer.OnVideoFormatsNegotiated += formats => videoPayload = formats.First().FormatID;
         Peer.OnAudioFormatsNegotiated += formats => audioPayload = formats.First().FormatID;
         Peer.onicecandidate += c => Signal?.Invoke("ice", new { candidate = c.candidate, sdpMid = c.sdpMid, sdpMLineIndex = c.sdpMLineIndex });
-        Peer.onconnectionstatechange += state => { lock (gate) { waitingKey = true; frames.Clear(); } State?.Invoke(state.ToString()); };
+        Peer.onconnectionstatechange += state => { lock (gate) { frames.Reset("peer-state"); } State?.Invoke(state.ToString()); };
         Peer.OnReceiveReport += (_, media, report) =>
         {
             Interlocked.Exchange(ref lastReportUs, NowUs);
@@ -65,7 +72,7 @@ public sealed class RtpViewer : IDisposable
                 Interlocked.Increment(ref pli);
                 // Encoder emits periodic IDR every 0.5s. Gate deltas until that
                 // fresh IDR, never replay an old IDR with newer dependent deltas.
-                lock (gate) { waitingKey = true; frames.Clear(); }
+                lock (gate) { frames.Reset("pli"); }
             }
             if (feedback.Header.PacketType == RTCPReportTypesEnum.RTPFB && feedback.Header.FeedbackMessageType == RTCPFeedbackTypesEnum.NACK)
             {
@@ -105,11 +112,9 @@ public sealed class RtpViewer : IDisposable
         if (disposed || Peer.connectionState != RTCPeerConnectionState.connected) return;
         lock (gate)
         {
-            if (waitingKey && !unit.Key) { drops++; return; }
-            if (frames.Count >= 3) { drops += frames.Count; frames.Clear(); waitingKey = true; }
-            if (waitingKey && !unit.Key) { drops++; return; }
-            if (unit.Key) waitingKey = false;
-            frames.Enqueue(unit);
+            inputFrames++; inputBytes += unit.Data.Length; lastInputUs = NowUs;
+            if (unit.Key) lastKeyBytes = unit.Data.Length;
+            frames.Add(unit, lastInputUs);
         }
         Wake();
     }
@@ -120,40 +125,56 @@ public sealed class RtpViewer : IDisposable
             while (!cancel.IsCancellationRequested) {
                 await ready.WaitAsync(cancel.Token);
                 // NACK repair stays on this peer's send worker, with bounded age.
-                while (retransmit.TryDequeue(out var seq)) {
+                for (int repair = 0; repair < 32 && retransmit.TryDequeue(out var seq); repair++) {
                     if (cache.TryGetValue(seq, out var c) && NowUs - c.At < 300_000 && Peer.connectionState == RTCPeerConnectionState.connected) {
+                        await Pace(c.Payload.Length + 64);
+                        if (Peer.connectionState != RTCPeerConnectionState.connected) break;
                         Peer.SendRtpRaw(SDPMediaTypesEnum.video, c.Payload, c.Timestamp, c.Marker, videoPayload, seq); retransmits++;
                     }
                 }
+                if (!retransmit.IsEmpty) Wake();
                 VideoUnit? unit;
                 lock (gate) {
-                    unit = frames.Count > 0 ? frames.Dequeue() : null;
+                    unit = frames.Take(NowUs);
                     if (frames.Count > 0) Wake();
-                    if (unit != null && NowUs - unit.TimestampUs > 200_000) { drops++; waitingKey = true; frames.Clear(); unit = null; }
                 }
                 if (unit == null || Peer.connectionState != RTCPeerConnectionState.connected) continue;
                 var payloads = H264Packets.Split(unit.Data);
                 uint timestamp = unchecked((uint)(unit.TimestampUs * 9 / 100));
-                long began = NowUs, bytesThisFrame = 0;
+                long began = NowUs; inFlightBytes = unit.Data.Length;
                 bool complete = payloads.Count > 0;
                 for (int i = 0; i < payloads.Count; i++) {
                     if (cancel.IsCancellationRequested || Peer.connectionState != RTCPeerConnectionState.connected) { complete = false; break; }
                     var packet = payloads[i]; int marker = i == payloads.Count - 1 ? 1 : 0;
+                    await Pace(packet.Length + 64);
+                    if (cancel.IsCancellationRequested || Peer.connectionState != RTCPeerConnectionState.connected) { complete = false; break; }
                     var seq = sequence++;
                     Peer.SendRtpRaw(SDPMediaTypesEnum.video, packet, timestamp, marker, videoPayload, seq);
                     cache[seq] = new(packet, timestamp, marker, NowUs); cacheOrder.Enqueue((seq, NowUs));
-                    packets++; sentBytes += packet.Length; bytesThisFrame += packet.Length + 40;
-                    // A short per-frame pacer prevents keyframes from being a UDP burst.
-                    long waitUs = began + bytesThisFrame * 8 / pacingMbps - NowUs;
-                    if (waitUs >= 2000 && i < payloads.Count - 1) await Task.Delay((int)Math.Min(waitUs / 1000, 10), cancel.Token);
+                    Interlocked.Increment(ref packets); Interlocked.Add(ref sentBytes, packet.Length);
                 }
+                inFlightBytes = 0; lastSendDurationUs = NowUs - began;
+                maxSendDurationUs = Math.Max(maxSendDurationUs, lastSendDurationUs);
+                lastMediaOffsetUs = NowUs - unit.TimestampUs;
                 if (complete) { Interlocked.Increment(ref sentFrames); Interlocked.Exchange(ref lastFrameUs, NowUs); }
+                else { lock (gate) frames.Reset("interrupted-frame"); }
                 while (cacheOrder.Count > 2048 || cacheOrder.TryPeek(out var oldest) && NowUs - oldest.At > 500_000) {
                     var old = cacheOrder.Dequeue(); if (cache.TryGetValue(old.Seq, out var c) && c.At <= old.At) cache.Remove(old.Seq);
                 }
             }
         } catch (OperationCanceledException) { }
         catch (Exception e) { error = e.Message; State?.Invoke("send-error"); }
+        finally { inFlightBytes = 0; }
+    }
+    private async ValueTask Pace(int bytes)
+    {
+        while (true) {
+            long now = NowUs, wait = pacer.Reserve(bytes, now);
+            if (wait == 0) return;
+            pacingWaits++;
+            await Task.Delay((int)Math.Max(1, (wait + 999) / 1000), cancel.Token);
+            maxPacingOvershootUs = Math.Max(maxPacingOvershootUs, Math.Max(0, NowUs - now - wait));
+        }
     }
     private readonly object audioGate = new();
     public void SendAudio(byte[] opus, long timestampUs)
@@ -173,8 +194,15 @@ public sealed class RtpViewer : IDisposable
         return new {
             viewerID = ViewerID, connectionID = ConnectionID, generation = Generation, rtpSendFPS = fps, rtpSendMbps = mbps, receiverFPS = ReceiverFPS, receiverFramesDecoded = ReceiverFramesDecoded, peer = Peer.connectionState.ToString(), ice = Peer.iceConnectionState.ToString(),
             rtpFramesSent = Interlocked.Read(ref sentFrames), rtpPayloadBytesSent = Interlocked.Read(ref sentBytes), rtpPacketsSent = Interlocked.Read(ref packets),
-            queueFrames = frames.Count, queueOldestMilliseconds = frames.TryPeek(out var first) ? Math.Max(0, (NowUs - first.TimestampUs) / 1000.0) : 0,
-            queueDrops = drops, awaitingKeyFrame = waitingKey, retransmittedPackets = retransmits, pliReceived = pli, nackReceived = nack,
+            queueFrames = frames.Count, queueBytes = frames.Bytes, queueOldestMilliseconds = frames.OldestAgeUs(now) / 1000.0,
+            inputFrames, inputBytes, lastKeyFrameBytes = lastKeyBytes, inFlightBytes, pacingMbps,
+            pacingWaits, maxPacingOvershootMilliseconds = maxPacingOvershootUs / 1000.0,
+            lastSendDurationMilliseconds = lastSendDurationUs / 1000.0, maxSendDurationMilliseconds = maxSendDurationUs / 1000.0,
+            mediaClockOffsetMilliseconds = lastMediaOffsetUs / 1000.0,
+            receiverReportAgeMilliseconds = lastReceiverUs > 0 ? (now - lastReceiverUs) / 1000.0 : (double?)null,
+            lastInputAgeMilliseconds = lastInputUs > 0 ? (now - lastInputUs) / 1000.0 : (double?)null,
+            backlogRecoveries = frames.RecoveryCount, waitingKeyDrops = frames.WaitingKeyDrops, lastQueueReset = frames.LastReset,
+            queueDrops = frames.Drops, awaitingKeyFrame = frames.WaitingKey, retransmittedPackets = retransmits, pliReceived = pli, nackReceived = nack,
             receiverLossPercent = lossPercent, lastRtcpAgeMilliseconds = lastReportUs == 0 ? (double?)null : (NowUs - lastReportUs) / 1000.0,
             lastSentFrameAgeMilliseconds = lastFrameUs == 0 ? (double?)null : (NowUs - lastFrameUs) / 1000.0, lastError = error
         };

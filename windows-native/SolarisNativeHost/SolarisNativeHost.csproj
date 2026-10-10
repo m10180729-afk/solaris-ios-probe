@@ -13,9 +13,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.3.2.50</Version>
-    <FileVersion>0.3.2.50</FileVersion>
-    <AssemblyVersion>0.3.2.50</AssemblyVersion>
+    <Version>0.3.2.51</Version>
+    <FileVersion>0.3.2.51</FileVersion>
+    <AssemblyVersion>0.3.2.51</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Solaris.Transport/Solaris.Transport.csproj" />

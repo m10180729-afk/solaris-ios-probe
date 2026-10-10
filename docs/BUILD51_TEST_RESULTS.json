@@ -1,0 +1,33 @@
+{
+  "build": "51",
+  "environment": "Linux .NET8 / Chrome155, synthetic video+audio, no Windows GPU or iPad device",
+  "largeIDRBytes": 421487,
+  "deterministicTimer": {
+    "quantumMilliseconds": 16,
+    "framesProduced": 540,
+    "framesSent": 540,
+    "drops": 0,
+    "maxPendingFrames": 11
+  },
+  "actualChrome": {
+    "a": {
+      "seconds": 12,
+      "decodedFPS": 60,
+      "backlogRecoveries": 0,
+      "maxSendDurationMilliseconds": 182.747
+    },
+    "b": {
+      "seconds": 12,
+      "decodedFPS": 60,
+      "backlogRecoveries": 0,
+      "maxSendDurationMilliseconds": 181.947
+    }
+  },
+  "peerRecovery": "passed; second viewer continued",
+  "unverified": [
+    "Windows publish/self-test and real timer gate",
+    "Xcode build and iPad installation",
+    "Windows hardware capture / WASAPI audio / physical iPad rendering",
+    "end-to-end latency and four physical viewers"
+  ]
+}

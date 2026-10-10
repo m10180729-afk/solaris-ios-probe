@@ -37,6 +37,11 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var previousStatsTime = 0.0
     private var rtpRecentFPS = 0.0
     private var rtpRecentMbps = 0.0
+    private var rtpFirstDecodedAt = 0.0
+    private var rtpFirstDecodedCount: Int64 = 0
+    private var rtpStatsUpdatedAt = 0.0
+    private var rtpJitterBufferMilliseconds = 0.0
+    private var rtpTotalDecodeSeconds = 0.0
     private var rtpWidth = 0
     private var rtpHeight = 0
     private var rtpFramesDecoded: Int64 = 0
@@ -119,6 +124,8 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.rtpRecentMbps = 0
             self.rtpWidth = 0
             self.rtpHeight = 0
+            self.rtpFirstDecodedAt = 0; self.rtpFirstDecodedCount = 0; self.rtpStatsUpdatedAt = 0
+            self.rtpJitterBufferMilliseconds = 0; self.rtpTotalDecodeSeconds = 0
             self.rtpFramesDecoded = 0
             self.rtpPacketsLost = 0
             self.nativeRtp = false; self.rtpConnectionID = nil; self.rtpGeneration = 0; self.rtpEarlyIce.removeAll(); self.rtpRecoveryAttempts = 0; self.rtpRecoveryBackoff = 0; self.rtpLastRecovery = 0; self.rtpLastHeartbeat = 0
@@ -199,7 +206,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         queue.async {
             let payload: [String: Any] = [
                 "version": "0.3.2",
-                "build": "50",
+                "build": "51",
                 "protocol": desktopProtocolVersion,
                 "role": "receiver",
                 "session": self.sessionID ?? "",
@@ -232,6 +239,11 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 "recentCompletedFPS": self.nativeRecentFPS,
                 "recentReceiveMbps": self.nativeRecentMbps,
                 "rtpRecentFPS": self.rtpRecentFPS,
+                "rtpAverageDecodedFPS": self.rtpFirstDecodedAt > 0 ? Double(self.rtpFramesDecoded - self.rtpFirstDecodedCount) / max(0.001, ProcessInfo.processInfo.systemUptime - self.rtpFirstDecodedAt) : 0,
+                "rtpMeasurementSeconds": self.rtpFirstDecodedAt > 0 ? ProcessInfo.processInfo.systemUptime - self.rtpFirstDecodedAt : 0,
+                "rtpStatsAgeMilliseconds": self.rtpStatsUpdatedAt > 0 ? (ProcessInfo.processInfo.systemUptime - self.rtpStatsUpdatedAt) * 1000 : -1,
+                "rtpJitterBufferMilliseconds": self.rtpJitterBufferMilliseconds,
+                "rtpTotalDecodeSeconds": self.rtpTotalDecodeSeconds,
                 "rtpRecentMbps": self.rtpRecentMbps,
                 "rtpWidth": self.rtpWidth,
                 "rtpHeight": self.rtpHeight,
@@ -391,6 +403,11 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             guard let currentPeer = peer else { publish("RTP 연결 생성 실패"); return }
             previousStatsTime = 0; previousFrames = 0; previousBytes = 0
             rtpFramesDecoded = 0; rtpWidth = 0; rtpHeight = 0
+            rtpFirstDecodedAt = 0; rtpFirstDecodedCount = 0; rtpStatsUpdatedAt = 0
+            rtpJitterBufferMilliseconds = 0; rtpTotalDecodeSeconds = 0
+            rtpRecentFPS = 0; rtpRecentMbps = 0
+            rtpNackCount = 0; rtpPliCount = 0; rtpFramesDropped = 0; rtpPacketsLost = 0
+            rtpAudioBytes = 0; rtpAudioConcealed = 0; rtpDecoder = ""
             rtpOfferAt = ProcessInfo.processInfo.systemUptime
             rtpLastFrameAt = rtpOfferAt
             DispatchQueue.main.async { self.videoTrack = nil; self.nativeH264 = false }
@@ -593,6 +610,12 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     let width = (values["frameWidth"] as? NSNumber)?.intValue ?? 0
                     let height = (values["frameHeight"] as? NSNumber)?.intValue ?? 0
                     if frames > self.rtpFramesDecoded { self.rtpLastFrameAt = now; if now - self.rtpOfferAt > 15 { self.rtpRecoveryBackoff = 0 } }
+                    if frames > 0, self.rtpFirstDecodedAt == 0 { self.rtpFirstDecodedAt = now; self.rtpFirstDecodedCount = frames }
+                    self.rtpStatsUpdatedAt = now
+                    let jitterDelay = (values["jitterBufferDelay"] as? NSNumber)?.doubleValue ?? 0
+                    let jitterCount = (values["jitterBufferEmittedCount"] as? NSNumber)?.doubleValue ?? 0
+                    self.rtpJitterBufferMilliseconds = jitterCount > 0 ? jitterDelay * 1000 / jitterCount : 0
+                    self.rtpTotalDecodeSeconds = (values["totalDecodeTime"] as? NSNumber)?.doubleValue ?? 0
                     self.rtpFramesDecoded = frames
                     self.rtpNackCount = (values["nackCount"] as? NSNumber)?.int64Value ?? 0
                     self.rtpPliCount = (values["pliCount"] as? NSNumber)?.int64Value ?? 0

@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build50-rtp-test-evidence
+          name: Solaris-build51-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -58,6 +58,11 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
+      - name: Verify scheduling with Windows timers
+        shell: pwsh
+        run: |
+          dotnet run --project windows-native/Solaris.Transport.Tests -c Release -- --unit-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build self-contained Solaris Windows sender
         shell: pwsh
         run: |
@@ -81,7 +86,7 @@ jobs:
       - name: Upload Windows Solaris sender
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-Sender-build50
+          name: Solaris-Windows-Sender-build51
           path: dist/native/
           if-no-files-found: error
           retention-days: 7
@@ -146,7 +151,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build50-xcode-evidence
+          name: Solaris-build51-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -155,11 +160,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build50-integrated
+          name: Solaris-0.3.2-build51-integrated
           path: |
-            dist/Solaris-0.3.2-build50-resign.ipa
-            dist/Solaris-Windows-0.3.2-build50.html
-            dist/Solaris-Desktop-Share-build50.html
+            dist/Solaris-0.3.2-build51-resign.ipa
+            dist/Solaris-Windows-0.3.2-build51.html
+            dist/Solaris-Desktop-Share-build51.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3
