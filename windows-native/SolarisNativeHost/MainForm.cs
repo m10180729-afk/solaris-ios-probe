@@ -8,6 +8,7 @@ namespace SolarisNativeHost;
 internal sealed class MainForm : Form
 {
     private readonly NativeH264Capture capture;
+    private readonly NativeRtpBroadcast rtp;
     private long captureRequest;
     private int pendingFramePosts;
     private int awaitingKeyFrame = 1;
@@ -24,6 +25,7 @@ internal sealed class MainForm : Form
 
     internal MainForm()
     {
+        rtp = new NativeRtpBroadcast(PostRtpMessage);
         capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>
         {
             if (state == "metrics")
@@ -38,7 +40,7 @@ internal sealed class MainForm : Form
         Controls.Add(browser);
         Controls.Add(status);
         Shown += async (_, _) => await InitializeAsync();
-        FormClosed += (_, _) => capture.Dispose();
+        FormClosed += (_, _) => { capture.Dispose(); rtp.Dispose(); };
     }
 
     private async Task InitializeAsync()
@@ -83,6 +85,7 @@ internal sealed class MainForm : Form
             using var message = JsonDocument.Parse(eventArgs.WebMessageAsJson);
             var root = message.RootElement;
             var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
+            if (type?.StartsWith("rtp-", StringComparison.Ordinal) == true) { await rtp.Command(root); return; }
             if (type == "native-stop")
             {
                 Interlocked.Increment(ref captureRequest);
@@ -115,6 +118,13 @@ internal sealed class MainForm : Form
         {
             PostNativeStatus("error", "네이티브 H.264 송신 시작 실패", error.Message);
         }
+    }
+
+    private void PostRtpMessage(object message)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        void Post() { if (!IsDisposed && browser.CoreWebView2 != null) browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message)); }
+        try { if (InvokeRequired) BeginInvoke(Post); else Post(); } catch (InvalidOperationException) { }
     }
 
     private void PostNativeFrame(byte[] frame, bool keyFrame, long timestampUs, string encoder)

@@ -53,6 +53,24 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     private var nativeFirstFrameTime = 0.0
     private var nativeRecentFPS = 0.0
     private var nativeRecentMbps = 0.0
+    private var nativeRtp = false
+    private var rtpConnectionID: String?
+    private var rtpGeneration = 0
+    private var rtpEarlyIce: [String: [RTCIceCandidate]] = [:]
+    private var rtpLastFrameAt = 0.0
+    private var rtpLastHeartbeat = 0.0
+    private var rtpLastJoin = 0.0
+    private var rtpOfferAt = 0.0
+    private var rtpLastRecovery = 0.0
+    private var rtpRecoveryAttempts = 0
+    private var rtpRecoveryBackoff = 0
+    private var rtpLastAnswerRetry = 0.0
+    private var rtpNackCount: Int64 = 0
+    private var rtpPliCount: Int64 = 0
+    private var rtpFramesDropped: Int64 = 0
+    private var rtpDecoder = ""
+    private var rtpAudioBytes: Int64 = 0
+    private var rtpAudioConcealed: Int64 = 0
     private let earliestOffer = Date().addingTimeInterval(-300)
 
     private struct NativeFrame {
@@ -103,6 +121,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             self.rtpHeight = 0
             self.rtpFramesDecoded = 0
             self.rtpPacketsLost = 0
+            self.nativeRtp = false; self.rtpConnectionID = nil; self.rtpGeneration = 0; self.rtpEarlyIce.removeAll(); self.rtpRecoveryAttempts = 0; self.rtpRecoveryBackoff = 0; self.rtpLastRecovery = 0; self.rtpLastHeartbeat = 0
             self.nativeChannel = nil
             self.nativeFrames.removeAll()
             self.nativeReceivedFrames = 0
@@ -148,6 +167,15 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     func stop() {
         queue.async {
             guard !self.stopped else { return }
+            if self.nativeRtp, let session = self.sessionID, let cid = self.rtpConnectionID {
+                var leave = self.request(self.endpoint(), method: "POST")
+                leave.httpBody = try? JSONSerialization.data(withJSONObject: [
+                    "room_id":self.config.desktopSignalingRoom,"sender":"callee","kind":"answer",
+                    "payload":["protocol":desktopProtocolVersion,"source":"ios-desktop-receiver","sessionID":session,
+                               "viewerID":self.viewerID,"connectionID":cid,"videoTransport":"native-rtp","action":"leave"]
+                ])
+                URLSession.shared.dataTask(with: leave).resume()
+            }
             self.stopped = true
             self.timer?.cancel()
             self.timer = nil
@@ -162,7 +190,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 self.nativeH264 = false
                 self.running = false
                 self.state = "수신 중지"
-                self.details = "다시 받을 때 Windows 송신도 중단 후 새로 시작하세요."
+                self.details = "다시 화면 받기를 누르면 방송에 재참가합니다."
             }
         }
     }
@@ -171,18 +199,28 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         queue.async {
             let payload: [String: Any] = [
                 "version": "0.3.2",
-                "build": "49",
+                "build": "50",
                 "protocol": desktopProtocolVersion,
                 "role": "receiver",
                 "session": self.sessionID ?? "",
                 "viewerID": self.viewerID,
-                "videoTransport": self.nativeH264 ? "webcodecs-h264" : "webrtc-video",
+                "videoTransport": self.nativeRtp ? "native-rtp" : self.nativeH264 ? "webcodecs-h264" : "webrtc-video",
+                "connectionID": self.rtpConnectionID ?? "",
+                "generation": self.rtpGeneration,
+                "recoveryAttempts": self.rtpRecoveryAttempts,
+                "lastRtpFrameAgeMilliseconds": self.rtpLastFrameAt > 0 ? (ProcessInfo.processInfo.systemUptime - self.rtpLastFrameAt) * 1000 : 0,
+                "rtpNackCount": self.rtpNackCount,
+                "rtpPliCount": self.rtpPliCount,
+                "rtpFramesDropped": self.rtpFramesDropped,
+                "rtpDecoderImplementation": self.rtpDecoder,
+                "audioBytesReceived": self.rtpAudioBytes,
+                "audioConcealedSamples": self.rtpAudioConcealed,
                 "peerState": self.peer.map { String(describing: $0.connectionState) } ?? "none",
                 "iceState": self.peer.map { String(describing: $0.iceConnectionState) } ?? "none",
                 "channelState": self.nativeChannel.map { String(describing: $0.readyState) } ?? "none",
                 "nativeH264": self.nativeH264,
-                "encodedWidth": self.nativeH264 ? 1920 : 0,
-                "encodedHeight": self.nativeH264 ? 1080 : 0,
+                "encodedWidth": self.nativeH264 ? 1920 : self.rtpWidth,
+                "encodedHeight": self.nativeH264 ? 1080 : self.rtpHeight,
                 "completedAccessUnits": self.nativeReceivedFrames,
                 "receivedBytes": self.nativeReceivedBytes,
                 "receivedPackets": self.nativeReceivedPackets,
@@ -253,7 +291,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 URLQueryItem(name: "kind", value: "eq.offer"),
                 URLQueryItem(name: "created_at", value: "gte.\(ISO8601DateFormatter().string(from: earliestOffer))"),
                 URLQueryItem(name: "order", value: "id.desc"),
-                URLQueryItem(name: "limit", value: "1")
+                URLQueryItem(name: "limit", value: "100")
             ]
         }
         network.dataTask(with: request(endpoint(query))) { [weak self] data, response, error in
@@ -273,6 +311,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                     }
                     guard let kind = row["kind"] as? String,
                           let payload = row["payload"] as? [String: Any] else { continue }
+                    if self.sessionID == nil, payload["videoTransport"] as? String == "native-rtp", payload["action"] as? String != "announce" { continue }
                     self.handle(kind, payload)
                 }
             }
@@ -284,6 +323,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
               payload["source"] as? String == "windows-desktop",
               let incomingSession = payload["sessionID"] as? String,
               UUID(uuidString: incomingSession) != nil else { return }
+        if nativeRtp || payload["videoTransport"] as? String == "native-rtp" { handleRtp(kind, payload, incomingSession); return }
         if kind == "offer", sessionID == nil,
            let sdp = payload["sdp"] as? String,
            sdp.contains("m=video") || sdp.contains("m=application") {
@@ -314,6 +354,112 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
             )
             if remoteReady { peer?.add(ice) }
             else if pendingRemoteCandidates.count < 256 { pendingRemoteCandidates.append(ice) }
+        }
+    }
+
+    private func makeRtpPeer() -> RTCPeerConnection? {
+        let rtc = RTCConfiguration()
+        rtc.sdpSemantics = .unifiedPlan
+        rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])]
+        return factory.peerConnection(with: rtc, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+    }
+
+    private func handleRtp(_ kind: String, _ payload: [String: Any], _ incomingSession: String) {
+        if kind == "offer", payload["action"] as? String == "announce", sessionID == nil {
+            sessionID = incomingSession
+            nativeRtp = true
+            rtpLastJoin = ProcessInfo.processInfo.systemUptime
+            send("answer", ["action": "join", "videoTransport": "native-rtp"])
+            publish("방송 참가 요청", "하드웨어 H.264 RTP 연결을 준비합니다.", running: true)
+            return
+        }
+        guard incomingSession == sessionID, payload["viewerID"] as? String == viewerID else { return }
+        let cid = payload["connectionID"] as? String ?? ""
+        let generation = (payload["generation"] as? NSNumber)?.intValue ?? 0
+        if kind == "offer", cid == rtpConnectionID, generation == rtpGeneration, let answer = peer?.localDescription {
+            send("answer", ["type":"answer", "sdp":answer.sdp, "connectionID":cid])
+            return
+        }
+        if kind == "offer", let sdp = payload["sdp"] as? String, generation > rtpGeneration {
+            rtpGeneration = generation
+            rtpConnectionID = cid
+            remoteReady = false
+            localAnswerPublished = false
+            pendingLocalCandidates.removeAll()
+            peer?.close()
+            peer = makeRtpPeer()
+            guard let currentPeer = peer else { publish("RTP 연결 생성 실패"); return }
+            previousStatsTime = 0; previousFrames = 0; previousBytes = 0
+            rtpFramesDecoded = 0; rtpWidth = 0; rtpHeight = 0
+            rtpOfferAt = ProcessInfo.processInfo.systemUptime
+            rtpLastFrameAt = rtpOfferAt
+            DispatchQueue.main.async { self.videoTrack = nil; self.nativeH264 = false }
+            currentPeer.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
+                guard let self else { return }
+                self.queue.async {
+                    guard !self.stopped, self.peer === currentPeer, self.rtpConnectionID == cid else { return }
+                    if let error { self.publish("RTP offer 오류", error.localizedDescription); return }
+                    self.remoteReady = true
+                    for candidate in self.rtpEarlyIce[cid] ?? [] { currentPeer.add(candidate) }
+                    self.rtpEarlyIce.removeAll()
+                    currentPeer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { answer, error in
+                        self.queue.async {
+                            guard !self.stopped, self.peer === currentPeer, let answer, error == nil else { return }
+                            // Use negotiated capabilities verbatim; no artificial SDP level promotion.
+                            currentPeer.setLocalDescription(answer) { error in
+                                self.queue.async {
+                                    guard !self.stopped, self.peer === currentPeer else { return }
+                                    if let error { self.publish("RTP answer 오류", error.localizedDescription); return }
+                                    self.send("answer", ["type":"answer", "sdp":answer.sdp, "connectionID":cid, "videoTransport":"native-rtp"]) { ok in
+                                        guard self.peer === currentPeer, ok else { return }
+                                        self.localAnswerPublished = true
+                                        let candidates = self.pendingLocalCandidates
+                                        self.pendingLocalCandidates.removeAll()
+                                        for candidate in candidates { self.send("ice", candidate) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if kind == "ice", let candidate = payload["candidate"] as? String {
+            let ice = RTCIceCandidate(sdp: candidate, sdpMLineIndex: (payload["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0, sdpMid: payload["sdpMid"] as? String)
+            if cid == rtpConnectionID, remoteReady { peer?.add(ice) }
+            else if generation >= rtpGeneration, rtpEarlyIce.count < 4 {
+                var values = rtpEarlyIce[cid] ?? []
+                if values.count < 128 { values.append(ice) }
+                rtpEarlyIce[cid] = values
+            }
+        }
+    }
+
+    private func maintainRtpConnection(_ now: Double) {
+        guard nativeRtp else { return }
+        if rtpConnectionID == nil {
+            if now - rtpLastJoin > 5 { rtpLastJoin = now; send("answer", ["action":"join", "videoTransport":"native-rtp"]) }
+            return
+        }
+        if now - rtpLastHeartbeat > 5 {
+            rtpLastHeartbeat = now
+            send("answer", ["action":"heartbeat", "videoTransport":"native-rtp", "framesDecoded":rtpFramesDecoded, "fps":rtpRecentFPS])
+        }
+        if rtpFramesDecoded == 0, now - rtpLastAnswerRetry > 5, let answer = peer?.localDescription {
+            rtpLastAnswerRetry = now
+            send("answer", ["type":"answer", "sdp":answer.sdp]) { ok in
+                guard ok else { return }
+                self.localAnswerPublished = true
+                let candidates = self.pendingLocalCandidates; self.pendingLocalCandidates.removeAll()
+                for candidate in candidates { self.send("ice", candidate) }
+            }
+        }
+        let failed = peer?.iceConnectionState == .failed || peer?.iceConnectionState == .disconnected
+        let stalled = now - rtpLastFrameAt > 6
+        let wait = min(60.0, 10 * pow(2, Double(min(rtpRecoveryBackoff, 3))))
+        if (failed || stalled), now - max(rtpLastRecovery, rtpOfferAt) > wait {
+            rtpLastRecovery = now; rtpRecoveryAttempts += 1; rtpRecoveryBackoff += 1
+            send("answer", ["action":"recover", "videoTransport":"native-rtp"])
+            publish("영상 연결 복구 중", "시청자 연결 재생성 요청 \(rtpRecoveryAttempts)회", running: true)
         }
     }
 
@@ -381,6 +527,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         envelope["source"] = "ios-desktop-receiver"
         envelope["sessionID"] = sessionID
         envelope["viewerID"] = viewerID
+        if nativeRtp { envelope["videoTransport"] = "native-rtp"; if envelope["connectionID"] == nil { envelope["connectionID"] = rtpConnectionID } }
         let body: [String: Any] = [
             "room_id": config.desktopSignalingRoom,
             "sender": "callee",
@@ -404,7 +551,9 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     }
 
     private func collectStats() {
-        guard !stopped, let peer, sessionID != nil else { return }
+        guard !stopped, sessionID != nil else { return }
+        maintainRtpConnection(ProcessInfo.processInfo.systemUptime)
+        guard let peer else { return }
         if nativeH264 {
             let now = ProcessInfo.processInfo.systemUptime
             let elapsed = now - nativePreviousStatsTime
@@ -426,7 +575,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         peer.statistics { [weak self] report in
             guard let self else { return }
             self.queue.async {
-                guard !self.stopped else { return }
+                guard !self.stopped, self.peer === peer else { return }
                 if !self.playback.lastError.isEmpty {
                     self.publish("오디오 출력 오류", self.playback.lastError, running: true)
                 }
@@ -434,12 +583,21 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 for stat in report.statistics.values where stat.type == "inbound-rtp" {
                     let values = stat.values
                     let kind = values["kind"] as? String ?? values["mediaType"] as? String
+                    if kind == "audio" {
+                        self.rtpAudioBytes = (values["bytesReceived"] as? NSNumber)?.int64Value ?? 0
+                        self.rtpAudioConcealed = (values["concealedSamples"] as? NSNumber)?.int64Value ?? 0
+                    }
                     guard kind == "video" else { continue }
                     let frames = (values["framesDecoded"] as? NSNumber)?.int64Value ?? 0
                     let bytes = (values["bytesReceived"] as? NSNumber)?.int64Value ?? 0
                     let width = (values["frameWidth"] as? NSNumber)?.intValue ?? 0
                     let height = (values["frameHeight"] as? NSNumber)?.intValue ?? 0
+                    if frames > self.rtpFramesDecoded { self.rtpLastFrameAt = now; if now - self.rtpOfferAt > 15 { self.rtpRecoveryBackoff = 0 } }
                     self.rtpFramesDecoded = frames
+                    self.rtpNackCount = (values["nackCount"] as? NSNumber)?.int64Value ?? 0
+                    self.rtpPliCount = (values["pliCount"] as? NSNumber)?.int64Value ?? 0
+                    self.rtpFramesDropped = (values["framesDropped"] as? NSNumber)?.int64Value ?? 0
+                    self.rtpDecoder = values["decoderImplementation"] as? String ?? "unreported"
                     self.rtpPacketsLost = (values["packetsLost"] as? NSNumber)?.int64Value ?? 0
                     self.rtpWidth = width
                     self.rtpHeight = height
@@ -523,7 +681,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
 extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         queue.async {
-            guard !self.stopped else { return }
+            guard !self.stopped, self.peer === peerConnection else { return }
             let payload: [String: Any] = [
                 "candidate": candidate.sdp,
                 "sdpMid": candidate.sdpMid.map { $0 as Any } ?? NSNull(),
@@ -536,7 +694,7 @@ extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
         queue.async {
-            guard !self.stopped else { return }
+            guard !self.stopped, self.peer === peerConnection else { return }
             self.publish("ICE \(newState)", self.details, running: true)
         }
     }
@@ -544,8 +702,9 @@ extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection,
                         didAdd rtpReceiver: RTCRtpReceiver,
                         streams mediaStreams: [RTCMediaStream]) {
-        guard let track = rtpReceiver.track as? RTCVideoTrack else { return }
+        guard peer === peerConnection, let track = rtpReceiver.track as? RTCVideoTrack else { return }
         DispatchQueue.main.async {
+            guard self.peer === peerConnection else { return }
             self.videoTrack = track
             self.state = "영상 트랙 수신"
             self.details = "첫 디코딩 프레임 대기 · 목표 1920×1080 60fps"
@@ -554,8 +713,8 @@ extension DesktopScreenReceiver: RTCPeerConnectionDelegate {
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        if let track = stream.videoTracks.first {
-            DispatchQueue.main.async { self.videoTrack = track }
+        if peer === peerConnection, let track = stream.videoTracks.first {
+            DispatchQueue.main.async { if self.peer === peerConnection { self.videoTrack = track } }
         }
     }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}

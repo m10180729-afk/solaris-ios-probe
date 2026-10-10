@@ -13,11 +13,13 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.3.2.49</Version>
-    <FileVersion>0.3.2.49</FileVersion>
-    <AssemblyVersion>0.3.2.49</AssemblyVersion>
+    <Version>0.3.2.50</Version>
+    <FileVersion>0.3.2.50</FileVersion>
+    <AssemblyVersion>0.3.2.50</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../Solaris.Transport/Solaris.Transport.csproj" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
     <EmbeddedResource Include="../../ios/App/Resources/solaris-desktop.html">
       <LogicalName>SolarisNativeHost.solaris-desktop.html</LogicalName>

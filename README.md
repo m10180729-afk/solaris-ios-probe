@@ -1,8 +1,12 @@
-# Solaris 0.3.2 build49
+# Solaris 0.3.2 build50
 
 Solaris currently supports a single sender and a single receiver per session. Signaling uses the existing Supabase table and media remains peer-to-peer through WebRTC.
 
-## build49
+## build50 (experimental native RTP)
+
+Native Windows H.264 RTP transport is under test for multiple viewers. The previous data-channel path remains a compatibility mode. GitHub Actions must pass both native RTP interoperability and Windows/iOS builds before a device trial; 1080p60 multi-viewer performance is not yet verified.
+
+## build49 background
 
 The build48 Windows diagnostic used a host-to-host UDP path and admitted roughly 7Mbps and about 60fps in its last 30 seconds; the reported `availableOutgoingMbps` was far smaller than the observed data-channel admission rate and is not a valid standalone capacity measurement for this path. A separate iPad session completed 1,951 access units in 49 seconds (39.6fps average, 65fps recently) and enqueued all completed units, without incomplete-frame eviction or display-layer drops. These reports have different session IDs and cannot be subtracted frame by frame.
 
@@ -33,13 +37,13 @@ This is a latency candidate for Windows→iPad, not the planned RTP/multi-viewer
 
 ## Build outputs
 
-- `Solaris-0.3.2-build49-integrated`: re-signing candidate IPA and the existing HTML receivers.
-- `Solaris-Windows-Sender-build49`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
-- `Solaris-build49-xcode-evidence`: diagnostics only when the iOS build fails.
+- `Solaris-0.3.2-build50-integrated`: re-signing candidate IPA and the existing HTML receivers.
+- `Solaris-Windows-Sender-build50`: self-contained .NET Windows sender with its bundled FFmpeg hardware H.264 engine. No separate streaming app is installed.
+- `Solaris-build50-xcode-evidence`: diagnostics only when the iOS build fails.
 
 ## Test order
 
-1. Install only `Solaris-0.3.2-build49-resign.ipa` on iPad.
+1. Install only `Solaris-0.3.2-build50-resign.ipa` on iPad.
 2. Extract the Windows artifact and run `SolarisNativeHost.exe`.
 3. On iPad, open **Windows 화면 받기** and start receiving.
 4. On Windows, keep **Solaris 하드웨어 1080p60** selected and start sharing.

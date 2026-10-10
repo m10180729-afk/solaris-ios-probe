@@ -10,7 +10,42 @@ permissions:
   contents: read
 
 jobs:
+  native-rtp-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Build and test native RTP packetizer
+        run: |
+          dotnet build windows-native/Solaris.Transport.Tests -c Release
+          dotnet windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Solaris.Transport.Tests.dll
+      - name: Generate H264 interoperability fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          mkdir -p build
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -t 3 -c:v libx264 -preset ultrafast -profile:v baseline -level:v 4.2 -pix_fmt yuv420p -b:v 6M -maxrate 8M -bufsize 8M -g 30 -bf 0 -x264-params aud=1:repeat-headers=1 -f h264 build/rtp-fixture.h264
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
+          npx playwright install --with-deps chromium
+      - name: Decode native SRTP in two browsers and exercise recovery
+        run: node scripts/native_rtp_browser_test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Solaris-build50-rtp-test-evidence
+          path: build/rtp-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
   windows-native:
+    needs: native-rtp-test
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
@@ -44,7 +79,7 @@ jobs:
       - name: Upload Windows Solaris sender
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-Sender-build49
+          name: Solaris-Windows-Sender-build50
           path: dist/native/
           if-no-files-found: error
           retention-days: 7
@@ -73,7 +108,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
   build:
-    needs: browser-test
+    needs: [browser-test, native-rtp-test]
     runs-on: macos-15
     timeout-minutes: 30
     env:
@@ -109,7 +144,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build49-xcode-evidence
+          name: Solaris-build50-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -118,11 +153,11 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build49-integrated
+          name: Solaris-0.3.2-build50-integrated
           path: |
-            dist/Solaris-0.3.2-build49-resign.ipa
-            dist/Solaris-Windows-0.3.2-build49.html
-            dist/Solaris-Desktop-Share-build49.html
+            dist/Solaris-0.3.2-build50-resign.ipa
+            dist/Solaris-Windows-0.3.2-build50.html
+            dist/Solaris-Desktop-Share-build50.html
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

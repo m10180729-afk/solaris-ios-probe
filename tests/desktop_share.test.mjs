@@ -149,7 +149,7 @@ test('native diagnostics expose the ICE route and warn only on observed queue sa
     ['local',{id:'local',type:'local-candidate',candidateType:'srflx',networkType:'wifi',protocol:'udp'}],
     ['remote',{id:'remote',type:'remote-candidate',candidateType:'srflx',protocol:'udp'}]
   ]);
-  const s={role:'sender',mode:h.api.MODES.hardware60,pc:{getStats:async()=>report,connectionState:'connected'},
+  const s={role:'sender',mode:{...h.api.MODES.hardware60,transport:'webcodecs-h264'},pc:{getStats:async()=>report,connectionState:'connected'},
     stream:{getVideoTracks:()=>[{getSettings:()=>({width:1920,height:1080,frameRate:60})}]},
     nativeChannel:{readyState:'open',bufferedAmount:419901},
     nativeStats:{frames:25,bytes:1000000,dropped:12,queueHighWaterBytes:700000,nativeEncodedFPS:0},

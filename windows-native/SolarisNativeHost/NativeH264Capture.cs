@@ -149,7 +149,7 @@ internal sealed class NativeH264Capture : IDisposable
             firstFrame.TrySetResult(true);
             emittedFrames++;
             fpsWindowFrames++;
-            var timestampUs = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency;
+            var timestampUs = (long)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency));
             onFrame(bytes, keyFrame, timestampUs, encoder);
             var now = Stopwatch.GetTimestamp();
             var elapsed = (now - fpsWindowStart) / (double)Stopwatch.Frequency;
@@ -183,10 +183,10 @@ internal sealed class NativeH264Capture : IDisposable
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
                      "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
                      "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
-                     $"-profile:v high -level:v 5.1 -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps} -keyint_min {fps} -force_key_frames \"expr:gte(t,n_forced*1)\" -bf 0 " +
+                     $"-profile:v baseline -level:v {(fps > 60 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
                      "-bsf:v h264_metadata=aud=insert -f h264 pipe:1";
         yield return ("NVIDIA NVENC", $"{common.Replace("-bsf:v", "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -forced-idr 1 -bsf:v")}");
-        yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -bsf:v")}");
+        yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -forced_idr 1 -repeat_pps 1 -bsf:v")}");
         yield return ("AMD AMF", $"{common.Replace("-bsf:v", "-c:v h264_amf -usage lowlatency_high_quality -quality speed -rc vbr_peak -bsf:v")}");
         yield return ("Windows Media Foundation", $"{common.Replace("-bsf:v", "-c:v h264_mf -hw_encoding 1 -rate_control cbr -bsf:v")}");
     }
@@ -215,7 +215,8 @@ internal sealed class AnnexBAccessUnitParser
     private readonly Action<byte[], bool> emit;
     private byte[] pending = Array.Empty<byte>();
     private readonly MemoryStream accessUnit = new();
-    private bool keyFrame;
+    private bool keyFrame, hasSps, hasPps;
+    private byte[]? sps, pps;
 
     internal AnnexBAccessUnitParser(Action<byte[], bool> emit) => this.emit = emit;
 
@@ -248,6 +249,8 @@ internal sealed class AnnexBAccessUnitParser
         if (nal.Length <= prefix) return;
         var type = nal[prefix] & 0x1f;
         if (type == 9 && accessUnit.Length > 0) Flush();
+        if (type == 7) { sps = nal.ToArray(); hasSps = true; }
+        if (type == 8) { pps = nal.ToArray(); hasPps = true; }
         if (type == 5) keyFrame = true;
         accessUnit.Write(nal);
     }
@@ -255,9 +258,15 @@ internal sealed class AnnexBAccessUnitParser
     private void Flush()
     {
         if (accessUnit.Length == 0) return;
-        emit(accessUnit.ToArray(), keyFrame);
+        // A late-joining/recovering viewer needs the parameter sets with its IDR,
+        // even if this hardware encoder emitted them only at stream startup.
+        using var complete = new MemoryStream();
+        if (keyFrame && !hasSps && sps != null) complete.Write(sps);
+        if (keyFrame && !hasPps && pps != null) complete.Write(pps);
+        complete.Write(accessUnit.ToArray());
+        emit(complete.ToArray(), keyFrame);
         accessUnit.SetLength(0);
-        keyFrame = false;
+        keyFrame = hasSps = hasPps = false;
     }
 
     private static List<int> FindStartCodes(ReadOnlySpan<byte> data)

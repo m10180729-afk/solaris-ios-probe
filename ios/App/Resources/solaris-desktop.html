@@ -1,20 +1,20 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solaris Windows 화면공유 · build49</title>
+<title>Solaris Windows 화면공유 · build50</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141b;color:#eef3ff}body{margin:0}main{max-width:1080px;margin:auto;padding:24px}.card{background:#1b2433;border:1px solid #34435b;padding:20px;border-radius:14px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.mode{min-height:112px;text-align:left}.mode strong,.mode small{display:block}.mode small{font-weight:400;color:#c2cee0;margin-top:7px;line-height:1.35}.mode.selected{outline:2px solid #55b5ff;background:#1c67a8}.mode.native{background:#3b345d}label{display:block;color:#b8c5d8;font-size:14px}input,button{box-sizing:border-box;width:100%;padding:12px;margin-top:7px;border:1px solid #496080;border-radius:8px;background:#101a29;color:white}button{background:#24558e;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.danger{background:#653443}.status{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.status div{background:#101a29;padding:12px;border-radius:9px}.recommend{padding:12px;border-radius:9px;background:#102a25;color:#65edb6}.ok{color:#45e6a5}.warn{color:#ffd26a}.bad{color:#ff7d8d}video,canvas{width:100%;max-height:68vh;background:#000;border-radius:12px}pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0d1420;padding:12px;border-radius:9px}textarea{width:100%;min-height:180px;background:#0d1420;color:white}p{line-height:1.55;color:#bdc9db}@media(max-width:760px){.grid,.status,.mode-grid{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1>Solaris Windows 화면공유 · build49</h1>
-<p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 선택한 화면의 시스템 소리만 전송합니다.</p>
+<h1>Solaris Windows 화면공유 · build50</h1>
+<p>Solaris 앱끼리 바로 연결합니다. Moonlight와 Apollo는 설치하거나 실행하지 않습니다. 마이크는 제외하고 PC 기본 재생 장치의 시스템 소리만 전송합니다.</p>
 
 <section class="card">
   <h2>1 · Windows 화면 보내기 모드</h2>
   <div class="mode-grid">
-    <button id="hardware60Btn" class="mode selected"><strong>Solaris 하드웨어 1080p60</strong><small>Windows 네이티브 H.264 + iPad VideoToolbox · 전송 상태에 따라 4–28Mbps 조절</small></button>
-    <button id="hardware120Btn" class="mode native"><strong>Solaris 하드웨어 1080p120</strong><small>고성능 PC/120Hz 화면 · 35–80Mbps</small></button>
+    <button id="hardware60Btn" class="mode selected"><strong>Solaris 하드웨어 1080p60</strong><small>GPU H.264 → WebRTC 영상 트랙 · 시스템 소리 · 최대 4명</small></button>
+    <button hidden id="hardware120Btn" class="mode native"><strong>Solaris 하드웨어 1080p120</strong><small>고성능 PC/120Hz 화면 · 35–80Mbps</small></button>
     <button id="compatibility60Btn" class="mode"><strong>호환 1080p60</strong><small>기존 WebRTC 영상 경로 · 하드웨어 모드 실패 시 사용</small></button>
   </div>
-  <p id="recommendation" class="recommend">권장: Solaris 하드웨어 1080p60을 먼저 확인하세요. 연결이 부족하면 화질을 낮춰 화면 멈춤을 줄입니다.</p>
+  <p id="recommendation" class="recommend">권장: Solaris 하드웨어 1080p60을 먼저 확인하세요. 전체 화면과 PC 기본 재생 장치의 소리를 공유합니다. 시청자는 같은 방 ID로 받기를 누르세요.</p>
 </section>
 
 <section class="card grid">
@@ -22,6 +22,7 @@
   <label>Publishable key<input id="anonKey" type="password" autocomplete="off" placeholder="sb_publishable_…"></label>
   <label>방 ID<input id="roomId" autocomplete="off" value="solaristest1"></label>
   <div><button id="forgetBtn">이 브라우저 저장값 지우기</button></div>
+  <label><input type="checkbox" id="systemAudio" checked> 시스템 소리 포함 · 마이크 제외</label>
   <button id="sendBtn">선택한 모드로 Windows 화면 보내기</button>
   <button id="receiveBtn">다른 Windows 화면 받기</button>
   <button id="stopBtn" class="danger" disabled>공유/수신 중지</button>
@@ -46,12 +47,12 @@
 
 <script>
 'use strict';
-const BUILD='0.3.2',BUILD_NUMBER='49',PROTOCOL='desktop-v1';
+const BUILD='0.3.2',BUILD_NUMBER='50',PROTOCOL='desktop-v1';
 const DEFAULT_CONFIG={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',room:'solaristest1'};
 const $=id=>document.getElementById(id);
 let active=null,lastDiagnostic=null;
 const MODES={
-  hardware60:{id:'hardware60',label:'Solaris 하드웨어 1080p60',fps:60,startKbps:12000,minKbps:4000,maxKbps:28000,maxBitrate:28000000,degradationPreference:'maintain-framerate',transport:'webcodecs-h264'},
+  hardware60:{id:'hardware60',label:'Solaris 하드웨어 1080p60',fps:60,startKbps:12000,minKbps:4000,maxKbps:28000,maxBitrate:28000000,degradationPreference:'maintain-framerate',transport:'native-rtp'},
   hardware120:{id:'hardware120',label:'Solaris 하드웨어 1080p120',fps:120,startKbps:35000,minKbps:18000,maxKbps:80000,maxBitrate:80000000,degradationPreference:'maintain-framerate',transport:'webcodecs-h264'},
   compatibility60:{id:'compatibility60',label:'호환 1080p60',fps:60,startKbps:12000,minKbps:6000,maxKbps:40000,maxBitrate:40000000,degradationPreference:'maintain-framerate',transport:'webrtc-video'}
 };
@@ -226,6 +227,7 @@ function receiveEncodedPacket(s,packet){
   if(s.nativeFrames.size>8){const oldest=[...s.nativeFrames.keys()].sort((a,b)=>a-b)[0];s.nativeFrames.delete(oldest);s.nativeStats.dropped++;}
 }
 async function startSender(){
+  if(selectedMode.transport==='native-rtp')return startRtpBroadcast();
   if(active)return;let config;try{config=validConfig();}catch(e){mark('summary',e.message,'bad');return;}
   try{localStorage.setItem('solarisp2p.url',config.url);localStorage.setItem('solarisp2p.key',config.key);localStorage.setItem('solarisp2p.room',config.room);}catch{}
   let stream;
@@ -264,13 +266,14 @@ async function poll(s){
   if(active!==s||s.polling)return;s.polling=true;
   try{
     const opposite=s.role==='sender'?'callee':'caller';const params=new URLSearchParams({select:'id,kind,payload',room_id:`eq.${s.config.transport}`,sender:`eq.${opposite}`,order:'id.asc',limit:'100'});
-    if(s.id){params.set('payload->>sessionID',`eq.${s.id}`);params.set('id',`gt.${s.lastID}`);}else{params.set('kind','eq.offer');params.set('created_at',`gte.${new Date(s.started-300000).toISOString()}`);params.set('order','id.desc');params.set('limit','1');}
+    if(s.id){params.set('payload->>sessionID',`eq.${s.id}`);params.set('id',`gt.${s.lastID}`);}else{params.set('kind','eq.offer');params.set('created_at',`gte.${new Date(s.started-300000).toISOString()}`);params.set('order','id.desc');params.set('limit','100');}
     const response=await fetchTimed(endpoint(s.config,params.toString()),{headers:headers(s.config)});if(!response.ok)throw Error(`HTTP ${response.status}`);const rows=await response.json();
-    for(const row of rows){if(s.id)s.lastID=Math.max(s.lastID,Number(row.id)||0);await handleSignal(s,row.kind,row.payload||{});}
+    for(const row of rows){if(!s.id&&row.payload?.videoTransport==='native-rtp'&&row.payload?.action!=='announce')continue;if(s.id)s.lastID=Math.max(s.lastID,Number(row.id)||0);await handleSignal(s,row.kind,row.payload||{});}
   }catch(e){if(active===s)log('신호 조회 오류: '+e.message);}finally{s.polling=false;}
 }
 async function handleSignal(s,kind,p){
   if(active!==s||p.protocol!==PROTOCOL)return;
+  if(s.rtp||p.videoTransport==='native-rtp')return handleRtpSignal(s,kind,p);
   if(s.role==='sender'){
     if(!['ios-desktop-receiver','windows-desktop-receiver'].includes(p.source)||p.sessionID!==s.id)return;
     if(kind==='answer'&&!s.answerApplied&&p.sdp){await s.pc.setRemoteDescription({type:'answer',sdp:p.sdp});s.answerApplied=true;for(const c of s.pending)await s.pc.addIceCandidate(c);s.pending=[];log('수신기 answer 적용');}
@@ -282,6 +285,7 @@ async function handleSignal(s,kind,p){
 }
 async function measure(s){
   if(active!==s)return;
+  if(s.rtp)return measureRtp(s);
   try{
     if((s.role==='sender'&&s.mode?.transport==='webcodecs-h264')||(s.role==='receiver'&&s.remoteVideoTransport==='webcodecs-h264')){
       const now=performance.now(),frames=s.nativeStats.frames,bytes=s.nativeStats.bytes,elapsed=(now-s.lastStatsAt)/1000;let fps=0,mbps=0;
@@ -339,13 +343,104 @@ async function measure(s){
   }catch(e){log('통계 오류: '+e.message);}
 }
 function stop(){
-  const s=active;if(s)lastDiagnostic=JSON.parse(diagnostic());active=null;if(s){if(s.role==='sender'&&s.mode?.transport==='webcodecs-h264')nativeBridge()?.postMessage({type:'native-stop'});clearInterval(s.pollTimer);clearInterval(s.statsTimer);s.processorReader?.cancel().catch(()=>{});try{s.encoder?.close();}catch{}try{s.decoder?.close();}catch{}try{s.nativeChannel?.close();}catch{}s.stream?.getTracks().forEach(t=>t.stop());s.pc.ontrack=null;s.pc.onicecandidate=null;s.pc.ondatachannel=null;s.pc.close();}
+  const s=active;if(s){lastDiagnostic=JSON.parse(diagnostic());if(s.rtpBroadcast)rtpCommand(s,'rtp-stop');else if(s.rtp)sendSignal(s,'answer',{action:'leave',connectionID:s.connectionID,videoTransport:'native-rtp'}).catch(()=>{});}active=null;if(s){if(s.role==='sender'&&s.mode?.transport==='webcodecs-h264')nativeBridge()?.postMessage({type:'native-stop'});clearInterval(s.pollTimer);clearInterval(s.statsTimer);s.processorReader?.cancel().catch(()=>{});try{s.encoder?.close();}catch{}try{s.decoder?.close();}catch{}try{s.nativeChannel?.close();}catch{}s.stream?.getTracks().forEach(t=>t.stop());s.pc.ontrack=null;s.pc.onicecandidate=null;s.pc.ondatachannel=null;s.pc.close();}
   const video=$('screenVideo');video.pause();video.srcObject=null;video.muted=false;video.style.display='';const canvas=$('nativeCanvas');canvas.hidden=true;lock(false);for(const id of ['roleState','peerState','codecState','captureState','mediaState','audioState'])mark(id,'중지');mark('modeState',selectedMode.label);mark('summary','중지했습니다. 다시 연결할 때 송신과 수신을 모두 새로 시작하세요.');
 }
-function diagnostic(){const s=active;if(!s&&lastDiagnostic)return JSON.stringify({...lastDiagnostic,stopped:true,log:$('log').textContent},null,2);return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,selectedMode:s?.mode||selectedMode,room:s?.config.room,session:s?.id,viewerID:s?.viewerID,role:s?.role,peer:s?.pc.connectionState,signaling:s?.pc.signalingState,capture:s?.stream?.getVideoTracks()[0]?.getSettings(),audioTracks:s?.stream?.getAudioTracks().length||0,nativeStatus:s?.nativeStatus,nativeEncoder:s?.nativeStats?.encoderImplementation,actual:s?.stats,history:s?.history,log:$('log').textContent},null,2);}
+function diagnostic(){const s=active;if(!s&&lastDiagnostic)return JSON.stringify({...lastDiagnostic,stopped:true,log:$('log').textContent},null,2);return JSON.stringify({version:BUILD,build:BUILD_NUMBER,protocol:PROTOCOL,selectedMode:s?.mode||selectedMode,room:s?.config.room,session:s?.id,viewerID:s?.viewerID,role:s?.role,peer:s?.rtpBroadcast?'native-per-viewer':s?.pc.connectionState,signaling:s?.pc.signalingState,capture:s?.stream?.getVideoTracks()[0]?.getSettings(),audioTracks:s?.rtpBroadcast?(s.rtpAudio?1:0):s?.stream?.getAudioTracks().length||0,nativeStatus:s?.nativeStatus,nativeEncoder:s?.nativeStats?.encoderImplementation,actual:s?.stats,history:s?.history,log:$('log').textContent},null,2);}
+// build50: native SRTP sender; WebView carries signaling and diagnostics only.
+function rtpCommand(s,type,p={}){nativeBridge()?.postMessage({...p,type,session:s.id});}
+async function startRtpBroadcast(){
+  if(active)return;let s;
+  try{
+    const config=validConfig();if(!nativeBridge())throw Error('SolarisNativeHost.exe에서 실행하세요. Windows 수신은 이 페이지에서도 가능합니다.');
+    s=baseSession(config,'sender');s.rtp=true;s.rtpBroadcast=true;s.mode={...MODES.hardware60};s.signalChain=Promise.resolve();s.pc.close();active=s;lock(true);
+    for(const [key,value] of Object.entries({url:config.url,key:config.key,room:config.room}))localStorage.setItem('solarisp2p.'+key,value);
+    mark('summary','Windows GPU 인코더와 시스템 소리를 준비합니다.','warn');mark('roleState','Windows 네이티브 RTP 송신','ok');
+    rtpCommand(s,'rtp-start',{audio:$('systemAudio').checked!==false});beginTimers(s);
+  }catch(e){if(s&&active===s)stop();mark('summary',e.message,'bad');log(e.message);}
+}
+function queueRtpSignal(s,kind,payload){
+  s.signalChain=(s.signalChain||Promise.resolve()).then(async()=>{
+    for(let attempt=0;attempt<3&&active===s;attempt++){
+      try{await sendSignal(s,kind,payload);return;}catch(e){if(attempt===2)throw e;await new Promise(r=>setTimeout(r,500*(attempt+1)));}
+    }
+  }).catch(e=>{if(active===s)log('RTP 신호 전송 실패: '+e.message);});return s.signalChain;
+}
+async function announceRtp(s){if(active!==s||!s.rtpReady)return;s.lastAnnounce=Date.now();await queueRtpSignal(s,'offer',{action:'announce',videoTransport:'native-rtp',audio:s.rtpAudio,targetFPS:60});}
+if(nativeBridge())nativeBridge().addEventListener('message',event=>{
+  const m=event.data||{},s=active;if(!s?.rtpBroadcast||m.session!==s.id)return;
+  if(m.type==='rtp-ready'){s.rtpReady=true;s.rtpAudio=m.audio;announceRtp(s);mark('summary','공유 준비 완료 · iPad 또는 Windows에서 화면 받기를 누르세요.','ok');}
+  if(m.type==='rtp-signal')queueRtpSignal(s,m.kind,{...m.payload,videoTransport:'native-rtp',viewerID:m.viewerID,connectionID:m.connectionID,generation:m.generation});
+  if(m.type==='rtp-peer')log(`시청자 ${m.viewerID.slice(0,8)} · ${m.state}`);
+  if(m.type==='rtp-status'){s.nativeStatus=m.state;log(`${m.message||m.state}${m.detail?' · '+m.detail:''}`);if(m.state==='error'||m.state==='audio-error')mark('summary',m.message+' · '+(m.detail||''),'bad');}
+  if(m.type==='rtp-metrics'){
+    s.stats={...m};delete s.stats.type;delete s.stats.session;s.nativeStatus=m.status;s.nativeStats.encoderImplementation=m.encoderImplementation;
+    s.history??=[];s.history.push({time:Date.now(),...s.stats});s.history=s.history.slice(-30);
+    mark('peerState',`${m.viewers.filter(v=>v.peer==='connected').length}명 연결 / ${m.viewers.length}명`,'ok');
+    mark('mediaState',`1920×1080 · 인코더 ${Number(m.nativeEncodedFPS).toFixed(1)}fps · ${m.targetMbps}Mbps`,m.nativeEncodedFPS>=55?'ok':'warn');
+    mark('codecState',`H.264 RTP · ${m.encoderImplementation}`,'ok');mark('audioState',m.audio?'시스템 소리 · Opus 스테레오':'소리 꺼짐');
+    mark('summary',m.lastError||'공유 중 · 수신 진단의 실제 디코딩 FPS로 전송 결과를 확인하세요.',m.lastError?'bad':'ok');
+  }
+});
+async function handleRtpSignal(s,kind,p){
+  if(s.role==='sender'){
+    if(p.sessionID!==s.id||!p.viewerID||!['ios-desktop-receiver','windows-desktop-receiver'].includes(p.source))return;
+    if(kind==='answer'&&p.action){
+      const type={join:'rtp-join',recover:'rtp-recover',heartbeat:'rtp-heartbeat',leave:'rtp-leave'}[p.action];
+      if(type)rtpCommand(s,type,p);return;
+    }
+    if(kind==='answer'&&p.sdp)rtpCommand(s,'rtp-answer',p);
+    if(kind==='ice'&&p.candidate)rtpCommand(s,'rtp-ice',p);return;
+  }
+  if(p.source!=='windows-desktop')return;
+  if(kind==='offer'&&p.action==='announce'&&!s.id){
+    s.id=p.sessionID;s.rtp=true;s.remoteVideoTransport='native-rtp';s.rtpJoinedAt=Date.now();s.lastRtpJoin=Date.now();
+    await queueRtpSignal(s,'answer',{action:'join',videoTransport:'native-rtp'});log('네이티브 RTP 방송 참가 요청');return;
+  }
+  if(p.sessionID!==s.id||p.viewerID!==s.viewerID)return;
+  if(kind==='offer'&&p.sdp){
+    if(Number(p.generation||0)<=Number(s.rtpGeneration||0)){if(p.connectionID===s.connectionID&&s.rtpAnswer)await queueRtpSignal(s,'answer',s.rtpAnswer);return;}
+    s.pc.onconnectionstatechange=null;s.pc.onicecandidate=null;s.pc.ontrack=null;s.pc.close();
+    s.rtpAnswer=null;s.rtpGeneration=Number(p.generation);s.connectionID=p.connectionID;s.pc=new RTCPeerConnection(peerConfig());const pc=s.pc;
+    s.remoteStream=new MediaStream();s.rtpFrames=0;s.lastRtpFrameAt=Date.now();s.rtpOfferAt=Date.now();s.lastStatsAt=0;s.lastFrames=0;s.lastBytes=0;
+    pc.onicecandidate=e=>{if(active===s&&s.pc===pc&&e.candidate)queueRtpSignal(s,'ice',{...e.candidate.toJSON(),connectionID:s.connectionID,videoTransport:'native-rtp'});};
+    pc.onconnectionstatechange=()=>{if(active===s&&s.pc===pc){mark('peerState',pc.connectionState);log('RTP: '+pc.connectionState);}};
+    pc.ontrack=e=>{if(s.pc!==pc)return;s.remoteStream.addTrack(e.track);const v=$('screenVideo');v.style.display='';$('nativeCanvas').hidden=true;v.srcObject=s.remoteStream;v.muted=false;v.play().catch(()=>mark('summary','영상의 재생 버튼을 눌러 소리를 켜세요.','warn'));};
+    await pc.setRemoteDescription({type:'offer',sdp:p.sdp});
+    for(const c of s.rtpEarlyIce?.get(p.connectionID)||[])await pc.addIceCandidate(c);s.rtpEarlyIce=new Map();
+    const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
+    s.rtpAnswer={...pc.localDescription.toJSON(),connectionID:s.connectionID,videoTransport:'native-rtp'};s.lastAnswerRetry=Date.now();await queueRtpSignal(s,'answer',s.rtpAnswer);return;
+  }
+  if(kind==='ice'&&p.candidate){const c={candidate:p.candidate,sdpMid:p.sdpMid,sdpMLineIndex:p.sdpMLineIndex};
+    if(p.connectionID===s.connectionID&&s.pc.remoteDescription)await s.pc.addIceCandidate(c);
+    else if(Number(p.generation||0)>Number(s.rtpGeneration||0)){s.rtpEarlyIce??=new Map();if(s.rtpEarlyIce.size<4){const list=s.rtpEarlyIce.get(p.connectionID)||[];if(list.length<128)list.push(c);s.rtpEarlyIce.set(p.connectionID,list);}}
+  }
+}
+async function measureRtp(s){
+  if(s.rtpBroadcast){if(s.rtpReady&&Date.now()-(s.lastAnnounce||0)>10000)announceRtp(s);return;}
+  if(!s.connectionID){if(s.id&&Date.now()-(s.lastRtpJoin||0)>5000){s.lastRtpJoin=Date.now();queueRtpSignal(s,'answer',{action:'join',videoTransport:'native-rtp'});}return;}
+  const pc=s.pc,report=await pc.getStats();if(active!==s||pc!==s.pc)return;const now=Date.now();let video=null,audio=null;
+  for(const r of report.values())if(r.type==='inbound-rtp'){if(r.kind==='video'||r.mediaType==='video')video=r;else if(r.kind==='audio'||r.mediaType==='audio')audio=r;}
+  const frames=video?.framesDecoded||0,bytes=video?.bytesReceived||0,dt=(now-(s.lastStatsAt||now))/1000;
+  const fps=dt>0?Math.max(0,frames-s.lastFrames)/dt:0,mbps=dt>0?Math.max(0,bytes-s.lastBytes)*8/dt/1e6:0;
+  if(frames>s.lastFrames){s.lastRtpFrameAt=now;if(now-s.rtpOfferAt>15000)s.rtpBackoff=0;}
+  s.lastStatsAt=now;s.lastFrames=frames;s.lastBytes=bytes;
+  s.stats={videoTransport:'native-rtp',connectionID:s.connectionID,generation:s.rtpGeneration,framesDecoded:frames,width:video?.frameWidth||0,height:video?.frameHeight||0,fps,receiveMbps:mbps,packetsLost:video?.packetsLost||0,nackCount:video?.nackCount||0,pliCount:video?.pliCount||0,freezeCount:video?.freezeCount||0,totalFreezesDuration:video?.totalFreezesDuration||0,decoderImplementation:video?.decoderImplementation||null,framesDropped:video?.framesDropped||0,lastFrameAgeMilliseconds:now-s.lastRtpFrameAt,recoveryAttempts:s.rtpRecoveries||0,audio:{bytesReceived:audio?.bytesReceived||0,packetsLost:audio?.packetsLost||0,concealedSamples:audio?.concealedSamples||0}};
+  s.history??=[];s.history.push({time:now,...s.stats});s.history=s.history.slice(-30);
+  mark('mediaState',`${s.stats.width}×${s.stats.height} · 수신 ${fps.toFixed(1)}fps · ${mbps.toFixed(1)}Mbps`,fps>=55?'ok':'warn');
+  if(now-(s.lastHeartbeat||0)>5000){s.lastHeartbeat=now;queueRtpSignal(s,'answer',{action:'heartbeat',connectionID:s.connectionID,videoTransport:'native-rtp',framesDecoded:frames,fps});}
+  // Replacement peer is scoped to this viewer. Other viewers and capture keep running.
+  if(!frames&&s.rtpAnswer&&now-(s.lastAnswerRetry||0)>5000){s.lastAnswerRetry=now;s.rtpAnswer.sdp=pc.localDescription.sdp;queueRtpSignal(s,'answer',s.rtpAnswer);}
+  const stale=now-s.lastRtpFrameAt>6000,failed=['failed','disconnected'].includes(pc.connectionState);
+  if((stale||failed)&&now-Math.max(s.lastRecovery||0,s.rtpOfferAt)>Math.min(60000,10000*2**(s.rtpBackoff||0))){
+    s.rtpBackoff=Math.min(3,(s.rtpBackoff||0)+1);s.rtpRecoveries=(s.rtpRecoveries||0)+1;s.lastRecovery=now;
+    queueRtpSignal(s,'answer',{action:'recover',connectionID:s.connectionID,videoTransport:'native-rtp'});log('영상 정지 감지 · 시청자 연결 재생성 요청');mark('summary','영상 연결을 복구하고 있습니다.','warn');
+  }
+}
+
 $('hardware60Btn').onclick=()=>selectMode('hardware60');$('hardware120Btn').onclick=()=>selectMode('hardware120');$('compatibility60Btn').onclick=()=>selectMode('compatibility60');
 $('sendBtn').onclick=startSender;$('receiveBtn').onclick=startReceiver;$('stopBtn').onclick=stop;
 $('copyBtn').onclick=async()=>{const text=diagnostic();try{await navigator.clipboard.writeText(text);log('진단 복사 완료 (키 제외)');}catch{$('diagnosticText').hidden=false;$('diagnosticText').value=text;$('diagnosticText').select();}};
 $('forgetBtn').onclick=()=>{try{for(const k of ['url','key','room'])localStorage.removeItem('solarisp2p.'+k);}catch{}$('supabaseUrl').value='';$('anonKey').value='';log('저장 설정 삭제');};
-window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build49 준비 · 혼잡 대응 비트레이트 조절 · 마지막 세션 진단 보존');
+window.addEventListener('beforeunload',stop);loadSettings();selectMode('hardware60');log('Solaris build50 준비 · 네이티브 영상 RTP 시범 경로 · 수신자별 진단');
 </script></main></body></html>
