@@ -35,6 +35,8 @@ jobs:
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -t 3 -c:v libx264 -preset ultrafast -profile:v baseline -level:v 4.2 -pix_fmt yuv420p -b:v 6M -maxrate 8M -bufsize 8M -g 30 -bf 0 -x264-params aud=1:repeat-headers=1 -f h264 build/rtp-fixture.h264
           npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
           npx playwright install --with-deps chromium
+          # Bundled Linux Chromium excludes H.264; this gate requires real Chrome.
+          npx playwright install chrome
       - name: Decode native SRTP in two browsers and exercise recovery
         run: node scripts/native_rtp_browser_test.mjs
       - uses: actions/upload-artifact@v4
