@@ -20,6 +20,7 @@ public sealed class RtpViewer : IDisposable
     private readonly Dictionary<ushort, Cached> cache = new();
     private readonly Queue<(ushort Seq, long At)> cacheOrder = new();
     private readonly List<RTCIceCandidateInit> pendingIce = new();
+    private readonly HashSet<string> signaledIce = new();
     private bool remoteReady, disposed;
     private ushort sequence = (ushort)Random.Shared.Next(65536);
     private int videoPayload = 96, audioPayload = 111;
@@ -57,7 +58,7 @@ public sealed class RtpViewer : IDisposable
         }, MediaStreamStatusEnum.SendOnly));
         Peer.OnVideoFormatsNegotiated += formats => videoPayload = formats.First().FormatID;
         Peer.OnAudioFormatsNegotiated += formats => audioPayload = formats.First().FormatID;
-        Peer.onicecandidate += c => Signal?.Invoke("ice", new { candidate = c.candidate, sdpMid = c.sdpMid, sdpMLineIndex = c.sdpMLineIndex });
+        Peer.onicecandidate += c => SignalIce(c.candidate, c.sdpMid, c.sdpMLineIndex);
         Peer.onconnectionstatechange += state => { lock (gate) { frames.Reset("peer-state"); } State?.Invoke(state.ToString()); };
         Peer.OnReceiveReport += (_, media, report) =>
         {
@@ -87,6 +88,17 @@ public sealed class RtpViewer : IDisposable
         _ = Task.Run(SendLoop);
     }
 
+    private void SignalIce(string value, string? mid, ushort index)
+    {
+        // SIPSorcery's event omits "candidate:"; RTCIceCandidate APIs require
+        // the complete ICE attribute, matching the candidate in SDP.
+        var handler = Signal;
+        if (handler == null || string.IsNullOrWhiteSpace(value)) return;
+        value = value.Trim();
+        if (!value.StartsWith("candidate:", StringComparison.OrdinalIgnoreCase)) value = "candidate:" + value;
+        lock (signaledIce) { if (!signaledIce.Add(value)) return; }
+        handler("ice", new { candidate = value, sdpMid = mid, sdpMLineIndex = index });
+    }
     public async Task<string> CreateOffer()
     {
         var offer = Peer.createOffer(null);
@@ -94,6 +106,11 @@ public sealed class RtpViewer : IDisposable
         offer.sdp = offer.sdp.Replace("a=rtpmap:96 H264/90000\r\n", "a=rtpmap:96 H264/90000\r\na=rtcp-fb:96 nack\r\na=rtcp-fb:96 nack pli\r\n");
         await Peer.setLocalDescription(offer);
         OfferSDP = Peer.localDescription.sdp.ToString();
+        // Host gathering can finish before a caller subscribes to Signal.
+        // Replay SDP candidates for this bundled transport on m-line zero;
+        // dedup against event candidates, and keep future trickle events live.
+        foreach (var line in OfferSDP.Split("\r\n"))
+            if (line.StartsWith("a=candidate:")) SignalIce(line[2..], null, 0);
         return OfferSDP;
     }
     public void Answer(string sdp)

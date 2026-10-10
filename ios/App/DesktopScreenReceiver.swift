@@ -206,7 +206,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         queue.async {
             let payload: [String: Any] = [
                 "version": "0.3.2",
-                "build": "53",
+                "build": "54",
                 "protocol": desktopProtocolVersion,
                 "role": "receiver",
                 "session": self.sessionID ?? "",

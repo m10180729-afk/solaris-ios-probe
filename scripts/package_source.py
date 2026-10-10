@@ -3,8 +3,8 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT.parent / "Solaris-0.3.2-build53-android-five-viewers-source.zip"
-SKIP = {".git", "__pycache__", "build", "dist", "bin", "obj", "node_modules", "Vendor"}
+OUTPUT = ROOT.parent / "Solaris-0.3.2-build54-ci-fixes-source.zip"
+SKIP = {".git", "__pycache__", "build", "dist", "bin", "obj", "node_modules", "Vendor", ".gradle"}
 TOP = {".github", "ios", "receiver", "scripts", "tests", "docs", "windows-native", "android",
        "README.md", ".gitignore", "UPLOAD_GIT_BASH.sh"}
 
@@ -15,18 +15,18 @@ with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
             continue
         if any(part.endswith((".xcodeproj", ".xcworkspace")) for part in relative.parts):
             continue
-        if path.suffix in {".pyc", ".ipa", ".p12", ".mobileprovision"} or path.name.startswith(".env"):
+        if path.suffix in {".pyc", ".ipa", ".p12", ".mobileprovision", ".apk", ".aab", ".jks", ".keystore"} or path.name == "local.properties" or path.name.startswith(".env"):
             continue
         archive.write(path, relative)
-    archive.write(ROOT / "ios/App/Resources/solaris-p2p.html", "Solaris-Windows-0.3.2-build53.html")
-    archive.write(ROOT / "ios/App/Resources/solaris-desktop.html", "Solaris-Desktop-Share-build53.html")
+    archive.write(ROOT / "ios/App/Resources/solaris-p2p.html", "Solaris-Windows-0.3.2-build54.html")
+    archive.write(ROOT / "ios/App/Resources/solaris-desktop.html", "Solaris-Desktop-Share-build54.html")
 with zipfile.ZipFile(OUTPUT) as archive:
     assert archive.testzip() is None
     assert ".github/workflows/build-ios-probe.yml" in archive.namelist()
     print(f"Packaged {len(archive.namelist())} files: {OUTPUT}")
-receiver = ROOT.parent / "Solaris-Windows-0.3.2-build53.html"
+receiver = ROOT.parent / "Solaris-Windows-0.3.2-build54.html"
 receiver.write_bytes((ROOT / "ios/App/Resources/solaris-p2p.html").read_bytes())
 print(f"Windows receiver: {receiver}")
-desktop = ROOT.parent / "Solaris-Desktop-Share-build53.html"
+desktop = ROOT.parent / "Solaris-Desktop-Share-build54.html"
 desktop.write_bytes((ROOT / "ios/App/Resources/solaris-desktop.html").read_bytes())
 print(f"Desktop share: {desktop}")

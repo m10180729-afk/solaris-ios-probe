@@ -82,8 +82,12 @@ async Task RoomOffer(string viewer) {
             sdpMLineIndex=candidate.GetProperty("sdpMLineIndex").GetUInt16()});
     };
     await peer.CreateOffer();
+    // Force the production room test to depend on trickle ICE. SDP-embedded
+    // host candidates otherwise hide a malformed candidate signaling format.
+    var trickleSdp=string.Join("\r\n",peer.OfferSDP!.Split("\r\n")
+        .Where(line=>!line.StartsWith("a=candidate:")&&line!="a=end-of-candidates"));
     Publish("caller","offer",new {protocol="desktop-v1",source="windows-desktop",sessionID=roomSession,
-        viewerID=viewer,connectionID=peer.ConnectionID,generation=peer.Generation,videoTransport="native-rtp",sdp=peer.OfferSDP});
+        viewerID=viewer,connectionID=peer.ConnectionID,generation=peer.Generation,videoTransport="native-rtp",sdp=trickleSdp});
 }
 using var server=new HttpListener();server.Prefixes.Add("http://127.0.0.1:18950/");server.Start();
 using var tokenSource=new CancellationTokenSource();
@@ -124,6 +128,7 @@ while(true){
                 videoTransport="native-rtp",action="announce",audio=true,targetFPS=60});
         }
         else if(route=="/room/stats"){lock(gate)result=roomPeers.ToDictionary(x=>x.Key,x=>x.Value.Snapshot());}
+        else if(route=="/room/signals"){lock(gate)result=signals.Select(x=>new{id=x.Id,sender=x.Sender,kind=x.Kind,payload=x.Payload}).ToArray();}
         else if(route=="/room/close"){
             lock(gate)if(roomPeers.TryGetValue(id,out var closing))closing.Peer.Close("test viewer failure");
         }

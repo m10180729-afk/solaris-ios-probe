@@ -7,7 +7,7 @@ import {webcrypto} from 'node:crypto';
 const html=readFileSync(new URL('../ios/App/Resources/solaris-desktop.html',import.meta.url),'utf8');
 const source=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][0][1];
 
-function harness(){
+function harness(extra={}){
   const elements=new Map(),storage=new Map();
   const element=id=>{
     if(!elements.has(id))elements.set(id,{value:'',textContent:'',className:'',disabled:false,hidden:false,style:{},
@@ -19,8 +19,8 @@ function harness(){
     document:{getElementById:element},window:{addEventListener(){}},navigator:{clipboard:{writeText:async()=>{}}},
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     RTCRtpSender:{getCapabilities:()=>({codecs:[]})},RTCRtpReceiver:{getCapabilities:()=>({codecs:[]})},
-    RTCPeerConnection:class{},MediaStream:class{}});
-  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,sendNativeAccessUnit,nativeBitrateControl,nextNativeBitrate,stop,setActive:s=>active=s};',context);
+    RTCPeerConnection:class{},MediaStream:class{},...extra});
+  vm.runInContext(source+'\nglobalThis.probe={validConfig,tuneDesktopSDP,diagnostic,measure,selectMode,MODES,sendNativeAccessUnit,nativeBitrateControl,nextNativeBitrate,stop,handleRtpSignal,setActive:s=>active=s};',context);
   element('supabaseUrl').value='https://test.supabase.co';
   element('anonKey').value='sb_publishable_TEST_ONLY';
   element('roomId').value='same-room';
@@ -32,6 +32,30 @@ test('desktop signaling uses an isolated room and publishable key validation',()
   assert.equal(h.api.validConfig().transport,'same-room-desktop-v1');
   h.element('anonKey').value='sb_secret_forbidden';
   assert.throws(()=>h.api.validConfig(),/Publishable key/);
+});
+
+test('one malformed early ICE candidate cannot block the SDP answer or remaining candidates',async()=>{
+  const requests=[];
+  class Peer {
+    close(){}
+    async setRemoteDescription(d){this.remoteDescription=d;}
+    async addIceCandidate(c){if(!c.candidate.startsWith('candidate:'))throw new Error('invalid ICE syntax');}
+    async createAnswer(){return{type:'answer',sdp:'v=0\r\n'};}
+    async setLocalDescription(d){this.localDescription={...d,toJSON:()=>d};}
+  }
+  const h=harness({RTCPeerConnection:Peer,fetch:async(url,options)=>{requests.push(JSON.parse(options.body));return{ok:true};}});
+  const s={role:'receiver',id:'broadcast',viewerID:'viewer',pc:new Peer(),config:h.api.validConfig(),
+    rtpEarlyIce:new Map([['peer-new',[
+      {candidate:'missing-prefix',sdpMid:'0',sdpMLineIndex:0},
+      {candidate:'candidate:1 1 udp 2113937663 127.0.0.1 10000 typ host',sdpMid:'0',sdpMLineIndex:0}
+    ]]])};
+  h.api.setActive(s);
+  await h.api.handleRtpSignal(s,'offer',{source:'windows-desktop',sessionID:s.id,viewerID:s.viewerID,
+    connectionID:'peer-new',generation:1,sdp:'v=0\r\n'});
+  assert.equal(s.rtpIceApplied,1);
+  assert.equal(s.rtpIceRejected,1);
+  assert.match(s.rtpIceError,/invalid ICE syntax/);
+  assert.ok(requests.some(r=>r.kind==='answer'&&r.payload.sdp&&r.payload.connectionID==='peer-new'));
 });
 
 test('compatibility desktop SDP requests H264 level 5.1, 40Mbps video and stereo Opus',()=>{

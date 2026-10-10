@@ -6,8 +6,8 @@ android {
         applicationId 'org.solaris.receiver'
         minSdk 30
         targetSdk 35
-        versionCode 53
-        versionName '0.3.2-build53'
+        versionCode 54
+        versionName '0.3.2-build54'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

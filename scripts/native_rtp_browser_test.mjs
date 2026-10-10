@@ -51,6 +51,7 @@ try{
   const a=await connect('a'),b=await connect('b');
   for(const page of [a,b])await waitUntil(async()=>{const s=await stats(page);return s.framesDecoded>=60&&s.width===1920&&s.height===1080&&s.audio.bytesReceived>1000;},'H264 video and Opus audio must decode on both viewers',30000);
   const initialA=await stats(a),initialB=await stats(b);
+  console.log('Direct H264/Opus receivers connected');
   assert.doesNotMatch(initialA.sdp,/m=application/,'media must not use DataChannel');
   assert.match(initialA.sdp,/nack pli/);assert.match(initialA.sdp,/opus\/48000\/2/);
   // Sustained throughput gate: initial decode alone missed the build50
@@ -97,6 +98,17 @@ try{
     const s=await stats(page);return s.peer==='connected'&&s.width===1920&&s.height===1080&&s.framesDecoded>=60&&s.audio.bytesReceived>1000;
   },'production room flow must decode video and audio on both Windows receivers',35000);
   const roomStartA=await stats(roomA),roomStartB=await stats(roomB);
+  for(const s of [roomStartA,roomStartB]){
+    assert.ok(s.iceCandidatesApplied>0,'room peer must use real trickle ICE, not SDP-embedded candidates');
+    assert.equal(s.iceCandidatesRejected,0,'native trickle ICE must be accepted without candidate parse errors');
+  }
+  // remoteDescription is mutated by addIceCandidate. Inspect the original
+  // signaling payload, not the browser's SDP after successful trickle ICE.
+  const initialRoomSignals=await (await fetch(base+'/room/signals')).json();
+  const roomOffers=initialRoomSignals.filter(s=>s.sender==='caller'&&s.kind==='offer'&&s.payload.sdp);
+  assert.equal(roomOffers.length,2);
+  for(const offer of roomOffers)assert.doesNotMatch(offer.payload.sdp,/a=candidate:/,'room fixture must not mask trickle signaling failures');
+  console.log('Production room receivers connected using trickle ICE');
   assert.notEqual(roomStartA.connectionID,roomStartB.connectionID,'viewers need independent peers');
   const startTime=Date.now();await new Promise(r=>setTimeout(r,10000));
   const roomEndA=await stats(roomA),roomEndB=await stats(roomB);
@@ -131,7 +143,9 @@ try{
     })};}catch(error){return{index,error:String(error)};}
   }));
   const native=await fetch(base+'/stats').then(r=>r.json()).catch(error=>({error:String(error)}));
-  writeFileSync(new URL('build/rtp-diagnostics/failure.json',root),JSON.stringify({error:e.stack,snapshots,native,browserEvents,serverLog},null,2));
+  const roomNative=await fetch(base+'/room/stats').then(r=>r.json()).catch(error=>({error:String(error)}));
+  const roomSignals=await fetch(base+'/room/signals').then(r=>r.json()).catch(error=>({error:String(error)}));
+  writeFileSync(new URL('build/rtp-diagnostics/failure.json',root),JSON.stringify({error:e.stack,snapshots,native,roomNative,roomSignals,browserEvents,serverLog},null,2));
   throw e;
 }
 finally{await browser?.close();await fetch(base+'/done').catch(()=>{});server.kill();writeFileSync(new URL('build/rtp-diagnostics/native.log',root),serverLog);}

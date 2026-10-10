@@ -4,6 +4,12 @@ __pycache__/
 build/
 dist/
 node_modules/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
 bin/
 obj/
 ios/Vendor/

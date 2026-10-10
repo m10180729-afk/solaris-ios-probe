@@ -1,9 +1,9 @@
-# Solaris Windows 화면공유 · build53
+# Solaris Windows 화면공유 · build54
 
 ## 실행
 
-1. Actions의 `Solaris-Windows-Sender-build53` 전체를 한 폴더에 압축 해제하고 `SolarisNativeHost.exe`를 실행합니다. `ffmpeg.exe` 등 동봉 파일을 함께 둡니다.
-2. iPad에는 같은 빌드의 `Solaris-0.3.2-build53-resign.ipa`를 기존 방법으로 설치합니다.
+1. Actions의 `Solaris-Windows-Sender-build54` 전체를 한 폴더에 압축 해제하고 `SolarisNativeHost.exe`를 실행합니다. `ffmpeg.exe` 등 동봉 파일을 함께 둡니다.
+2. iPad에는 같은 빌드의 `Solaris-0.3.2-build54-resign.ipa`를 기존 방법으로 설치합니다.
 3. Windows에서 **Solaris 하드웨어 1080p60**, 방 ID, **시스템 소리 포함**을 확인하고 송신을 시작합니다. 현재 주 모니터와 기본 재생 장치 소리를 공유합니다. 마이크는 포함하지 않습니다.
 4. iPad의 **Windows 화면 받기**, 또는 다른 Windows의 **다른 Windows 화면 받기**에서 같은 방으로 들어갑니다.
 

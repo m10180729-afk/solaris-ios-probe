@@ -1,0 +1,52 @@
+{
+  "build": "54",
+  "scope": "Local Linux Chrome H264/Opus fixtures; not Windows GPU capture or physical iPad/Android performance",
+  "directThroughput": {
+    "a": {
+      "fps": 60.82826431130739,
+      "seconds": 12.001
+    },
+    "b": {
+      "fps": 60.661611532372305,
+      "seconds": 12.001
+    }
+  },
+  "roomFPS": {
+    "a": 59.95203836930456,
+    "b": 59.95203836930456
+  },
+  "roomICE": {
+    "roomStartA": {
+      "iceCandidatesReceived": 1,
+      "iceCandidatesApplied": 1,
+      "iceCandidatesRejected": 0,
+      "framesDecoded": 91,
+      "width": 1920,
+      "height": 1080
+    },
+    "roomStartB": {
+      "iceCandidatesReceived": 1,
+      "iceCandidatesApplied": 1,
+      "iceCandidatesRejected": 0,
+      "framesDecoded": 61,
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "isolatedRecovery": {
+    "otherViewerConnectionUnchanged": true,
+    "otherViewerDecodedAdditionalFrames": 153
+  },
+  "builds": {
+    "dotnetTransport": "pass, zero errors/warnings",
+    "windowsHostCrossCompile": "pass, 0 errors/2 warnings; not executed on Windows",
+    "androidDebugApk": "pass, 32 Gradle tasks; not executed on Galaxy",
+    "iOS": "not compiled locally"
+  },
+  "unitTests": {
+    "pythonProject": 40,
+    "pythonReceiver": 9,
+    "javascriptDesktop": 14,
+    "javascriptScreenReceiver": 19
+  }
+}
