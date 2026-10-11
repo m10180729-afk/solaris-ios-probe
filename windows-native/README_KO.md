@@ -1,10 +1,10 @@
-# Solaris Windows 통합 앱 · build56
+# Solaris Windows 통합 앱 · build57
 
 Windows 단일 앱에서 친구/서버 채널을 선택해 **화면공유**, **화면공유 보기**, **파일 보내기**를 사용합니다. 기존 하드웨어 H264/다중 RTP 엔진을 재사용하며 마이크·음성통화는 없습니다. 방 코드와 별도 Python 수신기 없이 계정·친구 동의·채널 권한으로 연결합니다.
 
-Actions는 FFmpeg/WebView2를 포함한 `Solaris-Windows-build56-Setup.exe` 생성을 구성합니다. **현재 설치 EXE는 생성·실행 검증 전**입니다. 전체 C# 컴파일/엔진 18개만 로컬에서 통과했습니다. 실제 GPU 인코딩/수신/최소화 장시간 방송·파일/재실행을 확인해야 합니다.
+Actions는 FFmpeg/WebView2를 포함한 `Solaris-Windows-build57-Setup.exe` 생성을 구성합니다. **현재 설치 EXE는 생성·실행 검증 전**입니다. 전체 C# 컴파일/엔진 18개만 로컬에서 통과했습니다. 실제 GPU 인코딩/수신/최소화 장시간 방송·파일/재실행을 확인해야 합니다.
 
-진단은 버전/OS·연결/RTT·손실·지터·실제 FPS·비트레이트·파일/오류·제한된 로그를 포함하고 인증 토큰·SDP·ICE를 제거합니다. 설정은 [build56 시작 안내](../docs/START_BUILD56_KO.md), 결과는 [build56 상태](../docs/BUILD56_STATUS_KO.md)를 읽습니다.
+진단은 버전/OS·연결/RTT·손실·지터·실제 FPS·비트레이트·파일/오류·제한된 로그를 포함하고 인증 토큰·SDP·ICE를 제거합니다. 설정은 [build57 시작 안내](../docs/START_BUILD57_KO.md), 결과는 [build57 상태](../docs/BUILD57_STATUS_KO.md)를 읽습니다.
 
 ---
 

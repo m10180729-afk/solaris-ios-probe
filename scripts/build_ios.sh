@@ -11,7 +11,7 @@ fi
 for executable in xcodegen xcodebuild codesign ditto python3 curl xcrun plutil; do
   command -v "$executable" >/dev/null || { echo "Missing: $executable"; exit 1; }
 done
-SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.4.0-build56-resign.ipa"
+SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.4.0-build57-resign.ipa"
 if [[ -e "$SOLARIS_OUTPUT" ]]; then
   echo "Output already exists. Move/rename it before rebuilding: $SOLARIS_OUTPUT"
   exit 1
@@ -76,6 +76,6 @@ codesign --verify --deep --strict "$SOLARIS_APP"
 ditto -c -k --keepParent "$SOLARIS_STAGE/Payload" "$SOLARIS_OUTPUT"
 python3 scripts/check_project.py --ipa "$SOLARIS_OUTPUT" \
   2>&1 | tee build/diagnostics/ipa.log
-cp docs/START_BUILD55_KO.md dist/START_HERE_KO.md
+cp docs/START_BUILD57_KO.md dist/START_HERE_KO.md
 echo "Packaged: $SOLARIS_OUTPUT"
 echo "RE-SIGNING AND PHYSICAL-DEVICE TEST REQUIRED. No install/capture success is claimed."

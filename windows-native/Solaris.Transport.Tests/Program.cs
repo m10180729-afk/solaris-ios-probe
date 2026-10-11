@@ -9,6 +9,11 @@ using Solaris.Transport;
 using SolarisNativeHost;
 
 static void Check(bool value, string message) { if (!value) throw new Exception(message); Console.WriteLine("PASS " + message); }
+var hq = new NativeCaptureOptions(60,25,60,2560,1440);
+var desktopHQ = hq.FitTo(1920,1080); var portraitHQ = hq.FitTo(1080,2400); var wideHQ = hq.FitTo(3440,1440);
+Check(desktopHQ.Width==1920 && desktopHQ.Height==1080 && desktopHQ.FramesPerSecond==60, "HQ never upscales a 1080p source or lowers its FPS");
+Check(portraitHQ.Width==1080 && portraitHQ.Height==2400, "portrait capture preserves original aspect ratio");
+Check(wideHQ.Width==2560 && Math.Abs((double)wideHQ.Width/wideHQ.Height-3440.0/1440)<.01, "ultrawide capture fits HQ bounds without stretching");
 SchedulingTests.Run(Check);
 await SchedulingTests.CheckRealTimer(Check);
 var bytes = new List<byte>();

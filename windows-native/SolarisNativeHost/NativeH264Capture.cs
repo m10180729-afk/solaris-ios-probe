@@ -4,7 +4,16 @@ using System.Text.Json;
 
 namespace SolarisNativeHost;
 
-internal sealed record NativeCaptureOptions(int FramesPerSecond, int StartMbps, int MaxMbps, int Width = 1920, int Height = 1080);
+internal sealed record NativeCaptureOptions(int FramesPerSecond, int StartMbps, int MaxMbps, int Width = 1920, int Height = 1080)
+{
+    internal NativeCaptureOptions FitTo(int width, int height)
+    {
+        if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        var scale = Math.Min(1.0, Math.Min((double)Math.Max(Width, Height) / Math.Max(width, height),
+            (double)Math.Min(Width, Height) / Math.Min(width, height)));
+        return this with { Width = Math.Max(2, (int)(width * scale) / 2 * 2), Height = Math.Max(2, (int)(height * scale) / 2 * 2) };
+    }
+}
 
 internal sealed class NativeH264Capture : IDisposable
 {
@@ -179,15 +188,15 @@ internal sealed class NativeH264Capture : IDisposable
     internal static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
     {
         var fps = Math.Clamp(options.FramesPerSecond, 15, 120);
-        var width = Math.Clamp(options.Width / 2 * 2, 640, 2560);
-        var height = Math.Clamp(options.Height / 2 * 2, 360, 1440);
+        var width = Math.Clamp(options.Width / 2 * 2, 2, 2560);
+        var height = Math.Clamp(options.Height / 2 * 2, 2, 2560);
         // Adaptive mode can legitimately request 4M/6M. Keep Clamp bounds ordered.
         var max = Math.Clamp(options.MaxMbps, 4, 100);
         var start = Math.Clamp(options.StartMbps, 2, max);
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
-                     $"-an -vf \"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
+                     $"-an -vf \"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos," +
                      $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
-                     $"-profile:v baseline -level:v {(fps > 60 || width > 1920 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
+                     $"-profile:v baseline -level:v {(fps > 60 || Math.Max(width, height) > 1920 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
                      $"-r {fps} -fps_mode cfr -flush_packets 1 -bsf:v h264_metadata=aud=insert -f h264 pipe:1";
         yield return ("NVIDIA NVENC", $"{common.Replace("-bsf:v", "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -forced-idr 1 -bsf:v")}");
         yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -forced_idr 1 -repeat_pps 1 -bsf:v")}");

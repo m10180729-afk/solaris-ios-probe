@@ -50,7 +50,8 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         RTCInitializeSSL()
         let device = SolarisReplayKitAudioDevice(); self.audioDevice = device
         let encoder = RTCDefaultVideoEncoderFactory()
-        if let h264 = encoder.supportedCodecs().first(where: { $0.name.uppercased() == "H264" && $0.parameters["packetization-mode"] == "1" }) { encoder.preferredCodec = h264 }
+        let h264 = encoder.supportedCodecs().filter { $0.name.uppercased() == "H264" && $0.parameters["packetization-mode"] == "1" && ($0.parameters["profile-level-id"] ?? "").lowercased().hasPrefix("42e0") }.max { ($0.parameters["profile-level-id"] ?? "") < ($1.parameters["profile-level-id"] ?? "") }
+        if let h264 { encoder.preferredCodec = h264 }
         factory = RTCPeerConnectionFactory(encoderFactory: encoder, decoderFactory: RTCDefaultVideoDecoderFactory(), audioDevice: device)
         source = factory.videoSource(forScreenCast: true)
         capturer = RTCVideoCapturer(delegate: source)
@@ -89,11 +90,10 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private func pump() {
         lock.lock(); let frame = pending; pending = nil; if frame == nil { pumping = false }; lock.unlock()
         guard let (buffer, rotation, timestamp) = frame, !stopped else { return }
-        var q = context["quality"] as? [String: Any] ?? [:]
-        for n in nodes.values { if let request = n.quality { for k in ["width", "height", "fps"] { if let value = request[k] as? NSNumber { q[k] = min((q[k] as? NSNumber)?.intValue ?? value.intValue,value.intValue) } } } }
+        // A viewer cannot lower the common source or the other viewers' FPS.
         let w = CVPixelBufferGetWidth(buffer), h = CVPixelBufferGetHeight(buffer)
-        let limit = max(640, min(2560, (q["width"] as? NSNumber)?.intValue ?? 1920)), fps = max(15, min(60, (q["fps"] as? NSNumber)?.intValue ?? 60))
-        let scale = min(1, Double(limit) / Double(max(w,h))), ow = max(2, Int(Double(w)*scale)/2*2), oh = max(2, Int(Double(h)*scale)/2*2)
+        let scale = min(1, min(2560.0 / Double(max(w,h)), 1440.0 / Double(min(w,h))))
+        let ow = max(2, Int(Double(w)*scale)/2*2), oh = max(2, Int(Double(h)*scale)/2*2), fps = 60
         let format = "\(ow)x\(oh)@\(fps)"
         if format != lastFormat { source.adaptOutputFormat(toWidth: Int32(ow), height: Int32(oh), fps: Int32(fps)); lastFormat = format }
         source.capturer(capturer, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: buffer), rotation: rotation, timeStampNs: timestamp)); frames += 1
@@ -170,9 +170,21 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         }
     }
     private func policy(_ n: Node) {
-        let q = n.quality ?? context["quality"] as? [String: Any] ?? [:]
+        // Reuse build54's native screen-cast encoder policy after negotiation.
+        let requested = (n.quality?["mbps"] as? NSNumber)?.intValue ?? 25
         for sender in n.peer.senders where sender.track?.kind == "video" {
-            let p = sender.parameters; for e in p.encodings { e.maxBitrateBps = NSNumber(value: max(2,min(30,(q["mbps"] as? NSNumber)?.intValue ?? 12))*1_000_000); e.maxFramerate = NSNumber(value: max(15,min(60,(q["fps"] as? NSNumber)?.intValue ?? 60))) }; p.degradationPreference = NSNumber(value: RTCDegradationPreference.balanced.rawValue); sender.parameters = p
+            let parameters = sender.parameters
+            guard !parameters.encodings.isEmpty else { continue }
+            for encoding in parameters.encodings {
+                encoding.isActive = true
+                encoding.minBitrateBps = NSNumber(value: requested >= 25 ? 28_000_000 : max(8,min(28,requested)) * 1_000_000)
+                encoding.maxBitrateBps = NSNumber(value: requested >= 25 ? 60_000_000 : max(8,requested) * 1_000_000)
+                encoding.maxFramerate = NSNumber(value: 60)
+                encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
+                encoding.bitratePriority = 4.0
+            }
+            parameters.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue)
+            sender.parameters = parameters
         }
     }
     private func signal(_ n: Node, _ payload: [String: Any]) {
@@ -201,7 +213,7 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         }}.resume()
     }
     private func diagnostics() {
-        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build56","framesSubmitted":frames,"peers":nodes.count,"format":lastFormat,"updatedAt":Date().timeIntervalSince1970]
+        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build57","framesSubmitted":frames,"peers":nodes.count,"format":lastFormat,"updatedAt":Date().timeIntervalSince1970]
         d.merge(SolarisProcessMetrics.snapshot()) { _, new in new }
         if let data=try? JSONSerialization.data(withJSONObject:d) { try? data.write(to:group.appendingPathComponent("unified-diagnostics.json"),options:.atomic) }
     }

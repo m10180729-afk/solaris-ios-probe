@@ -1,40 +1,36 @@
-# Solaris 0.4.0 build56 — recovery checkpoint
+# Solaris 0.4.0 build57
 
-Solaris complements Discord with screen sharing and original-file P2P transfer on Windows, Android, iOS and iPadOS. This branch continues the verified build54 source; it is **not a fully validated cross-platform release**.
+High quality screen sharing and original file transfer in one authenticated app for Windows, Android and iOS/iPadOS.
 
-The unified app adds Supabase anonymous UID accounts, nicknames and private avatars, friend consent/blocking, direct sessions, owner-managed servers/channels, shared broadcast discovery, native capture adapters, multiple viewers, and disk-backed chunk transfer with resume and SHA-256. Build56 hardens commit/cancel races, manual/background/network pause and source reselection, native Android signaling outside the WebView, broadcast readiness and scope authorization, account recovery races, and bounded redacted logs. Microphones and voice calls are excluded. Build54 transport fixtures are retained for regressions.
+This checkpoint fixes the unified UI's forced resolution/FPS reduction and viewer-count downscaling. All broadcasts request high quality and 60fps, with source aspect ratio and device encoding limits respected. The build54 Windows hardware capture/RTP engine is reused; iOS reuses its constrained-baseline H264, native bitrate and frame/resolution policy. A receiver can change its own bitrate without reducing the shared source for everyone.
 
-Start with [build56 setup](docs/START_BUILD56_KO.md). New databases use `backend/001_solaris.sql`; existing build55 databases use the data-preserving `backend/002_build56_broadcast_ready.sql`. Enable anonymous Auth before trying accounts. Read [actual verification and open gates](docs/BUILD56_STATUS_KO.md), the [23-section requirements](docs/SOLARIS_SPEC_KO.md), and [continuation instructions](docs/CONTINUE_BUILD56_KO.md). The prior [build55 record](docs/BUILD55_STATUS_KO.md) is preserved.
+Android now uses compatible H264 baseline, actual portrait/landscape bounds, hardware size/rate capability checks, first-frame broadcast readiness, guarded projection-service startup and disposal, existing-display resize, and WebView renderer recovery. Diagnostics include bounded native errors and recent Android process-exit reasons. The precise reported physical crash has not been reproduced here; this is a tested source/build fix awaiting device verification.
 
-## Development commands
+The Discord-style layout separates server icons, channel navigation, live broadcasts, participants, profile/settings and connection controls. Online status is a small profile dot. Leave/delete actions are inside a separate server menu, colored red, and require confirmation. Broadcasting has no quality selector. Voice chat and microphone capture remain excluded.
+
+## Start and continue
+
+Read [build57 setup](docs/START_BUILD57_KO.md), [verification and limits](docs/BUILD57_STATUS_KO.md), [continuation memo](docs/CONTINUE_BUILD57_KO.md), and the [complete user specification](docs/SOLARIS_SPEC_KO.md). Prior build55/56 notes remain archived.
+
+**No new database migration for build57.** An already working build56 Supabase setup is kept. New projects use `backend/001_solaris.sql`; existing build55 databases use the existing `backend/002_build56_broadcast_ready.sql`. Never delete account tables or disable RLS to solve an RPC setup error.
+
+`UPLOAD_GIT_BASH.sh` uploads an isolated build57 review branch from the owner's verified build56 branch, preserving its Git history. It checks both the build56 and main heads, accepts an explicit extracted-source path, supports `--dry-run`, and uses an isolated Git index to exclude ignored local files and replace removed source files correctly. Nine local Git integration scenarios cover upload, history, exclusions, changed heads, source validation, dry run and rejected pushes. The owner's build56 branch already passed GitHub Actions; build57 CI still requires uploading this checkpoint. Official versions and signing keys remain under the owner's control.
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 python3 scripts/prepare_unified.py
 npm test
 npm run test:database
 node scripts/unified_ui_test.mjs
-node scripts/unified_browser_test.mjs
-node scripts/file_stream_test.mjs
-node scripts/unified_browser_test.mjs --large
+python3 -m unittest discover -s tests
+python3 scripts/package_source.py
 ```
 
-The browser integration uses real RTCPeerConnections, a canvas video fixture, and an isolated PostgreSQL permission layer. The file stream test uses injected ordered packets and real 1 GiB disk I/O; it is a separate check and never claims real-network transmission.
+The source ZIP includes the full project, setup, uploader and continuation notes. Send a new source checkpoint before ending each work segment. Native installers/IPA generation and real cross-device media tests are separate from local compilation and automated logic/UI checks.
 
-## Test artifacts
+## Archived build54 transport notes
 
-- Source checkpoint: `Solaris-0.4.0-build56-source.zip`, including the specification, setup and continuation notes. Send an updated source ZIP before ending each work segment.
-- Android: `Solaris-Android-build56-debug.apk`, locally compiled with five native signaling JVM tests; physical-device testing pending.
-- Windows: Actions is configured to produce `Solaris-Windows-build56-Setup.exe` with FFmpeg and a WebView2 bootstrapper. C# compilation and 18 engine checks passed separately; installer generation and Windows execution are pending.
-- iOS/iPadOS: Actions is configured to produce `Solaris-0.4.0-build56-resign.ipa`. A valid common App Group must survive re-signing. Xcode compilation, new process-metrics tests, installation and ReplayKit on real devices are pending.
-
-139 automated tests passed, plus isolated real-browser UI and 1 GiB disk/chunk checks. The disk test does not establish real-network transfer. GitHub writes currently return `403 Resource not accessible by integration`; the remote main remains build54 and the new Actions jobs have not run.
-
-Workflows build review branches and do not publish an official release. The project owner retains merge, release, signing and database administrator authority. Direct P2P files are never uploaded to Supabase Storage; only restricted avatars use Storage. TURN traffic and offline storage are separate operating costs.
-
----
-
-The original build54 notes below describe the old transport, not build56's verification status.
+The original build54 notes below describe the old transport, not build57's verification status.
 
 # Solaris 0.3.2 build54
 
