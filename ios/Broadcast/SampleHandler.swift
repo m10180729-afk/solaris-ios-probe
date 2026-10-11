@@ -18,6 +18,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
     private var context: CIContext?
     private var network: URLSession?
     private var p2pSender: BroadcastWebRTCSender?
+    private var unifiedSender: UnifiedBroadcastSender?
 
     override init() {
         super.init()
@@ -27,6 +28,22 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
 
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         queue.async { [self] in
+            guard let group = ProbeShared.group(),
+                  let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-broadcast.json")),
+                  let context = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let updated = context["updatedAt"] as? Double, Date().timeIntervalSince1970 - updated < 120 else {
+                fail("Solaris에서 친구 또는 채널을 선택해 화면공유를 시작하세요. 앱과 방송 확장의 공유 컨테이너 권한도 필요합니다.")
+                return
+            }
+            do {
+                unifiedSender = try UnifiedBroadcastSender(context: context, group: group.url) { [weak self] error in
+                    DispatchQueue.main.async { self?.finishBroadcastWithError(error) }
+                }
+                unifiedSender?.start(); active = true; stats = ProbeStats(); stats.state = "화면공유 중"
+            } catch { fail(error.localizedDescription) }
+            return
+            /* build54 capture setup retained as a migration reference, never
+               used as an unauthenticated fallback in the unified application.
             let value: ProbeConfig? = nil
             let p2p = ProbeShared.embeddedP2PConfig()
             guard p2p?.valid == true else {
@@ -61,6 +78,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
             }
             active = true
             saveStats(force: true)
+            */
         }
     }
 
@@ -88,6 +106,7 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
             case .video:
                 stats.videoSamples += 1
                 p2pSender?.capture(sampleBuffer)
+                unifiedSender?.capture(sampleBuffer)
                 if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
                     stats.sourceWidth = CVPixelBufferGetWidth(buffer)
                     stats.sourceHeight = CVPixelBufferGetHeight(buffer)
@@ -106,10 +125,9 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
                 }
             case .audioApp:
                 stats.appAudioSamples += 1
-                // Screen sound only.  Never forward .audioMic here: calls get
-                // their own microphone track later, rather than accidentally
-                // mixing the broadcaster's voice into screen-share audio.
+                // Screen playback only. Microphone samples are discarded; Solaris has no voice calls.
                 p2pSender?.captureApplicationAudio(sampleBuffer)
+                unifiedSender?.captureApplicationAudio(sampleBuffer)
             case .audioMic: stats.micAudioSamples += 1
             @unknown default: break
             }
@@ -203,6 +221,8 @@ final class SampleHandler: RPBroadcastSampleHandler, URLSessionTaskDelegate {
             network = nil
             p2pSender?.stop()
             p2pSender = nil
+            unifiedSender?.stop()
+            unifiedSender = nil
             context = nil
             releaseFrame()
         }

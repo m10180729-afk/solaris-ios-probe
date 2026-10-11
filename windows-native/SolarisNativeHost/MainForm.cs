@@ -9,6 +9,7 @@ internal sealed class MainForm : Form
 {
     private readonly NativeH264Capture capture;
     private readonly NativeRtpBroadcast rtp;
+    private readonly AppBridge app;
     private long captureRequest;
     private int pendingFramePosts;
     private int awaitingKeyFrame = 1;
@@ -26,13 +27,14 @@ internal sealed class MainForm : Form
     internal MainForm()
     {
         rtp = new NativeRtpBroadcast(PostRtpMessage);
+        app = new AppBridge(this, rtp, value => status.Text = value);
         capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>
         {
             if (state == "metrics")
                 message += $" · hostDrops {Interlocked.Read(ref hostQueueDrops)} · hostQueue {Volatile.Read(ref pendingFramePosts)}";
             PostNativeStatus(state, message, detail);
         });
-        Text = $"Solaris Windows 화면공유 · {Program.Version}";
+        Text = $"Solaris · {Program.Version}";
         MinimumSize = new Size(960, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(16, 20, 27);
@@ -59,15 +61,18 @@ internal sealed class MainForm : Form
             browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             browser.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            browser.CoreWebView2.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith("https://solaris.local/", StringComparison.Ordinal)) e.Cancel = true; };
+            browser.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
+            browser.CoreWebView2.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "solaris.local", webRoot, CoreWebView2HostResourceAccessKind.DenyCors);
             browser.CoreWebView2.ProcessFailed += (_, eventArgs) =>
                 status.Text = $"Windows 웹 엔진 오류: {eventArgs.ProcessFailedKind} · Solaris를 다시 실행하세요.";
             browser.CoreWebView2.NavigationCompleted += (_, eventArgs) =>
                 status.Text = eventArgs.IsSuccess
-                    ? "Solaris 준비 완료 · 모드를 선택하고 ‘Windows 화면 보내기’를 누르세요."
+                    ? "Solaris 준비 완료"
                     : $"Solaris 페이지 열기 실패: {eventArgs.WebErrorStatus}";
-            browser.CoreWebView2.Navigate("https://solaris.local/solaris-desktop.html");
+            browser.CoreWebView2.Navigate("https://solaris.local/index.html");
         }
         catch (Exception error)
         {
@@ -85,6 +90,14 @@ internal sealed class MainForm : Form
             using var message = JsonDocument.Parse(eventArgs.WebMessageAsJson);
             var root = message.RootElement;
             var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
+            if (type == "solaris-command")
+            {
+                if (eventArgs.Source != "https://solaris.local/index.html") return;
+                var requestId = root.GetProperty("requestId").GetString();
+                try { var result = await app.Command(root.GetProperty("command").GetString()!, root.GetProperty("args")); PostRtpMessage(new { requestId, result }); }
+                catch (Exception e) { PostRtpMessage(new { requestId, error = e.Message }); }
+                return;
+            }
             if (type?.StartsWith("rtp-", StringComparison.Ordinal) == true) { await rtp.Command(root); return; }
             if (type == "native-stop")
             {

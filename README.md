@@ -1,3 +1,41 @@
+# Solaris 0.4.0 build56 — recovery checkpoint
+
+Solaris complements Discord with screen sharing and original-file P2P transfer on Windows, Android, iOS and iPadOS. This branch continues the verified build54 source; it is **not a fully validated cross-platform release**.
+
+The unified app adds Supabase anonymous UID accounts, nicknames and private avatars, friend consent/blocking, direct sessions, owner-managed servers/channels, shared broadcast discovery, native capture adapters, multiple viewers, and disk-backed chunk transfer with resume and SHA-256. Build56 hardens commit/cancel races, manual/background/network pause and source reselection, native Android signaling outside the WebView, broadcast readiness and scope authorization, account recovery races, and bounded redacted logs. Microphones and voice calls are excluded. Build54 transport fixtures are retained for regressions.
+
+Start with [build56 setup](docs/START_BUILD56_KO.md). New databases use `backend/001_solaris.sql`; existing build55 databases use the data-preserving `backend/002_build56_broadcast_ready.sql`. Enable anonymous Auth before trying accounts. Read [actual verification and open gates](docs/BUILD56_STATUS_KO.md), the [23-section requirements](docs/SOLARIS_SPEC_KO.md), and [continuation instructions](docs/CONTINUE_BUILD56_KO.md). The prior [build55 record](docs/BUILD55_STATUS_KO.md) is preserved.
+
+## Development commands
+
+```sh
+npm ci
+python3 scripts/prepare_unified.py
+npm test
+npm run test:database
+node scripts/unified_ui_test.mjs
+node scripts/unified_browser_test.mjs
+node scripts/file_stream_test.mjs
+node scripts/unified_browser_test.mjs --large
+```
+
+The browser integration uses real RTCPeerConnections, a canvas video fixture, and an isolated PostgreSQL permission layer. The file stream test uses injected ordered packets and real 1 GiB disk I/O; it is a separate check and never claims real-network transmission.
+
+## Test artifacts
+
+- Source checkpoint: `Solaris-0.4.0-build56-source.zip`, including the specification, setup and continuation notes. Send an updated source ZIP before ending each work segment.
+- Android: `Solaris-Android-build56-debug.apk`, locally compiled with five native signaling JVM tests; physical-device testing pending.
+- Windows: Actions is configured to produce `Solaris-Windows-build56-Setup.exe` with FFmpeg and a WebView2 bootstrapper. C# compilation and 18 engine checks passed separately; installer generation and Windows execution are pending.
+- iOS/iPadOS: Actions is configured to produce `Solaris-0.4.0-build56-resign.ipa`. A valid common App Group must survive re-signing. Xcode compilation, new process-metrics tests, installation and ReplayKit on real devices are pending.
+
+139 automated tests passed, plus isolated real-browser UI and 1 GiB disk/chunk checks. The disk test does not establish real-network transfer. GitHub writes currently return `403 Resource not accessible by integration`; the remote main remains build54 and the new Actions jobs have not run.
+
+Workflows build review branches and do not publish an official release. The project owner retains merge, release, signing and database administrator authority. Direct P2P files are never uploaded to Supabase Storage; only restricted avatars use Storage. TURN traffic and offline storage are separate operating costs.
+
+---
+
+The original build54 notes below describe the old transport, not build56's verification status.
+
 # Solaris 0.3.2 build54
 
 Solaris shares screens peer to peer using Supabase for signaling. Current working target: Windows hardware H.264/Opus sender → iPad and Windows receiver at 1080p60, with iPad ReplayKit → Windows screen and app sound on its previously validated path. No Moonlight or Apollo installation is needed.

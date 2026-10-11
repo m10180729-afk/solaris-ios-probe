@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
-    MARKETING_VERSION: '0.3.2'
-    CURRENT_PROJECT_VERSION: '54'
+    MARKETING_VERSION: '0.4.0'
+    CURRENT_PROJECT_VERSION: '56'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
 targets:
@@ -18,7 +18,9 @@ targets:
     transitivelyLinkDependencies: false
     sources:
       - path: App
-        excludes: [Info.plist]
+        excludes: [Info.plist, Resources/Unified]
+      - path: App/Resources/Unified
+        type: folder
       - Shared
     settings:
       base:

@@ -23,7 +23,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("Microsoft.Web.WebView2", self.project)
         self.assertIn("EmbeddedResource", self.project)
         self.assertIn("SetVirtualHostNameToFolderMapping", self.form)
-        self.assertIn("https://solaris.local/solaris-desktop.html", self.form)
+        self.assertIn("https://solaris.local/index.html", self.form)
 
     def test_hardware_path_and_fallback_exist(self):
         self.assertIn("native-start", self.html)
@@ -36,7 +36,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Windows-Sender-build54", self.workflow)
+        self.assertIn("Solaris-Windows-build56", self.workflow)
         self.assertIn("ffmpeg-release-essentials.zip", self.workflow)
         self.assertIn("-force_key_frames", (ROOT / "windows-native/SolarisNativeHost/NativeH264Capture.cs").read_text())
         self.assertIn("BUILD_NUMBER='54'", self.html)

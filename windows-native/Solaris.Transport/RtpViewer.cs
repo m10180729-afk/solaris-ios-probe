@@ -42,16 +42,17 @@ public sealed class RtpViewer : IDisposable
     public static long NowUs => (long)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency));
     private sealed record Cached(byte[] Payload, uint Timestamp, int Marker, long At);
 
-    public RtpViewer(string viewerID, bool audio, int pacingMbps = 18, bool useStun = true)
+    public RtpViewer(string viewerID, bool audio, int pacingMbps = 18, bool useStun = true, List<RTCIceServer>? iceServers = null, string profileLevelId = "42e02a")
     {
         ViewerID = viewerID; this.pacingMbps = Math.Clamp(pacingMbps, 4, 80);
         frames = new VideoBacklog(this.pacingMbps);
         pacer = new PacketPacer(this.pacingMbps, NowUs);
         var config = new RTCConfiguration();
-        if (useStun) config.iceServers = new List<RTCIceServer> { new() { urls = "stun:stun.l.google.com:19302" } };
+        if (iceServers != null) config.iceServers = iceServers;
+        else if (useStun) config.iceServers = new List<RTCIceServer> { new() { urls = "stun:stun.l.google.com:19302" } };
         Peer = new RTCPeerConnection(config);
         Peer.addTrack(new MediaStreamTrack(new List<VideoFormat> {
-            new(96, "H264", 90000, "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a")
+            new(96, "H264", 90000, $"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id={profileLevelId}")
         }, MediaStreamStatusEnum.SendOnly));
         if (audio) Peer.addTrack(new MediaStreamTrack(new List<AudioFormat> {
             new(111, "opus", 48000, 2, "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;useinbandfec=1")

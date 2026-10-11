@@ -33,8 +33,12 @@ def check_sources():
     assert broadcast_info["SolarisP2PRoomID"] == "solaristest1"
     check_broadcast_info(broadcast_info,
                          "$(PRODUCT_MODULE_NAME).SampleHandler")
-    rights = plistlib.loads((ROOT / "ios/Config/Probe.entitlements").read_bytes())
-    assert rights == {}, "No-App-Group build must not request shared-container entitlements"
+    app_rights = plistlib.loads((ROOT / "ios/Config/App.entitlements").read_bytes())
+    extension_rights = plistlib.loads((ROOT / "ios/Config/Broadcast.entitlements").read_bytes())
+    groups = app_rights.get("com.apple.security.application-groups", [])
+    assert groups and groups == extension_rights.get("com.apple.security.application-groups"), \
+        "Authenticated ReplayKit requires matching host and extension App Groups"
+    assert all(g.startswith(GROUP) for g in groups)
     for path in ("ios/project.yml", "receiver/viewer.html", "tests/ProbeConfigTests.swift",
                  "scripts/build_ios.sh", ".github/workflows/build-ios-probe.yml",
                  "ios/App/Resources/SolarisMark.jpeg",
@@ -53,7 +57,10 @@ def check_sources():
     assert "package: WebRTC" not in project, "Do not copy the SPM product name as a framework"
     assert "packages:" not in project, "WebRTC is downloaded with the pinned upstream checksum"
     build_script = (ROOT / "scripts/build_ios.sh").read_text()
-    assert "--entitlements" not in build_script, "Do not restore App Group entitlements during packaging"
+    assert "--entitlements ios/Config/App.entitlements" in build_script
+    assert "--entitlements ios/Config/Broadcast.entitlements" in build_script
+    assert "UnifiedView()" in (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
+    assert (ROOT / "ios/App/Resources/Unified/unified.html").is_file()
     assert "import WebRTC" in (ROOT / "ios/Broadcast/BroadcastWebRTCSender.swift").read_text()
     desktop_receiver = (ROOT / "ios/App/DesktopScreenReceiver.swift").read_text()
     assert "import WebRTC" in desktop_receiver, "Native iPad desktop receiver must link WebRTC"
@@ -70,7 +77,7 @@ def check_sources():
     assert "CMVideoFormatDescriptionCreateFromH264ParameterSets" in native_display
     app_source = (ROOT / "ios/App/SolarisProbeApp.swift").read_text()
     assert "ProbeShared.group()" not in app_source, "Broadcast UI must not require App Group storage"
-    print("PASS: Python syntax, plist values, no App Group requirement, real XCFramework dependency")
+    print("PASS: Python syntax, plist values, matching authenticated App Groups, real XCFramework dependency")
     print("NOT VERIFIED: Swift/iOS compilation, entitlements on device, capture, FPS, latency")
 
 

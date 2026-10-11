@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run on macOS with Xcode and XcodeGen. No Apple credentials required at build time.
-# Output is ad-hoc signed without App Group entitlements, NOT device-installable.
+# Output retains matching App Groups for authenticated ReplayKit. Re-signing is required.
 set -euo pipefail
 SOLARIS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SOLARIS_ROOT"
@@ -11,11 +11,12 @@ fi
 for executable in xcodegen xcodebuild codesign ditto python3 curl xcrun plutil; do
   command -v "$executable" >/dev/null || { echo "Missing: $executable"; exit 1; }
 done
-SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.3.2-build54-resign.ipa"
+SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.4.0-build56-resign.ipa"
 if [[ -e "$SOLARIS_OUTPUT" ]]; then
   echo "Output already exists. Move/rename it before rebuilding: $SOLARIS_OUTPUT"
   exit 1
 fi
+python3 scripts/prepare_unified.py
 python3 scripts/check_project.py
 mkdir -p build/diagnostics dist
 SOLARIS_STAGE="$(mktemp -d "$SOLARIS_ROOT/build/package.XXXXXX")"
@@ -69,14 +70,12 @@ for SOLARIS_WEBRTC in "$SOLARIS_HOST_WEBRTC" "$SOLARIS_EXTENSION_WEBRTC"; do
   }
   codesign --force --sign - --timestamp=none "$SOLARIS_WEBRTC"
 done
-codesign --force --sign - --timestamp=none "$SOLARIS_EXTENSION"
-codesign --force --sign - --timestamp=none "$SOLARIS_APP"
+codesign --force --sign - --timestamp=none --entitlements ios/Config/Broadcast.entitlements "$SOLARIS_EXTENSION"
+codesign --force --sign - --timestamp=none --entitlements ios/Config/App.entitlements "$SOLARIS_APP"
 codesign --verify --deep --strict "$SOLARIS_APP"
 ditto -c -k --keepParent "$SOLARIS_STAGE/Payload" "$SOLARIS_OUTPUT"
 python3 scripts/check_project.py --ipa "$SOLARIS_OUTPUT" \
   2>&1 | tee build/diagnostics/ipa.log
-cp ios/App/Resources/solaris-p2p.html dist/Solaris-Windows-0.3.2-build54.html
-cp ios/App/Resources/solaris-desktop.html dist/Solaris-Desktop-Share-build54.html
-cp docs/START_BUILD54_KO.md dist/START_HERE_KO.md
+cp docs/START_BUILD55_KO.md dist/START_HERE_KO.md
 echo "Packaged: $SOLARIS_OUTPUT"
 echo "RE-SIGNING AND PHYSICAL-DEVICE TEST REQUIRED. No install/capture success is claimed."

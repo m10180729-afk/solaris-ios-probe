@@ -4,7 +4,7 @@ import ReplayKit
 @main
 struct SolarisProbeApp: App {
     var body: some Scene {
-        WindowGroup { ProbeView().preferredColorScheme(.dark) }
+        WindowGroup { UnifiedView().preferredColorScheme(.dark) }
     }
 }
 

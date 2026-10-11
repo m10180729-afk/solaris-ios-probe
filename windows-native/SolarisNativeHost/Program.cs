@@ -4,7 +4,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.3.2 build54";
+    internal const string Version = "0.4.0 build56";
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,8 +27,15 @@ internal static class SolarisContent
     {
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Solaris", "build54", "www");
+            "Solaris", "build56", "www");
         Directory.CreateDirectory(root);
+        var assembly = Assembly.GetExecutingAssembly();
+        foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("SolarisNativeHost.app.", StringComparison.Ordinal)))
+        {
+            using var asset = assembly.GetManifestResourceStream(name)!;
+            using var target = File.Create(Path.Combine(root, name["SolarisNativeHost.app.".Length..]));
+            asset.CopyTo(target);
+        }
         var output = Path.Combine(root, FileName);
         using var source = OpenEmbeddedPage();
         using var memory = new MemoryStream();
@@ -72,7 +79,9 @@ internal static class SelfTest
             var reused = NativeH264Capture.OrderEncoders(
                 NativeH264Capture.EncoderCandidates(new NativeCaptureOptions(60, 7, 11)),
                 "Intel Quick Sync").First().Name;
-            var valid = Program.Version.Contains("build54", StringComparison.Ordinal) &&
+            var resources = Assembly.GetExecutingAssembly().GetManifestResourceNames();
+            var completeApp = new[] { "index.html", "app.mjs", "api.mjs", "media.mjs", "files.mjs", "platform.mjs", "sha256.mjs", "config.mjs", "app.css", "lifecycle.mjs", "diagnostics.mjs" }.All(n => resources.Contains("SolarisNativeHost.app." + n));
+            var valid = completeApp && Program.Version.Contains("build56", StringComparison.Ordinal) &&
                         html.Contains("BUILD_NUMBER='54'", StringComparison.Ordinal) &&
                         html.Contains("webcodecs-h264", StringComparison.Ordinal) &&
                         html.Contains("native-start", StringComparison.Ordinal) &&
@@ -87,7 +96,7 @@ internal static class SelfTest
                         !html.Contains("solaris-native://", StringComparison.OrdinalIgnoreCase) &&
                         !html.Contains("ClassicOldSong", StringComparison.OrdinalIgnoreCase);
             Console.WriteLine(valid
-                ? "PASS: Solaris build54 native hardware sender self-test"
+                ? "PASS: Solaris build56 native hardware sender self-test (legacy build54 transport retained)"
                 : "FAIL: embedded sender/version check");
             return valid ? 0 : 1;
         }

@@ -1,9 +1,9 @@
-name: Build Solaris iOS Probe
+name: Build Solaris integrated test
 
 # One push runs the checks and produces the matching app + Windows receiver.
 on:
   push:
-    branches: [main]
+    branches: [main, "codex/**"]
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install -y ffmpeg
           mkdir -p build
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -t 3 -c:v libx264 -preset ultrafast -profile:v baseline -level:v 4.2 -pix_fmt yuv420p -b:v 6M -maxrate 8M -bufsize 8M -g 30 -bf 0 -x264-params aud=1:repeat-headers=1 -f h264 build/rtp-fixture.h264
-          npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
           # Bundled Linux Chromium excludes H.264; this gate requires real Chrome.
           npx playwright install chrome
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build54-rtp-test-evidence
+          name: Solaris-build56-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -83,11 +83,21 @@ jobs:
           & dist/native/SolarisNativeHost.exe --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item windows-native/README_KO.md dist/native/START_NATIVE_HOST_KO.md
-      - name: Upload Windows Solaris sender
+      - name: Create single Windows installer
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile dist/MicrosoftEdgeWebview2Setup.exe
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { choco install innosetup --no-progress -y }
+          & $compiler windows-native/installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows Solaris app
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-Sender-build54
-          path: dist/native/
+          name: Solaris-Windows-build56
+          path: |
+            dist/native/
+            dist/windows/Solaris-Windows-build56-Setup.exe
           if-no-files-found: error
           retention-days: 7
   browser-test:
@@ -102,10 +112,25 @@ jobs:
           node-version: '22'
       - name: Install browser fixture
         run: |
-          npm install --no-save --package-lock=false --ignore-scripts playwright@1.51.1
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
-      - name: Test real decoded video and restart
-        run: node scripts/screen_browser_test.mjs
+      - name: Test accounts, authorization, bounded file protocol
+        run: |
+          npm test
+          npm run test:database
+      - name: Test real decoded video, five viewers and resumed files
+        run: |
+          node scripts/screen_browser_test.mjs
+          node scripts/unified_ui_test.mjs
+          node scripts/unified_browser_test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Solaris-build56-unified-test-evidence
+          path: |
+            build/unified-evidence/*results.json
+            build/ui-evidence/
+          retention-days: 7
       - name: Keep browser failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -114,7 +139,7 @@ jobs:
           path: build/browser-diagnostics/
           if-no-files-found: ignore
           retention-days: 3
-  android-receiver:
+  android-app:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -132,17 +157,46 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Build Android receiver
+      - name: Build integrated Android app
         run: |
           python3 scripts/prepare_android_receiver.py
-          gradle -p android :app:assembleDebug
+          python3 scripts/prepare_unified.py
+          gradle -p android :app:testDebugUnitTest :app:assembleDebug
           mkdir -p dist/android
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-Receiver-build54-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build56-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Android-Receiver-build54-debug
-          path: dist/android/Solaris-Android-Receiver-build54-debug.apk
+          name: Solaris-Android-build56-debug
+          path: dist/android/Solaris-Android-build56-debug.apk
           if-no-files-found: error
+          retention-days: 7
+  large-file-test:
+    needs: browser-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install isolated integration dependencies
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Verify 1 GiB disk path and actual DataChannel transfer
+        run: |
+          node scripts/file_stream_test.mjs
+          node scripts/unified_browser_test.mjs --large
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Solaris-build56-1GiB-test-evidence
+          path: |
+            build/file-stream-evidence/results.json
+            build/unified-evidence/large-results.json
+          if-no-files-found: warn
           retention-days: 7
   build:
     needs: [browser-test, native-rtp-test]
@@ -165,6 +219,7 @@ jobs:
           node-version: '22'
       - name: Validate source and receiver
         run: |
+          python3 scripts/prepare_unified.py
           python3 scripts/check_project.py
           python3 -m unittest discover -s tests -p 'test_*.py' -v
           python3 -m unittest discover -s receiver -p 'test_*.py' -v
@@ -175,13 +230,15 @@ jobs:
           mkdir -p build
           swiftc ios/Shared/ProbeShared.swift tests/ProbeConfigTests.swift -o build/config-tests
           build/config-tests
+          swiftc ios/Shared/ProcessMetrics.swift tests/ProcessMetricsTests.swift -o build/process-metrics-tests
+          build/process-metrics-tests
       - name: Build and package for local re-signing
         run: bash scripts/build_ios.sh
       - name: Keep actual Xcode project and build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build54-xcode-evidence
+          name: Solaris-build56-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -190,11 +247,9 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.3.2-build54-integrated
+          name: Solaris-0.4.0-build56-integrated
           path: |
-            dist/Solaris-0.3.2-build54-resign.ipa
-            dist/Solaris-Windows-0.3.2-build54.html
-            dist/Solaris-Desktop-Share-build54.html
+            dist/Solaris-0.4.0-build56-resign.ipa
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace SolarisNativeHost;
 
-internal sealed record NativeCaptureOptions(int FramesPerSecond, int StartMbps, int MaxMbps);
+internal sealed record NativeCaptureOptions(int FramesPerSecond, int StartMbps, int MaxMbps, int Width = 1920, int Height = 1080);
 
 internal sealed class NativeH264Capture : IDisposable
 {
@@ -31,7 +31,7 @@ internal sealed class NativeH264Capture : IDisposable
         var ffmpeg = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
         if (!File.Exists(ffmpeg))
             throw new FileNotFoundException(
-                "Solaris Windows 패키지의 ffmpeg.exe가 없습니다. GitHub Actions의 Windows Sender ZIP을 압축 해제한 폴더에서 실행하세요.",
+                "Solaris Windows 패키지의 ffmpeg.exe가 없습니다. GitHub Actions의 Solaris 설치 프로그램을 다시 실행하세요.",
                 ffmpeg);
 
         var localGeneration = Interlocked.Increment(ref generation);
@@ -80,7 +80,7 @@ internal sealed class NativeH264Capture : IDisposable
                 {
                     selected = true;
                     preferredEncoder = encoder.Name;
-                    onStatus("running", $"{encoder.Name} · 1920×1080 · {options.FramesPerSecond}fps 요청", encoder.Name);
+                    onStatus("running", $"{encoder.Name} · {options.Width}×{options.Height} · {options.FramesPerSecond}fps 요청", encoder.Name);
                     _ = reader.ContinueWith(t =>
                     {
                         if (t.IsFaulted && generation == localGeneration && !token.IsCancellationRequested)
@@ -144,7 +144,7 @@ internal sealed class NativeH264Capture : IDisposable
         var fpsWindowStart = Stopwatch.GetTimestamp();
         var fpsWindowFrames = 0;
         long emittedFrames = 0;
-        var mediaClock = new Solaris.Transport.ConstantFrameClock(Math.Clamp(fps, 30, 120));
+        var mediaClock = new Solaris.Transport.ConstantFrameClock(Math.Clamp(fps, 15, 120));
         var parser = new AnnexBAccessUnitParser((bytes, keyFrame) =>
         {
             if (generation != localGeneration || token.IsCancellationRequested) return;
@@ -157,8 +157,8 @@ internal sealed class NativeH264Capture : IDisposable
             var elapsed = (now - fpsWindowStart) / (double)Stopwatch.Frequency;
             if (elapsed >= 1)
             {
-                var fps = fpsWindowFrames / elapsed;
-                onStatus("metrics", $"output {fps:F1}fps · frames {emittedFrames}", encoder);
+                var actualFps = fpsWindowFrames / elapsed;
+                onStatus("metrics", $"output {actualFps:F1}fps · frames {emittedFrames}", encoder);
                 fpsWindowStart = now;
                 fpsWindowFrames = 0;
             }
@@ -178,14 +178,16 @@ internal sealed class NativeH264Capture : IDisposable
 
     internal static IEnumerable<(string Name, string Arguments)> EncoderCandidates(NativeCaptureOptions options)
     {
-        var fps = Math.Clamp(options.FramesPerSecond, 30, 120);
+        var fps = Math.Clamp(options.FramesPerSecond, 15, 120);
+        var width = Math.Clamp(options.Width / 2 * 2, 640, 2560);
+        var height = Math.Clamp(options.Height / 2 * 2, 360, 1440);
         // Adaptive mode can legitimately request 4M/6M. Keep Clamp bounds ordered.
         var max = Math.Clamp(options.MaxMbps, 4, 100);
-        var start = Math.Clamp(options.StartMbps, 4, max);
+        var start = Math.Clamp(options.StartMbps, 2, max);
         var common = $"-hide_banner -loglevel warning -f gdigrab -draw_mouse 1 -framerate {fps} -i desktop " +
-                     "-an -vf \"scale=1920:1080:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
-                     "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
-                     $"-profile:v baseline -level:v {(fps > 60 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
+                     $"-an -vf \"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=fast_bilinear," +
+                     $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,format=nv12\" " +
+                     $"-profile:v baseline -level:v {(fps > 60 || width > 1920 ? "5.1" : "4.2")} -b:v {start}M -maxrate {max}M -bufsize {max}M -g {fps / 2} -keyint_min {fps / 2} -force_key_frames \"expr:gte(t,n_forced*0.5)\" -bf 0 " +
                      $"-r {fps} -fps_mode cfr -flush_packets 1 -bsf:v h264_metadata=aud=insert -f h264 pipe:1";
         yield return ("NVIDIA NVENC", $"{common.Replace("-bsf:v", "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -forced-idr 1 -bsf:v")}");
         yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -forced_idr 1 -repeat_pps 1 -bsf:v")}");
