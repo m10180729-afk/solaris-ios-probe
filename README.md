@@ -1,36 +1,20 @@
-# Solaris 0.4.0 build57
+# Solaris 0.4.0 build58
 
-High quality screen sharing and original file transfer in one authenticated app for Windows, Android and iOS/iPadOS.
+Authenticated cross-platform screen sharing and original-file P2P transfer, designed to accompany Discord. No voice calling.
 
-This checkpoint fixes the unified UI's forced resolution/FPS reduction and viewer-count downscaling. All broadcasts request high quality and 60fps, with source aspect ratio and device encoding limits respected. The build54 Windows hardware capture/RTP engine is reused; iOS reuses its constrained-baseline H264, native bitrate and frame/resolution policy. A receiver can change its own bitrate without reducing the shared source for everyone.
+This checkpoint restores the exact build54 Windows capture file and reuses the original ReplayKit capture pump in the unified iOS sender. The native Windows path returns to 1080p60, fast_bilinear and its original 12–18Mbps budget. See `docs/BUILD54_CAPTURE_REFERENCE.json` and run `python3 scripts/check_build54_capture.py` for the retrieved source hashes. Device FPS is not established by source equality.
 
-Android now uses compatible H264 baseline, actual portrait/landscape bounds, hardware size/rate capability checks, first-frame broadcast readiness, guarded projection-service startup and disposal, existing-display resize, and WebView renderer recovery. Diagnostics include bounded native errors and recent Android process-exit reasons. The precise reported physical crash has not been reproduced here; this is a tested source/build fix awaiting device verification.
+Email/password signup and login, verified-email upgrade of existing UID accounts, password recovery, connected DM and server/channel views, scoped message history and Discord-style responsive navigation are implemented. Android uses capture lifecycle epochs, first-frame readiness, bounded H264 requests and capture/encoder statistics. Incoming screen and app-audio tracks share one playback stream even when their stream IDs differ or are missing. No quality picker is exposed.
 
-The Discord-style layout separates server icons, channel navigation, live broadcasts, participants, profile/settings and connection controls. Online status is a small profile dot. Leave/delete actions are inside a separate server menu, colored red, and require confirmation. Broadcasting has no quality selector. Voice chat and microphone capture remain excluded.
+Read [build58 setup](docs/START_BUILD58_KO.md), [verification and limits](docs/BUILD58_STATUS_KO.md), [continuation memo](docs/CONTINUE_BUILD58_KO.md), and [the complete specification](docs/SOLARIS_SPEC_KO.md). Earlier notes remain archived.
 
-## Start and continue
+No new database migration for build58: existing working build56/57 setups are preserved. New projects use `backend/001_solaris.sql`; old build55 databases use the existing `backend/002_build56_broadcast_ready.sql`. Do not delete account tables or disable RLS to resolve setup failures. The email-code flows need Supabase email templates containing `{{ .Token }}`; real SMTP/auth delivery remains unverified.
 
-Read [build57 setup](docs/START_BUILD57_KO.md), [verification and limits](docs/BUILD57_STATUS_KO.md), [continuation memo](docs/CONTINUE_BUILD57_KO.md), and the [complete user specification](docs/SOLARIS_SPEC_KO.md). Prior build55/56 notes remain archived.
+`UPLOAD_GIT_BASH.sh` verifies the uploaded build57 branch and unchanged build54 main, then pushes an isolated build58 review branch. Official release approval and signing keys remain with the project owner. Tests exercise the uploader against real local Git remotes. Windows EXE and iOS IPA packaging require a successful new Actions run.
 
-**No new database migration for build57.** An already working build56 Supabase setup is kept. New projects use `backend/001_solaris.sql`; existing build55 databases use the existing `backend/002_build56_broadcast_ready.sql`. Never delete account tables or disable RLS to solve an RPC setup error.
+Automatic JavaScript, SQL, Android, C# and UI checks are documented separately from physical-device and actual-network testing. Do not treat build57 CI, a mocked auth endpoint or a one-gigabyte disk transfer as proof of build58 device performance or Internet P2P transfer.
 
-`UPLOAD_GIT_BASH.sh` uploads an isolated build57 review branch from the owner's verified build56 branch, preserving its Git history. It checks both the build56 and main heads, accepts an explicit extracted-source path, supports `--dry-run`, and uses an isolated Git index to exclude ignored local files and replace removed source files correctly. Nine local Git integration scenarios cover upload, history, exclusions, changed heads, source validation, dry run and rejected pushes. The owner's build56 branch already passed GitHub Actions; build57 CI still requires uploading this checkpoint. Official versions and signing keys remain under the owner's control.
-
-```sh
-npm ci --ignore-scripts
-python3 scripts/prepare_unified.py
-npm test
-npm run test:database
-node scripts/unified_ui_test.mjs
-python3 -m unittest discover -s tests
-python3 scripts/package_source.py
-```
-
-The source ZIP includes the full project, setup, uploader and continuation notes. Send a new source checkpoint before ending each work segment. Native installers/IPA generation and real cross-device media tests are separate from local compilation and automated logic/UI checks.
-
-## Archived build54 transport notes
-
-The original build54 notes below describe the old transport, not build57's verification status.
+The original build54 notes below describe the old transport, not build58's verification status.
 
 # Solaris 0.3.2 build54
 

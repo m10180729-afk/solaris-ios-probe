@@ -158,7 +158,7 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("case .audioMic: stats.micAudioSamples += 1\n            @unknown default", handler)
         self.assertIn("appendApplicationAudioSampleBuffer", sender)
         self.assertIn("audioTrack = factory.audioTrack", sender)
-        self.assertIn("audioSender = peer.add(audioTrack", sender)
+        self.assertIn("audioSender = peer?.add(audioTrack", sender)
         self.assertIn("inputNumberOfChannels { return 2; }", device)
         self.assertIn("output.mSampleRate = 48000.0", device)
         self.assertIn("output.mChannelsPerFrame = 2", device)
@@ -255,18 +255,18 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build57_shell_and_preserved_build54_fixtures_are_consistent(self):
+    def test_build58_shell_and_preserved_build54_fixtures_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '57'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '58'", (root / "ios/project.yml").read_text())
         browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("BUILD_NUMBER = '54'", browser_receiver)
         self.assertIn("0.3.2 build54", browser_receiver)
         self.assertNotIn("앱 build40", browser_receiver)
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.4.0-build57-integrated", workflow)
-        self.assertIn("Solaris-Windows-build57", workflow)
-        self.assertIn("Solaris-Android-build57-debug", workflow)
-        self.assertIn("Solaris-0.4.0-build57-resign.ipa", workflow)
+        self.assertIn("Solaris-0.4.0-build58-integrated", workflow)
+        self.assertIn("Solaris-Windows-build58", workflow)
+        self.assertIn("Solaris-Android-build58-debug", workflow)
+        self.assertIn("Solaris-0.4.0-build58-resign.ipa", workflow)
 
     def test_build54_native_diagnostics_expose_real_progress(self):
         root = Path(__file__).resolve().parents[1]

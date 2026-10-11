@@ -1,0 +1,73 @@
+{
+  "project": "Solaris",
+  "version": "0.4.0-build58",
+  "checkpoint_date": "2026-10-11",
+  "baseline": {
+    "repository": "m10180729-afk/solaris-ios-probe",
+    "build54_commit": "4c50dbe33721b5d10db714bd79da74267a8863b4",
+    "build57_branch": "codex/solaris-build57-20261011-192259-1809",
+    "build57_commit": "4ca21efbb32e92e74ff64acadad00d255d92d471"
+  },
+  "automated_checks": {
+    "unified_javascript": { "passed": 56, "failed": 0 },
+    "sql_pglite": { "passed": 8, "failed": 0 },
+    "legacy_screen_javascript": { "passed": 33, "failed": 0 },
+    "python_source_and_packaging": { "passed": 49, "failed": 0, "includes_real_local_git_upload_scenarios": 9 },
+    "legacy_receiver_python": { "passed": 9, "failed": 0 },
+    "android_junit": { "passed": 13, "failed": 0, "skipped": 0 },
+    "windows_transport_unit": { "passed": 21, "failed": 0 },
+    "chromium_ui": {
+      "passed": true,
+      "backend": "deterministic test backend; production Supabase email delivery not exercised",
+      "scenarios": ["email signup without anonymous auth", "email/password login with unchanged UID", "friends and accepted direct sessions", "profile/avatar", "restart persistence", "server creation and channel navigation", "direct message navigation", "separate server leave confirmation", "stable polling inputs", "mobile drawers", "disk checkpoint recovery"]
+    },
+    "one_gib_disk_stream": {
+      "passed": true,
+      "bytes": 1073741824,
+      "sha256": "ccb4d33aafdabe693f59d41c3fe8349436b98bbac407e1f13bb6739381f1f985",
+      "max_heap_bytes": 20114760,
+      "transport": "injected ordered packets into production chunk receiver",
+      "checkpoint_restart": true,
+      "independent_disk_hash_verified": true,
+      "physical_device": false,
+      "network_p2p_verified": false
+    },
+    "build54_source_match": {
+      "windows_entire_capture_file_identical": true,
+      "ios_capture_and_frame_pump_identical": true,
+      "physical_fps_verified": false
+    },
+    "source_syntax_and_package": { "passed": true }
+  },
+  "builds": {
+    "android_debug_apk": {
+      "assembled": true,
+      "version_code": 58,
+      "version_name": "0.4.0-build58",
+      "signature_verification": "passed: APK v2, one signer",
+      "bundled_shared_assets_match": true,
+      "physical_install_verified": false
+    },
+    "windows_csharp_sources": {
+      "transport_compiled": true,
+      "transport_tests_compiled": true,
+      "native_host_compiled": true,
+      "method": "direct .NET SDK Roslyn compiler with Windows Forms source generator",
+      "msbuild_limitation": "process metadata access error prevents normal CLI/MSBuild startup in this environment",
+      "publish_or_installer_verified": false
+    },
+    "ios_ipa": { "xcode_compilation_verified": false, "ipa_generated": false },
+    "build58_github_actions": { "uploaded": false, "verified": false }
+  },
+  "not_verified": [
+    "user-reported physical 13fps regression resolution",
+    "physical Android MediaProjection/JNI crash resolution",
+    "60fps, latency, thermals and image quality on Windows/iPad/Android",
+    "production Supabase email delivery and login configuration",
+    "cross-platform bidirectional streaming and five viewers",
+    "mobile network transitions and TURN",
+    "one GiB DataChannel transfer on physical devices",
+    "build58 Windows installer and iOS IPA",
+    "update installation with account data preserved"
+  ]
+}

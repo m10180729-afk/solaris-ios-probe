@@ -63,7 +63,7 @@ final class BroadcastWebRTCSender: NSObject {
     // Windows must start first; stale offers older than five minutes are ignored.
     private let earliestOffer = Date().addingTimeInterval(-300)
 
-    init(config: P2PBroadcastConfig, directory: URL?) {
+    init(config: P2PBroadcastConfig, directory: URL?, unifiedTransport: Bool = false) {
         self.config = config
         self.directory = directory
         // No App Group entitlement: host defaults are NOT a settings channel.
@@ -116,11 +116,13 @@ final class BroadcastWebRTCSender: NSObject {
         rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
                           RTCIceServer(urlStrings: ["stun:global.stun.twilio.com:3478"])]
-        peer = factory.peerConnection(with: rtc,
-            constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+        if !unifiedTransport {
+            peer = factory.peerConnection(with: rtc,
+                constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+        }
         videoTrack = factory.videoTrack(with: source, trackId: "solaris-screen")
         videoTrack.isEnabled = true
-        videoSender = peer.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        videoSender = peer?.add(videoTrack, streamIds: ["solaris-screen-stream"])
         let audioConstraints = RTCMediaConstraints(
             mandatoryConstraints: [
                 "googEchoCancellation": "false",
@@ -132,9 +134,11 @@ final class BroadcastWebRTCSender: NSObject {
         audioTrack = factory.audioTrack(with: audioSource, trackId: "solaris-app-audio")
         audioTrack.isEnabled = true
         // Same stream ID makes the browser render image and app sound together.
-        audioSender = peer.add(audioTrack, streamIds: ["solaris-screen-stream"])
-        applyVideoSenderPolicy()
-        applyAudioSenderPolicy()
+        audioSender = peer?.add(audioTrack, streamIds: ["solaris-screen-stream"])
+        if !unifiedTransport {
+            applyVideoSenderPolicy()
+            applyAudioSenderPolicy()
+        }
         diagnostics.audioTrackEnabled = true
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 6
@@ -173,7 +177,7 @@ final class BroadcastWebRTCSender: NSObject {
             channel?.close()
             audioTrack.isEnabled = false
             appAudioDevice.stop()
-            peer.close()
+            peer?.close()
             network.invalidateAndCancel()
             note("방송 종료")
         }
@@ -302,6 +306,12 @@ final class BroadcastWebRTCSender: NSObject {
             diagnostics.lastError = "RTCRtpSender 생성 실패"
             return
         }
+        applyBuild54VideoPolicy(videoSender)
+    }
+
+    // The authenticated friend/channel adapter uses this same build54 policy
+    // and the original capture()/processNextFrame() pump above.
+    func applyBuild54VideoPolicy(_ videoSender: RTCRtpSender) {
 
         // WebRTC 153 exposes the real encoder controls through the sender's
         // RTP parameters.  SDP b= lines are only hints; they do not prevent
@@ -335,11 +345,55 @@ final class BroadcastWebRTCSender: NSObject {
         diagnostics.encoderPolicy = "screenCast · \(quality.title) · H264 VideoToolbox · level 5.1 · \(bitrateProfile.title)"
     }
 
+    func makeUnifiedPeer(configuration: RTCConfiguration,
+                         delegate: RTCPeerConnectionDelegate) -> RTCPeerConnection? {
+        guard let connection = factory.peerConnection(with: configuration,
+            constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil),
+            delegate: delegate) else { return nil }
+        connection.add(videoTrack, streamIds: ["solaris-screen-stream"])
+        connection.add(audioTrack, streamIds: ["solaris-screen-stream"])
+        return connection
+    }
+
+    func applyUnifiedPolicies(_ senders: [RTCRtpSender]) {
+        queue.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            for sender in senders where sender.track?.kind == "video" {
+                self.applyBuild54VideoPolicy(sender)
+            }
+            for sender in senders where sender.track?.kind == "audio" {
+                self.applyBuild54AudioPolicy(sender)
+            }
+        }
+    }
+
+    func unifiedScreenSDP(_ sdp: String) -> String { screenAnswerSDP(sdp) }
+
+    func unifiedFramesReady() -> Bool {
+        queue.sync { !stopped && diagnostics.framesSubmitted > 0 }
+    }
+
+    func unifiedCaptureDiagnostics() -> [String: Any] {
+        queue.sync {
+            ["callbackFPS": diagnostics.callbackFPS,
+             "submittedFPS": diagnostics.submittedFPS,
+             "framesSubmitted": diagnostics.framesSubmitted,
+             "sourceWidth": diagnostics.sourceWidth, "sourceHeight": diagnostics.sourceHeight,
+             "outputWidth": diagnostics.outputWidth, "outputHeight": diagnostics.outputHeight,
+             "format": diagnostics.outputFormat, "senderQueueDrops": diagnostics.senderQueueDrops,
+             "engine": "build54 ReplayKit / H264 VideoToolbox"]
+        }
+    }
+
     private func applyAudioSenderPolicy() {
         guard let audioSender else {
             diagnostics.lastError = "오디오 RTCRtpSender 생성 실패"
             return
         }
+        applyBuild54AudioPolicy(audioSender)
+    }
+
+    private func applyBuild54AudioPolicy(_ audioSender: RTCRtpSender) {
         let parameters = audioSender.parameters
         let encodings = parameters.encodings
         guard !encodings.isEmpty else { return }

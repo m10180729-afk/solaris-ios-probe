@@ -1,0 +1,23 @@
+{
+  "repository": "m10180729-afk/solaris-ios-probe",
+  "commit": "4c50dbe33721b5d10db714bd79da74267a8863b4",
+  "windows_capture_file": "windows-native/SolarisNativeHost/NativeH264Capture.cs",
+  "windows_capture_sha256": "97064d6aa5405f741c4c1fa595d0de810f300d12a2c2c94d468705f15a69b397",
+  "windows_capture_git_blob": "aa02633fd3a93a4e6133fcf0d52fd5373bc3e4b3",
+  "ios_capture_file": "ios/Broadcast/BroadcastWebRTCSender.swift",
+  "ios_capture_pump_sha256": "1e68e84d8ad568ff3c59c921121af708c06c4a63a8a5b96dc866bbe49c98ac8a",
+  "windows_target": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "startMbps": 12,
+    "maxMbps": 18
+  },
+  "ios_target": {
+    "maxLongSide": 1920,
+    "fps": 60,
+    "minMbps": 28,
+    "maxMbps": 60
+  },
+  "note": "Original build54 capture/pump, surrounded by authenticated friend/channel adapters. Physical-device FPS is not verified by these hashes."
+}

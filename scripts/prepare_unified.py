@@ -22,4 +22,4 @@ for target in (root/'ios/App/Resources/Unified',root/'android/app/src/main/asset
     html=html.replace('<link rel="stylesheet" href="app.css">','<style>'+(root/'shared/app.css').read_text()+'</style>')
     html=html.replace('<script type="module" src="app.mjs"></script>','<script>'+script+'</script>')
     (target/'unified.html').write_text(html)
-print('Solaris unified assets prepared, build57')
+print('Solaris unified assets prepared, build58')

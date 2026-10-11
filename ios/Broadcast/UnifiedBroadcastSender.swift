@@ -2,8 +2,7 @@ import Foundation
 import ReplayKit
 import WebRTC
 
-// Same bounded frame pump as build54, with one source and up to five peers.
-// Signaling is authenticated, scope-checked, and independent of capture order.
+// Friend/channel signaling adapter around the actual build54 capture engine.
 final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private final class Node {
         let uid: String
@@ -14,17 +13,15 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         var offer: String?
         var seen = Date()
         var quality: [String: Any]?
+        var stats: [String: Any] = [:]
+        var statsPending = false
+        var encoded: Int64 = 0
+        var statsAt = 0.0
         init(_ uid: String) { self.uid = uid }
     }
     private let queue = DispatchQueue(label: "org.solaris.unified.broadcast")
-    private let lock = NSLock()
     private let group: URL
-    private let factory: RTCPeerConnectionFactory
-    private let audioDevice: SolarisReplayKitAudioDevice
-    private let source: RTCVideoSource
-    private let capturer: RTCVideoCapturer
-    private let video: RTCVideoTrack
-    private let audio: RTCAudioTrack
+    private let engine: BroadcastWebRTCSender
     private let network = URLSession(configuration: .ephemeral)
     private var context: [String: Any]
     private var nodes: [String: Node] = [:]
@@ -33,11 +30,9 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private var polling = false
     private var stopped = false
     private var refreshing = false
-    private var pending: (CVPixelBuffer, RTCVideoRotation, Int64)?
-    private var pumping = false
-    private var frames = 0
-    private var lastFormat = ""
     private var lastTouch = Date.distantPast
+    private var lastStats = Date.distantPast
+    private let startedAt = Date()
     private let finish: (Error) -> Void
     init(context: [String: Any], group: URL, finish: @escaping (Error) -> Void) throws {
         guard let url = context["url"] as? String, URL(string: url)?.host?.hasSuffix(".supabase.co") == true,
@@ -47,17 +42,9 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
               let scope = context["scope"] as? [String: Any], ["direct", "channel"].contains(scope["kind"] as? String ?? ""),
               UUID(uuidString: scope["id"] as? String ?? "") != nil else { throw NSError(domain: "Solaris", code: 1, userInfo: [NSLocalizedDescriptionKey: "화면공유 설정 또는 인증이 유효하지 않습니다."]) }
         self.context = context; self.group = group; self.finish = finish
-        RTCInitializeSSL()
-        let device = SolarisReplayKitAudioDevice(); self.audioDevice = device
-        let encoder = RTCDefaultVideoEncoderFactory()
-        let h264 = encoder.supportedCodecs().filter { $0.name.uppercased() == "H264" && $0.parameters["packetization-mode"] == "1" && ($0.parameters["profile-level-id"] ?? "").lowercased().hasPrefix("42e0") }.max { ($0.parameters["profile-level-id"] ?? "") < ($1.parameters["profile-level-id"] ?? "") }
-        if let h264 { encoder.preferredCodec = h264 }
-        factory = RTCPeerConnectionFactory(encoderFactory: encoder, decoderFactory: RTCDefaultVideoDecoderFactory(), audioDevice: device)
-        source = factory.videoSource(forScreenCast: true)
-        capturer = RTCVideoCapturer(delegate: source)
-        video = factory.videoTrack(with: source, trackId: "solaris-screen")
-        let constraints = RTCMediaConstraints(mandatoryConstraints: ["googEchoCancellation": "false", "googNoiseSuppression": "false", "googAutoGainControl": "false"], optionalConstraints: nil)
-        audio = factory.audioTrack(with: factory.audioSource(with: constraints), trackId: "solaris-screen-sound")
+        engine = BroadcastWebRTCSender(config: P2PBroadcastConfig(projectURL: url,
+            publishableKey: context["key"] as? String ?? "", roomID: id),
+            directory: group, unifiedTransport: true)
         super.init()
     }
     private var id: String { context["id"] as! String }
@@ -69,38 +56,25 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         }
     }
     func stop() {
-        lock.lock(); pending = nil; lock.unlock()
         queue.async { self.stopInternal() }
     }
     private func stopInternal() {
         guard !stopped else { return }; stopped = true; timer?.cancel(); timer = nil
-        for n in nodes.values { n.peer.close() }; nodes.removeAll(); audioDevice.stop(); diagnostics()
+        for n in nodes.values { n.peer.close() }; nodes.removeAll(); engine.stop(); diagnostics()
         rpc("broadcast_stop", ["id": id]) { _ in }
     }
-    func captureApplicationAudio(_ sample: CMSampleBuffer) { audioDevice.appendApplicationAudioSampleBuffer(sample) }
+    func captureApplicationAudio(_ sample: CMSampleBuffer) { engine.captureApplicationAudio(sample) }
     func capture(_ sample: CMSampleBuffer) {
-        guard let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
-        let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
-        guard seconds.isFinite, seconds >= 0, seconds < Double(Int64.max) / 1e9 else { return }
-        let orientation = (CMGetAttachment(sample, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.intValue ?? 1
-        let rotation: RTCVideoRotation = orientation == 3 ? ._180 : orientation == 6 ? ._90 : orientation == 8 ? ._270 : ._0
-        lock.lock(); pending = (buffer, rotation, Int64(seconds * 1e9)); let begin = !pumping; pumping = true; lock.unlock()
-        if begin { queue.async { self.pump() } }
-    }
-    private func pump() {
-        lock.lock(); let frame = pending; pending = nil; if frame == nil { pumping = false }; lock.unlock()
-        guard let (buffer, rotation, timestamp) = frame, !stopped else { return }
-        // A viewer cannot lower the common source or the other viewers' FPS.
-        let w = CVPixelBufferGetWidth(buffer), h = CVPixelBufferGetHeight(buffer)
-        let scale = min(1, min(2560.0 / Double(max(w,h)), 1440.0 / Double(min(w,h))))
-        let ow = max(2, Int(Double(w)*scale)/2*2), oh = max(2, Int(Double(h)*scale)/2*2), fps = 60
-        let format = "\(ow)x\(oh)@\(fps)"
-        if format != lastFormat { source.adaptOutputFormat(toWidth: Int32(ow), height: Int32(oh), fps: Int32(fps)); lastFormat = format }
-        source.capturer(capturer, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: buffer), rotation: rotation, timeStampNs: timestamp)); frames += 1
-        queue.async { self.pump() }
+        engine.capture(sample)
     }
     private func poll() {
         guard !stopped, !polling, !refreshing else { return }
+        let captureReady = engine.unifiedFramesReady()
+        if !captureReady && Date().timeIntervalSince(startedAt) > 10 {
+            stopInternal()
+            finish(NSError(domain: "Solaris", code: 3, userInfo: [NSLocalizedDescriptionKey: "ReplayKit 캡처 프레임이 도착하지 않았습니다. 화면공유를 다시 시작하세요."]))
+            return
+        }
         guard let data = try? Data(contentsOf: group.appendingPathComponent("unified-broadcast.json")),
               let latest = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], latest["id"] as? String == id else {
             stopInternal(); finish(NSError(domain: "Solaris", code: 2, userInfo: [NSLocalizedDescriptionKey: "Solaris에서 화면공유를 종료했습니다."])); return
@@ -123,7 +97,12 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
             }
             for (uid,n) in Array(self.nodes) where Date().timeIntervalSince(n.seen)>45 { n.peer.close(); self.nodes.removeValue(forKey: uid) }
         }
-        if Date().timeIntervalSince(lastTouch)>10 { lastTouch = Date(); rpc("broadcast_touch", ["id": id]) { _ in }; diagnostics() }
+        if captureReady && Date().timeIntervalSince(lastTouch)>10 { lastTouch = Date(); rpc("broadcast_touch", ["id": id]) { _ in } }
+        if Date().timeIntervalSince(lastStats)>2 {
+            lastStats = Date()
+            for node in nodes.values { sampleStats(node) }
+            diagnostics()
+        }
     }
     private func prune(_ snapshot: [String: Any]) {
         var allowed = Set<String>()
@@ -156,36 +135,29 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         else if type == "media-quality", let q = p["quality"] as? [String: Any] { n.quality = q; policy(n) }
     }
     private func join(_ uid: String) {
+        guard engine.unifiedFramesReady() else { return }
         let n = Node(uid), rtc = RTCConfiguration(); rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = (context["iceServers"] as? [[String: Any]] ?? []).compactMap { s in
             let urls = (s["urls"] as? [String]) ?? (s["urls"] as? String).map { [$0] } ?? []
             return urls.isEmpty ? nil : RTCIceServer(urlStrings: urls, username: s["username"] as? String, credential: s["credential"] as? String)
         }
-        n.peer = factory.peerConnection(with: rtc, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+        n.peer = engine.makeUnifiedPeer(configuration: rtc, delegate: self)
         guard n.peer != nil else { return }; nodes[uid] = n
-        n.peer.add(video, streamIds: ["solaris"]); n.peer.add(audio, streamIds: ["solaris"]); policy(n)
+        policy(n)
         n.peer.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] description, error in
             guard let self, let description, error == nil else { return }
-            n.peer.setLocalDescription(description) { error in self.queue.async { guard !self.stopped, error == nil, self.nodes[uid] === n else { return }; n.offer = description.sdp; self.signal(n, ["type":"native-offer","sdp":description.sdp]) } }
+            self.queue.async {
+                guard !self.stopped, self.nodes[uid] === n else { return }
+                let tuned = RTCSessionDescription(type: .offer, sdp: self.engine.unifiedScreenSDP(description.sdp))
+                n.peer.setLocalDescription(tuned) { error in self.queue.async {
+                    guard !self.stopped, error == nil, self.nodes[uid] === n else { return }
+                    n.offer = tuned.sdp; self.signal(n, ["type":"native-offer","sdp":tuned.sdp])
+                } }
+            }
         }
     }
     private func policy(_ n: Node) {
-        // Reuse build54's native screen-cast encoder policy after negotiation.
-        let requested = (n.quality?["mbps"] as? NSNumber)?.intValue ?? 25
-        for sender in n.peer.senders where sender.track?.kind == "video" {
-            let parameters = sender.parameters
-            guard !parameters.encodings.isEmpty else { continue }
-            for encoding in parameters.encodings {
-                encoding.isActive = true
-                encoding.minBitrateBps = NSNumber(value: requested >= 25 ? 28_000_000 : max(8,min(28,requested)) * 1_000_000)
-                encoding.maxBitrateBps = NSNumber(value: requested >= 25 ? 60_000_000 : max(8,requested) * 1_000_000)
-                encoding.maxFramerate = NSNumber(value: 60)
-                encoding.scaleResolutionDownBy = NSNumber(value: 1.0)
-                encoding.bitratePriority = 4.0
-            }
-            parameters.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainFramerateAndResolution.rawValue)
-            sender.parameters = parameters
-        }
+        engine.applyUnifiedPolicies(n.peer.senders)
     }
     private func signal(_ n: Node, _ payload: [String: Any]) {
         var p = payload; p["broadcast"] = id; p["connectionID"] = n.connection
@@ -212,15 +184,42 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
             if let bytes=try? JSONSerialization.data(withJSONObject:s) { try? bytes.write(to:self.group.appendingPathComponent("shared-session.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
         }}.resume()
     }
+    private func sampleStats(_ node: Node) {
+        guard !node.statsPending else { return }; node.statsPending = true
+        node.peer.statistics { [weak self] report in
+            self?.queue.async {
+                guard let self, !self.stopped, self.nodes[node.uid] === node else { return }
+                node.statsPending = false
+                let now = ProcessInfo.processInfo.systemUptime, elapsed = now - node.statsAt
+                var values: [String: Any] = [:]
+                for stat in report.statistics.values where stat.type == "outbound-rtp" {
+                    let v = stat.values
+                    guard (v["kind"] as? String ?? v["mediaType"] as? String) == "video" else { continue }
+                    let encoded = (v["framesEncoded"] as? NSNumber)?.int64Value ?? 0
+                    values["encodedFPS"] = node.statsAt > 0 && elapsed > 0 ? Double(max(0, encoded - node.encoded)) / elapsed : 0
+                    for key in ["frameWidth", "frameHeight", "framesEncoded", "totalEncodeTime", "encoderImplementation", "qualityLimitationReason"] { if let value = v[key] { values[key] = value } }
+                    if let codecID = v["codecId"] as? String, let codec = report.statistics[codecID] { values["codec"] = codec.values["mimeType"] }
+                    node.encoded = encoded
+                }
+                node.statsAt = now; node.stats = values; self.diagnostics()
+            }
+        }
+    }
     private func diagnostics() {
-        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build57","framesSubmitted":frames,"peers":nodes.count,"format":lastFormat,"updatedAt":Date().timeIntervalSince1970]
+        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build58","peers":nodes.count,"updatedAt":Date().timeIntervalSince1970]
+        d["encoders"] = nodes.values.map { ["connectionID": $0.connection, "statistics": $0.stats] as [String: Any] }
+        d.merge(engine.unifiedCaptureDiagnostics()) { _, new in new }
         d.merge(SolarisProcessMetrics.snapshot()) { _, new in new }
         if let data=try? JSONSerialization.data(withJSONObject:d) { try? data.write(to:group.appendingPathComponent("unified-diagnostics.json"),options:.atomic) }
     }
     func peerConnection(_ p: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         queue.async { guard !self.stopped, let n=self.nodes.values.first(where:{$0.peer===p}) else{return}; self.signal(n,["type":"native-ice","candidate":["candidate":candidate.sdp,"sdpMid":candidate.sdpMid ?? "0","sdpMLineIndex":candidate.sdpMLineIndex]]) }
     }
-    func peerConnection(_ p: RTCPeerConnection,didChange state:RTCIceConnectionState){}
+    func peerConnection(_ p: RTCPeerConnection,didChange state:RTCIceConnectionState){
+        if state == .connected || state == .completed {
+            queue.async { guard !self.stopped, let n = self.nodes.values.first(where: {$0.peer === p}) else { return }; self.policy(n) }
+        }
+    }
     func peerConnection(_ p: RTCPeerConnection,didChange state:RTCSignalingState){}
     func peerConnection(_ p: RTCPeerConnection,didAdd stream:RTCMediaStream){}
     func peerConnection(_ p: RTCPeerConnection,didRemove stream:RTCMediaStream){}
