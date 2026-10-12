@@ -1,4 +1,5 @@
 import{test}from'node:test';import assert from'node:assert/strict';import{API}from'../shared/api.mjs';
+globalThis.location={href:'https://fixture.example.test/shared/index.html'};
 const session=(uid,seconds=3600)=>({user:{id:uid},access_token:'fixture-'+uid,refresh_token:'fixture-refresh-'+uid,expires_at:Date.now()/1000+seconds});
 const fixture=bridge=>{const records=new Map(),api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},bridge??{native:false},{set:async(k,v)=>records.set(k,structuredClone(v))});api.session=session('old',-1);return{api,records}};
 test('late refresh cannot overwrite a newly recovered account',async()=>{const{api,records}=fixture();let release,started;const ready=new Promise(r=>started=r),pending=new Promise(r=>release=r);api.auth=async path=>{if(path.startsWith('token')){started();await pending;return session('old')}return session('new')};const refresh=api.ensure();await ready;await api.verifyOTP('email','code');release();await refresh;assert.equal(api.session.user.id,'new');assert.equal(records.get('auth').user.id,'new');});
@@ -14,7 +15,7 @@ test('email password login persists authenticated UID without storing a password
 test('unconfirmed signup carries ID metadata but persists no password or incomplete session',async()=>{
  const{api,records}=fixture();let body;api.auth=async(path,args)=>{body=args;return{user:{id:'new'}}};
  const result=await api.registerEmail('user@example.test','password-123',{user_id:'solar',nickname:'태양'});
- assert.equal(result.confirmationRequired,true);assert.equal(body.data.solaris_user_id,'solar');assert.equal(records.size,0);
+ assert.equal(result.confirmationRequired,true);assert.equal(body.data.solaris_user_id,'solar');assert.equal(records.has('auth'),false);assert(records.get('auth-flow')?.verifier);
 });
 test('malformed login session is rejected before overwriting saved identity',async()=>{
  const{api,records}=fixture();api.auth=async()=>({access_token:'incomplete',user:{id:'new'}});

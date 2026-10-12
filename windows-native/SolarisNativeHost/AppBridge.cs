@@ -10,17 +10,19 @@ internal sealed class AppBridge
     private sealed record Entry(string Path, string Name, long Size, long Modified, bool Source, string? Destination);
     private readonly string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Solaris");
     private readonly Form form;
-    private readonly NativeRtpBroadcast media;
+    private readonly Build54RtpAdapter media;
     private readonly Action<string> notify;
+    private readonly AuthBrowser auth;
     private readonly SemaphoreSlim diskGate = new(1);
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private Dictionary<string, Entry> entries = new();
     private FormWindowState savedState;
     private FormBorderStyle savedBorder;
 
-    internal AppBridge(Form form, NativeRtpBroadcast media, Action<string> notify)
+    internal AppBridge(Form form, Build54RtpAdapter media, Action<string> notify, Action<object> emit)
     {
         this.form = form; this.media = media; this.notify = notify;
+        auth = new AuthBrowser(emit); form.FormClosed += (_, _) => auth.Dispose();
         Directory.CreateDirectory(root);
         try { entries = JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(Path.Combine(root, "files.json"))) ?? new(); } catch (IOException) { } catch (JsonException) { }
     }
@@ -42,9 +44,13 @@ internal sealed class AppBridge
         string S(string name) => a.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
         if (command == "platform") return new { platform = "windows", version = Program.Version };
         if (command == "mediaStatus") return media.Snapshot();
+        if (command == "authListen") { auth.Listen(S("redirectTo")); return true; }
+        if (command == "authOpen") { auth.Open(S("url")); return true; }
+        if (command == "authTake") return auth.Take();
+        if (command == "authCancel") { auth.Cancel(); return true; }
         if (command is "vaultGet" or "vaultSet")
         {
-            var key = S("key"); if (key is not ("session" or "turn")) throw new IOException("Invalid vault key");
+            var key = S("key"); if (key is not ("session" or "turn" or "auth-flow")) throw new IOException("Invalid vault key");
             var path = Path.Combine(root, key + ".protected");
             if (command == "vaultGet") return File.Exists(path) ? Encoding.UTF8.GetString(ProtectedData.Unprotect(await File.ReadAllBytesAsync(path), null, DataProtectionScope.CurrentUser)) : null;
             var value = S("value"); if (value.Length > 65536) throw new IOException("Vault value too large");
@@ -61,7 +67,7 @@ internal sealed class AppBridge
         if (command == "createReceiver")
         {
             var id = S("id"); if (!Guid.TryParse(id, out _)) throw new IOException("Invalid transfer ID");
-            var name = Name(S("name")); var size = a.GetProperty("size").GetInt64(); if (size < 0 || size > 16L * 1024 * 1024 * 1024 * 1024) throw new IOException("Invalid file size");
+            var name = Name(S("name")); var size = a.GetProperty("size").GetInt64(); if (size < 0 || size > 100L * 1024 * 1024) throw new IOException("Invalid file size");
             using var dialog = new SaveFileDialog { Title = "받을 파일의 저장 위치", FileName = name, Filter = "모든 파일|*.*", OverwritePrompt = true };
             if (dialog.ShowDialog(form) != DialogResult.OK) throw new IOException("수신을 취소했습니다.");
             var partial = dialog.FileName + "." + id + ".solaris-part";

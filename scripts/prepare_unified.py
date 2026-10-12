@@ -10,11 +10,15 @@ for target in (root/'ios/App/Resources/Unified',root/'android/app/src/main/asset
     # WKWebView local modules have inconsistent file-origin CORS behavior.
     # Bundle into one hash-authorized script; never enable unsafe file access.
     parts=[]
-    for name in ('config','sha256','platform','api','media','files','lifecycle','diagnostics','app'):
+    for name in ('config','sha256','platform','authflow','api','build54-screen','media','files','lifecycle','diagnostics','chat','viewing','icons','app'):
         src=(root/'shared'/f'{name}.mjs').read_text()
+        exports=re.findall(r'export (?:async )?(?:function|const|class) (\w+)',src)
         src=re.sub(r"\bimport\s*.*?from\s*['\"][^'\"]+['\"]\s*;",'',src)
         src=src.replace('export default','const config=' )
-        src=re.sub(r'\bexport (?=class |function |const )','',src)
+        src=re.sub(r'\bexport (?=class |async function |function |const )','',src)
+        if name=='build54-screen':
+            names=','.join(exports)
+            src='const {'+names+'}=(()=>{\n'+src+'\nreturn {'+names+'};})();'
         parts.append(src)
     script='(async()=>{\n'+'\n'.join(parts)+'\n})();'
     digest=base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
@@ -22,4 +26,4 @@ for target in (root/'ios/App/Resources/Unified',root/'android/app/src/main/asset
     html=html.replace('<link rel="stylesheet" href="app.css">','<style>'+(root/'shared/app.css').read_text()+'</style>')
     html=html.replace('<script type="module" src="app.mjs"></script>','<script>'+script+'</script>')
     (target/'unified.html').write_text(html)
-print('Solaris unified assets prepared, build58')
+print('Solaris unified assets prepared, build61')

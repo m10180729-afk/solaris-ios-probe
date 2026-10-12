@@ -6,24 +6,26 @@ import WebRTC
 final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private final class Node {
         let uid: String
-        let connection = UUID().uuidString.lowercased()
+        let connection: String
         var peer: RTCPeerConnection!
         var ready = false
         var candidates: [RTCIceCandidate] = []
-        var offer: String?
+        var answer: String?
         var seen = Date()
         var quality: [String: Any]?
         var stats: [String: Any] = [:]
         var statsPending = false
         var encoded: Int64 = 0
         var statsAt = 0.0
-        init(_ uid: String) { self.uid = uid }
+        init(_ uid: String, _ connection: String) { self.uid = uid; self.connection = connection }
     }
     private let queue = DispatchQueue(label: "org.solaris.unified.broadcast")
     private let group: URL
     private let engine: BroadcastWebRTCSender
     private let network = URLSession(configuration: .ephemeral)
     private var context: [String: Any]
+    private var earlyIce: [String: [RTCIceCandidate]] = [:]
+    private var retiredConnections = Set<String>()
     private var nodes: [String: Node] = [:]
     private var timer: DispatchSourceTimer?
     private var cursor: Int64 = 0
@@ -120,39 +122,59 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     }
     private func handle(_ uid: String, _ p: [String: Any]) {
         let type = p["type"] as? String ?? ""
-        if type == "media-join" || type == "media-recover" {
-            if type == "media-recover", let n = nodes[uid] { guard p["connectionID"] as? String == n.connection else { return }; n.peer.close(); nodes.removeValue(forKey: uid) }
-            if let n = nodes[uid], let offer = n.offer { n.seen = Date(); signal(n, ["type":"native-offer","sdp":offer]); return }
-            guard nodes.count<5 else { return }; join(uid); return
+        guard let connection = p["connectionID"] as? String, UUID(uuidString: connection) != nil else { return }
+        let key = uid + ":" + connection
+        guard !retiredConnections.contains(key) else { return }
+        if type == "native-receive-offer", let sdp = p["sdp"] as? String {
+            receiveViewerOffer(uid, connection, sdp); return
         }
-        guard let n = nodes[uid], p["connectionID"] as? String == n.connection else { return }; n.seen = Date()
-        if type == "native-answer", let sdp = p["sdp"] as? String {
-            n.peer.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { [weak self] error in self?.queue.async { guard let self, !self.stopped, self.nodes[uid] === n else { return }; if error == nil { n.ready = true; for c in n.candidates { n.peer.add(c) { _ in } }; n.candidates.removeAll(); self.policy(n) } } }
-        } else if type == "native-ice", let c = p["candidate"] as? [String: Any], let sdp = c["candidate"] as? String {
-            let value = RTCIceCandidate(sdp: sdp, sdpMLineIndex: (c["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0, sdpMid: c["sdpMid"] as? String)
-            if n.ready { n.peer.add(value) { _ in } } else if n.candidates.count<128 { n.candidates.append(value) }
-        } else if type == "media-leave" { n.peer.close(); nodes.removeValue(forKey: uid) }
-        else if type == "media-quality", let q = p["quality"] as? [String: Any] { n.quality = q; policy(n) }
+        if type == "native-ice", let c = p["candidate"] as? [String: Any], let sdp = c["candidate"] as? String {
+            let candidate = RTCIceCandidate(sdp: sdp, sdpMLineIndex: (c["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0, sdpMid: c["sdpMid"] as? String)
+            if let n = nodes[uid], n.connection == connection {
+                n.seen = Date()
+                if n.ready { n.peer.add(candidate) { _ in } } else if n.candidates.count < 128 { n.candidates.append(candidate) }
+            } else if earlyIce.count < 16 || earlyIce[key] != nil {
+                if (earlyIce[key]?.count ?? 0) < 128 { earlyIce[key, default: []].append(candidate) }
+            }
+            return
+        }
+        guard let n = nodes[uid], n.connection == connection else { return }; n.seen = Date()
+        if type == "media-leave" { n.peer.close(); nodes.removeValue(forKey: uid); retiredConnections.insert(key); earlyIce.removeValue(forKey: key) }
     }
-    private func join(_ uid: String) {
+    private func receiveViewerOffer(_ uid: String, _ connection: String, _ sdp: String) {
         guard engine.unifiedFramesReady() else { return }
-        let n = Node(uid), rtc = RTCConfiguration(); rtc.sdpSemantics = .unifiedPlan
+        if let old = nodes[uid] {
+            if old.connection == connection { old.seen = Date(); if let answer = old.answer { signal(old, ["type": "native-receive-answer", "sdp": answer]) }; return }
+            retiredConnections.insert(uid + ":" + old.connection); old.peer.close(); nodes.removeValue(forKey: uid)
+        }
+        guard nodes.count < 5 else { return }
+        let n = Node(uid, connection), rtc = RTCConfiguration(); rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = (context["iceServers"] as? [[String: Any]] ?? []).compactMap { s in
             let urls = (s["urls"] as? [String]) ?? (s["urls"] as? String).map { [$0] } ?? []
             return urls.isEmpty ? nil : RTCIceServer(urlStrings: urls, username: s["username"] as? String, credential: s["credential"] as? String)
         }
         n.peer = engine.makeUnifiedPeer(configuration: rtc, delegate: self)
         guard n.peer != nil else { return }; nodes[uid] = n
-        policy(n)
-        n.peer.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] description, error in
-            guard let self, let description, error == nil else { return }
+        n.candidates = earlyIce.removeValue(forKey: uid + ":" + connection) ?? []
+        // Build54: viewer offers the H264 level5.1 capability, ReplayKit answers.
+        n.peer.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp)) { [weak self] error in
+            guard let self else { return }
             self.queue.async {
                 guard !self.stopped, self.nodes[uid] === n else { return }
-                let tuned = RTCSessionDescription(type: .offer, sdp: self.engine.unifiedScreenSDP(description.sdp))
-                n.peer.setLocalDescription(tuned) { error in self.queue.async {
-                    guard !self.stopped, error == nil, self.nodes[uid] === n else { return }
-                    n.offer = tuned.sdp; self.signal(n, ["type":"native-offer","sdp":tuned.sdp])
-                } }
+                guard error == nil else { n.peer.close(); self.nodes.removeValue(forKey: uid); return }
+                n.ready = true; for c in n.candidates { n.peer.add(c) { _ in } }; n.candidates.removeAll()
+                n.peer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { answer, error in
+                    self.queue.async {
+                        guard !self.stopped, self.nodes[uid] === n else { return }
+                        guard let answer, error == nil else { n.peer.close(); self.nodes.removeValue(forKey: uid); return }
+                        let tuned = RTCSessionDescription(type: .answer, sdp: self.engine.unifiedScreenSDP(answer.sdp))
+                        n.peer.setLocalDescription(tuned) { error in self.queue.async {
+                            guard !self.stopped, self.nodes[uid] === n else { return }
+                            guard error == nil else { n.peer.close(); self.nodes.removeValue(forKey: uid); return }
+                            self.policy(n); n.answer = tuned.sdp; self.signal(n, ["type": "native-receive-answer", "sdp": tuned.sdp])
+                        } }
+                    }
+                }
             }
         }
     }
@@ -206,7 +228,7 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         }
     }
     private func diagnostics() {
-        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build58","peers":nodes.count,"updatedAt":Date().timeIntervalSince1970]
+        var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":"0.4.0-build59","peers":nodes.count,"updatedAt":Date().timeIntervalSince1970]
         d["encoders"] = nodes.values.map { ["connectionID": $0.connection, "statistics": $0.stats] as [String: Any] }
         d.merge(engine.unifiedCaptureDiagnostics()) { _, new in new }
         d.merge(SolarisProcessMetrics.snapshot()) { _, new in new }

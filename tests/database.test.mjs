@@ -1,6 +1,6 @@
 import{test,before,after}from'node:test';import assert from'node:assert/strict';import{readFile}from'node:fs/promises';import{PGlite}from'@electric-sql/pglite';
 let db;const A='11111111-1111-4111-8111-111111111111',B='22222222-2222-4222-8222-222222222222',C='33333333-3333-4333-8333-333333333333';
-before(async()=>{db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;insert into auth.users values('${A}'),('${B}'),('${C}');`);await db.exec(await readFile('backend/001_solaris.sql','utf8'));});
+before(async()=>{db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;insert into auth.users values('${A}'),('${B}'),('${C}');`);await db.exec(await readFile('backend/001_solaris.sql','utf8'));await db.exec(await readFile('backend/003_build60_dm.sql','utf8'));});
 after(async()=>{await db?.close();});
 async function rpc(uid,action,args={}){await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid??'']);return(await db.query('select public.solaris_action($1,$2::jsonb) result',[action,JSON.stringify(args)])).rows[0].result;}
 test('ID uniqueness and no ID-based impersonation',async()=>{await rpc(A,'profile',{user_id:'alice',nickname:'동일 닉네임'});await rpc(B,'profile',{user_id:'bob',nickname:'동일 닉네임'});await assert.rejects(rpc(C,'profile',{user_id:'alice',nickname:'c'}),/unique|duplicate/);await rpc(C,'profile',{user_id:'carol',nickname:'c'});assert.equal((await rpc(A,'profile')).uid,A);await assert.rejects(rpc(null,'sync'),/Authentication/);});
@@ -11,4 +11,42 @@ test('profile/avatar scope and expired broadcast ghosts',async()=>{await assert.
 test('authenticated client role cannot bypass RLS or impersonate another profile',async()=>{await db.exec('set role authenticated');try{assert.equal((await rpc(A,'profile')).uid,A);await assert.rejects(db.query('select * from solaris_private.profiles'),/permission denied/);await assert.rejects(db.query("insert into solaris_private.blocks values($1,$2)",[B,A]),/permission denied/);}finally{await db.exec('reset role');}});
 test('five viewer reservation and signaling cannot bypass slot consent or disabled files',async()=>{const users=[];for(let i=4;i<=9;i++){const uid=`00000000-0000-4000-8000-00000000000${i}`;users.push(uid);await db.query('insert into auth.users values($1)',[uid]);await rpc(uid,'profile',{user_id:'viewer'+i,nickname:'Viewer'});}const s=await rpc(A,'server_create',{name:'slots'}),server=(await rpc(A,'sync')).servers.find(x=>x.id===s.id);for(const uid of users)await rpc(uid,'server_join',{invite:server.invite});const c=(await rpc(A,'sync')).channels.find(c=>c.server_id===s.id);await rpc(A,'channel_enter',{id:c.id});const b=await rpc(A,'broadcast_start',{scope_kind:'channel',scope_id:c.id,transport:'native'});await rpc(A,'broadcast_touch',{id:b.id});const signal={recipient:A,scope_kind:'channel',scope_id:c.id,payload:{type:'media-join',broadcast:b.id}};await assert.rejects(rpc(users[0],'signal',signal),/consent/);for(const uid of users.slice(0,5))await rpc(uid,'broadcast_watch',{id:b.id});await rpc(users[0],'signal',signal);await assert.rejects(rpc(users[5],'broadcast_watch',{id:b.id}),/Five/);await rpc(users[0],'broadcast_unwatch',{id:b.id});await rpc(users[5],'broadcast_watch',{id:b.id});await rpc(A,'channel_update',{server_id:s.id,id:c.id,files_enabled:false});await assert.rejects(rpc(users[5],'signal',{...signal,payload:{type:'rtc',peer:'files:fake'}}),/disabled/);await rpc(A,'server_delete',{server_id:s.id});});
 
-test('build55 upgrade retains identities and relations and can be reapplied safely',async()=>{await rpc(A,'friend_request',{target:B});await rpc(B,'friend_accept',{target:A});await rpc(A,'server_create',{name:'preserved'});const before=await rpc(A,'sync');await db.exec('alter table solaris_private.broadcasts drop column ready');await db.exec(await readFile('backend/002_build56_broadcast_ready.sql','utf8'));await db.exec(await readFile('backend/002_build56_broadcast_ready.sql','utf8'));const after=await rpc(A,'sync');assert.equal(after.me.uid,before.me.uid);assert.equal(after.me.user_id,before.me.user_id);assert.deepEqual(after.friends,before.friends);assert.deepEqual(after.servers,before.servers);});
+test('build55 upgrade retains identities and relations and can be reapplied safely',async()=>{await rpc(A,'friend_request',{target:B});await rpc(B,'friend_accept',{target:A});await rpc(A,'server_create',{name:'preserved'});const before=await rpc(A,'sync');await db.exec('alter table solaris_private.broadcasts drop column ready');await db.exec(await readFile('backend/002_build56_broadcast_ready.sql','utf8'));await db.exec(await readFile('backend/002_build56_broadcast_ready.sql','utf8'));await db.exec(await readFile('backend/003_build60_dm.sql','utf8'));const after=await rpc(A,'sync');assert.equal(after.me.uid,before.me.uid);assert.equal(after.me.user_id,before.me.user_id);assert.deepEqual(after.friends,before.friends);assert.deepEqual(after.servers,before.servers);});
+
+test('persistent DM works without a media session and retries do not duplicate it',async()=>{
+ const client='77777777-7777-4777-8777-777777777777';
+ const row=await rpc(A,'dm_send',{target:B,client_id:client,text:'오프라인에도 남는 대화\n둘째 줄',sender:C});
+ assert.equal(row.sender,A);assert.equal(row.recipient,B);
+ assert.equal((await rpc(A,'dm_send',{target:B,client_id:client,text:row.text})).id,row.id);
+ await assert.rejects(rpc(A,'dm_send',{target:B,client_id:client,text:'changed retry'}),/mismatch/);
+ await db.exec("delete from solaris_private.signals; update solaris_private.sessions set state='ended'");
+ assert((await rpc(B,'dm_history',{target:A})).some(x=>x.id===row.id));
+ assert((await rpc(B,'sync',{dm_cursor:0})).messages.some(x=>x.id===row.id));
+ await assert.rejects(rpc(C,'dm_history',{target:A}),/permission/);
+ await assert.rejects(rpc(A,'dm_send',{target:B,client_id:client,text:'x'.repeat(2001)}),/Invalid message/);
+});
+test('ordinary-file cap is enforced on the server and failed offers leave no signal',async()=>{
+ const offer={recipient:B,scope_kind:'friend',scope_id:B,payload:{type:'file-offer',id:A,name:'video.mp4',size:1024**3}};
+ const before=(await db.query('select count(*) n from solaris_private.signals')).rows[0].n;
+ await assert.rejects(rpc(A,'signal',offer),/100MiB/);
+ assert.equal((await db.query('select count(*) n from solaris_private.signals')).rows[0].n,before);
+ await rpc(A,'signal',{...offer,payload:{...offer.payload,size:104857600}});
+ await assert.rejects(rpc(A,'signal',{...offer,payload:{...offer.payload,size:1.5}}),/100MiB/);
+});
+test('blocked DM and private base RPC cannot bypass authorization',async()=>{
+ await rpc(B,'block',{target:A});await assert.rejects(rpc(A,'dm_send',{target:B,client_id:C,text:'blocked'}),/permission/);
+ await assert.rejects(rpc(B,'dm_history',{target:A}),/permission/);
+ await db.exec('set role authenticated');try{
+  await assert.rejects(db.query('select * from solaris_private.dm_messages'),/permission denied/);
+  await assert.rejects(db.query("select solaris_private.action_base('signal','{}'::jsonb)"),/permission denied/);
+ }finally{await db.exec('reset role');}
+ await rpc(B,'unblock',{target:A});await rpc(A,'friend_request',{target:B});await rpc(B,'friend_accept',{target:A});
+});
+test('reapplying build60 preserves DM, accounts and server data and excludes temp-table impersonation',async()=>{
+ const before=await rpc(B,'dm_history',{target:A}),profile=await rpc(A,'profile');
+ await db.exec(await readFile('backend/003_build60_dm.sql','utf8'));
+ assert.deepEqual(await rpc(B,'dm_history',{target:A}),before);assert.equal((await rpc(A,'profile')).uid,profile.uid);
+ await db.exec('create temporary table profiles(uid uuid,user_id text,nickname text);');
+ assert.equal((await rpc(A,'profile')).user_id,profile.user_id);
+ await db.exec('drop table pg_temp.profiles');
+});

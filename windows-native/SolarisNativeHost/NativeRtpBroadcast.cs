@@ -19,12 +19,9 @@ internal sealed class NativeRtpBroadcast : IDisposable
     private double encodedFPS;
     private bool withAudio;
     private int targetMbps = 12;
-    private List<RTCIceServer>? iceServers;
     private long nextGeneration, startedUs, lastEncoderRestart;
     private int encoderRestarts, reporting;
     private readonly ConcurrentDictionary<string, long> lastViewerSeen = new();
-    internal object Snapshot() => new { id = session, active = session != null && status == "running", nativeSignaling = false,
-        peers = viewers.Values.Select(v => new { viewerID = v.ViewerID, connectionID = v.ConnectionID }).ToArray() };
 
     internal NativeRtpBroadcast(Action<object> emit)
     {
@@ -52,19 +49,7 @@ internal sealed class NativeRtpBroadcast : IDisposable
             string sid = message.TryGetProperty("session", out var s) ? s.GetString() ?? "" : "";
             if (type == "rtp-start") {
                 Stop(); session = sid; withAudio = message.TryGetProperty("audio", out var a) && a.GetBoolean();
-                // Restore build54 capture, output size, codec level and RTP budget exactly.
-                targetMbps = 12;
-                iceServers = null;
-                if (message.TryGetProperty("iceServers", out var ice)) {
-                    iceServers = new(); foreach (var item in ice.EnumerateArray()) {
-                        var urls = item.GetProperty("urls");
-                        var list = urls.ValueKind == JsonValueKind.String ? new[] { urls.GetString()! } : urls.EnumerateArray().Select(x => x.GetString()!).ToArray();
-                        foreach (var url in list) iceServers.Add(new RTCIceServer { urls = url,
-                            username = item.TryGetProperty("username",out var user) ? user.GetString() : null,
-                            credential = item.TryGetProperty("credential",out var credential) ? credential.GetString() : null });
-                    }
-                }
-                encodedFrames = encodedBytes = lastEncodedUs = 0; lastError = "";
+                targetMbps = 12; encodedFrames = encodedBytes = lastEncodedUs = 0; lastError = "";
                 startedUs = RtpViewer.NowUs; lastEncoderRestart = 0; encoderRestarts = 0;
                 await capture.StartAsync(new NativeCaptureOptions(60, targetMbps, 18));
                 if (withAudio) {
@@ -86,7 +71,7 @@ internal sealed class NativeRtpBroadcast : IDisposable
                     viewers.TryRemove(viewer, out _); old.Dispose();
                 }
                 if (viewers.Count >= 5) { emit(new { type = "rtp-status", session, state = "viewer-limit", message = "시청자는 최대 5명입니다." }); return; }
-                var peer = new RtpViewer(viewer, withAudio, 18, iceServers: iceServers);
+                var peer = new RtpViewer(viewer, withAudio, 18);
                 viewers[viewer] = peer; var currentSession = session; var generation = ++nextGeneration; peer.Generation = generation;
                 peer.Signal += (kind, payload) => emit(new { type = "rtp-signal", session = currentSession, viewerID = viewer, connectionID = peer.ConnectionID, generation, kind, payload });
                 peer.State += state => emit(new { type = "rtp-peer", session = currentSession, viewerID = viewer, connectionID = peer.ConnectionID, state });
@@ -95,8 +80,6 @@ internal sealed class NativeRtpBroadcast : IDisposable
                 return;
             }
             if (!viewers.TryGetValue(viewer, out var selected) || selected.ConnectionID != cid) return;
-            // Receiver requests must never restart/downscale the shared encoder.
-            // RtpViewer still handles pacing, RTCP/PLI and isolated recovery.
             if (type == "rtp-heartbeat") {
                 if (message.TryGetProperty("fps", out var fps) && fps.TryGetDouble(out var value) &&
                     message.TryGetProperty("framesDecoded", out var frames) && frames.TryGetInt64(out var count)) selected.ReceiverReport(value, count);
@@ -108,7 +91,7 @@ internal sealed class NativeRtpBroadcast : IDisposable
                 sdpMLineIndex = message.TryGetProperty("sdpMLineIndex", out var line) && line.TryGetUInt16(out var idx) ? idx : (ushort)0
             });
             if (type == "rtp-leave") { viewers.TryRemove(viewer, out _); selected.Dispose(); lastViewerSeen.TryRemove(viewer, out _); }
-        } catch (Exception e) { lastError = e.Message; emit(new { type = "rtp-status", session, state = message.GetProperty("type").GetString() == "rtp-start" ? "error" : "peer-error", message = "RTP 처리 오류", detail = e.Message }); throw; }
+        } catch (Exception e) { lastError = e.Message; emit(new { type = "rtp-status", session, state = "error", message = "RTP 처리 오류", detail = e.Message }); }
         finally { commands.Release(); }
     }
     private void EmitOffer(RtpViewer peer)

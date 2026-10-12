@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Upload the build58 source as a review branch, preserving the build57 history.
+# Upload the build61 source as a review branch, preserving the build58 history.
 set -euo pipefail
 
 SOLARIS_REMOTE="https://github.com/m10180729-afk/solaris-ios-probe.git"
-SOLARIS_BASE_BRANCH="codex/solaris-build57-20261011-192259-1809"
-SOLARIS_BASE_COMMIT="4ca21efbb32e92e74ff64acadad00d255d92d471"
+SOLARIS_BASE_BRANCH="codex/solaris-build58-20261011-210109-1852"
+SOLARIS_BASE_COMMIT="a0054ba78a922cd750b14ce70ea6b9b78dd57670"
 SOLARIS_MAIN_COMMIT="4c50dbe33721b5d10db714bd79da74267a8863b4"
 SOLARIS_SCRIPT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
 SOLARIS_SOURCE="$(dirname -- "$SOLARIS_SCRIPT")"
@@ -14,7 +14,7 @@ SOLARIS_PATHS=(.github ios receiver scripts tests docs windows-native android sh
 
 solaris_help() {
   cat <<'USAGE'
-Solaris build58 Git Bash 업로드
+Solaris build61 Git Bash 업로드
 
   bash UPLOAD_GIT_BASH.sh
   bash UPLOAD_GIT_BASH.sh "/c/Users/내이름/Downloads/Solaris-source"
@@ -22,7 +22,7 @@ Solaris build58 Git Bash 업로드
 
 소스 ZIP을 전부 압축 해제한 폴더에서 실행하거나 그 폴더를 인자로 지정하세요.
 --dry-run은 소스와 Git 기록을 확인하고 로컬 커밋까지만 생성합니다.
-업로드하면 별도 codex/solaris-build58 브랜치의 GitHub Actions가 실행됩니다.
+업로드하면 별도 codex/solaris-build61 브랜치의 GitHub Actions가 실행됩니다.
 USAGE
 }
 
@@ -63,20 +63,20 @@ for SOLARIS_TOOL in git tar mktemp; do
   command -v "$SOLARIS_TOOL" >/dev/null || solaris_fail "Git Bash에 $SOLARIS_TOOL 명령이 없습니다. Git for Windows 설치를 확인하세요."
 done
 for SOLARIS_PATH in "${SOLARIS_PATHS[@]}"; do
-  [[ -e "$SOLARIS_SOURCE/$SOLARIS_PATH" ]] || solaris_fail "소스가 빠져 있습니다: $SOLARIS_PATH. build58 소스 ZIP을 전부 압축 해제하고 shared, ios, android 폴더가 있는 위치를 지정하세요."
+  [[ -e "$SOLARIS_SOURCE/$SOLARIS_PATH" ]] || solaris_fail "소스가 빠져 있습니다: $SOLARIS_PATH. build61 소스 ZIP을 전부 압축 해제하고 shared, ios, android 폴더가 있는 위치를 지정하세요."
 done
-grep -Fq "CURRENT_PROJECT_VERSION: '58'" "$SOLARIS_SOURCE/ios/project.yml" || solaris_fail "이 업로더는 build58 소스용입니다. 최신 build58 소스 ZIP을 압축 해제하세요."
-grep -Eq 'versionCode[[:space:]]+58([[:space:]]|$)' "$SOLARIS_SOURCE/android/app/build.gradle" || solaris_fail "Android 소스 버전이 build58과 다릅니다. 최신 소스 ZIP을 새 폴더에 압축 해제하세요."
+grep -Fq "CURRENT_PROJECT_VERSION: '61'" "$SOLARIS_SOURCE/ios/project.yml" || solaris_fail "이 업로더는 build61 소스용입니다. 최신 build61 소스 ZIP을 압축 해제하세요."
+grep -Eq 'versionCode[[:space:]]+61([[:space:]]|$)' "$SOLARIS_SOURCE/android/app/build.gradle" || solaris_fail "Android 소스 버전이 build61과 다릅니다. 최신 소스 ZIP을 새 폴더에 압축 해제하세요."
 
 printf '소스 폴더: %s\n' "$SOLARIS_SOURCE"
 SOLARIS_CHECKOUT="$(mktemp -d "${TMPDIR:-/tmp}/solaris-upload-XXXXXX")"
 git clone --branch "$SOLARIS_BASE_BRANCH" --single-branch "$SOLARIS_REMOTE" "$SOLARIS_CHECKOUT/repo"
 cd -- "$SOLARIS_CHECKOUT/repo"
-[[ "$(git rev-parse HEAD)" == "$SOLARIS_BASE_COMMIT" ]] || solaris_fail "build57 기준 브랜치가 변경됐습니다. 최신 GitHub 작업과 이 소스를 먼저 통합해야 합니다."
+[[ "$(git rev-parse HEAD)" == "$SOLARIS_BASE_COMMIT" ]] || solaris_fail "build58 기준 브랜치가 변경됐습니다. 최신 GitHub 작업과 이 소스를 먼저 통합해야 합니다."
 git fetch origin refs/heads/main:refs/remotes/origin/main
 [[ "$(git rev-parse refs/remotes/origin/main)" == "$SOLARIS_MAIN_COMMIT" ]] || solaris_fail "main에 새 작업이 있습니다. 최신 GitHub 작업과 이 소스를 먼저 통합해야 합니다."
-git merge-base --is-ancestor refs/remotes/origin/main HEAD || solaris_fail "build57과 main의 기록이 일치하지 않습니다. 저장소 상태를 확인하세요."
-SOLARIS_BRANCH="codex/solaris-build58-$(date +%Y%m%d-%H%M%S)-$$"
+git merge-base --is-ancestor refs/remotes/origin/main HEAD || solaris_fail "build58과 main의 기록이 일치하지 않습니다. 저장소 상태를 확인하세요."
+SOLARIS_BRANCH="codex/solaris-build61-$(date +%Y%m%d-%H%M%S)-$$"
 git checkout -b "$SOLARIS_BRANCH"
 
 # An isolated empty Git index honors the source's ignores. No Git metadata or
@@ -85,7 +85,7 @@ git init --quiet "$SOLARIS_CHECKOUT/source-index"
 git -C "$SOLARIS_CHECKOUT/source-index" --work-tree="$SOLARIS_SOURCE" add -- "${SOLARIS_PATHS[@]}"
 SOLARIS_TREE="$(git -C "$SOLARIS_CHECKOUT/source-index" write-tree)"
 # Remove only known source paths in this disposable checkout so removed files
-# do not survive from build57. The user's extracted source folder is untouched.
+# do not survive from build58. The user's extracted source folder is untouched.
 rm -rf -- "${SOLARIS_PATHS[@]}"
 git -C "$SOLARIS_CHECKOUT/source-index" archive --format=tar "$SOLARIS_TREE" | tar -xf -
 cp -- "$SOLARIS_SCRIPT" UPLOAD_GIT_BASH.sh
@@ -96,7 +96,7 @@ if git diff --cached --quiet; then
 fi
 git config user.name >/dev/null || git config user.name "Solaris local build"
 git config user.email >/dev/null || git config user.email "solaris-build@localhost"
-git commit -m "Use original build54 capture and add secure login and connected server and DM views (build58)"
+git commit -m "Add secure Google login, profile bio, broadcast lifecycle fixes and mobile UI (build61)"
 if [[ "$SOLARIS_DRY_RUN" -eq 1 ]]; then
   printf '\n검증 완료. --dry-run으로 실행했으므로 GitHub 업로드는 생략했습니다.\n'
   exit 0

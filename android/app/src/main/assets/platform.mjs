@@ -1,8 +1,14 @@
 import{SHA256}from'./sha256.mjs';
-export const VERSION='0.4.0-build58';
+export const MAX_FILE_BYTES=100*1024**2;
+export const VERSION='0.4.0-build61';
 export function readSettings(text){let v;try{v=JSON.parse(text??'{}');}catch{v={};}if(!v||typeof v!=='object')v={};return{maxReceive:Number.isInteger(v.maxReceive)&&v.maxReceive>=1&&v.maxReceive<=5?v.maxReceive:4,updateChannel:['stable','test'].includes(v.updateChannel)?v.updateChannel:'test',preventDuplicates:v.preventDuplicates!==false};}
 export const uuid=()=>crypto.randomUUID();
 export const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+export function requestTimeout(milliseconds=15000){
+ if(globalThis.AbortSignal?.timeout)return AbortSignal.timeout(milliseconds);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(new DOMException('서버 응답 시간이 초과되었습니다.','TimeoutError')),milliseconds);
+ timer.unref?.();return controller.signal;
+}
 export const safeName=name=>{let s=String(name).normalize('NFC').replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g,'_').replace(/^[. ]+|[. ]+$/g,'').slice(0,160)||'download';return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(s)?'download_'+s:s;};
 export const toBase64=b=>{let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(s);};
 export const fromBase64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -23,7 +29,7 @@ export class DiskFiles {
  constructor(bridge,ledger=new Ledger('solaris-file-handles')){this.bridge=bridge;this.ledger=ledger;this.handles=new Map();}
  async get(id){let v=this.handles.get(id);if(!v){v=await this.ledger.get(id);if(v)this.handles.set(id,v);}return v;}
  async remember(id,v){this.handles.set(id,v);const{writer,...durable}=v;await this.ledger.set(id,durable);}
- async pick(){if(this.bridge.native)return this.bridge.call('pickFile');if(!globalThis.showOpenFilePicker)throw new Error('대용량 파일 전송은 설치된 Solaris 앱에서 사용하세요.');const[h]=await showOpenFilePicker();const f=await h.getFile(),id=uuid();await this.remember(id,{handle:h,source:true,size:f.size,modified:f.lastModified});return{id,name:f.name,size:f.size,modified:f.lastModified};}
+ async pick(){if(this.bridge.native)return this.bridge.call('pickFile');if(!globalThis.showOpenFilePicker)throw new Error('파일 전송은 설치된 Solaris 앱에서 사용하세요.');const[h]=await showOpenFilePicker();const f=await h.getFile(),id=uuid();await this.remember(id,{handle:h,source:true,size:f.size,modified:f.lastModified});return{id,name:f.name,size:f.size,modified:f.lastModified};}
  async read(id,offset,length){if(this.bridge.native)return fromBase64((await this.bridge.call('readFile',{id,offset,length})).data);const v=await this.get(id);if(!v)throw new Error('원본 파일을 다시 선택하세요.');const f=await v.handle.getFile();if(f.size!==v.size||f.lastModified!==v.modified)throw new Error('원본 파일이 변경되었습니다.');return new Uint8Array(await f.slice(offset,offset+length).arrayBuffer());}
  async create(id,name,size){name=safeName(name);if(this.bridge.native)return this.bridge.call('createReceiver',{id,name,size});if(!globalThis.showSaveFilePicker)throw new Error('디스크 저장을 지원하는 Solaris 앱이 필요합니다.');const handle=await showSaveFilePicker({suggestedName:name}),writer=await handle.createWritable({keepExistingData:false});await this.remember(id,{handle,writer,source:false,size,extent:0});return{id,name};}
  async write(id,offset,data){if(this.bridge.native)return this.bridge.call('writeFile',{id,offset,data:toBase64(data)});const v=await this.get(id);if(!v||v.source)throw new Error('저장 파일을 다시 선택하세요.');if(!v.writer){v.writer=await v.handle.createWritable({keepExistingData:true});v.extent=(await v.handle.getFile()).size;}if(offset>v.extent||offset+data.length>v.size)throw new Error('파일 청크 순서 오류');await v.writer.write({type:'write',position:offset,data});v.extent=Math.max(v.extent,offset+data.length);}

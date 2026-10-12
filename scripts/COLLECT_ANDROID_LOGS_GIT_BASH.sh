@@ -2,7 +2,7 @@
 # Collect Solaris diagnostics on the owner's computer after reproducing a crash.
 set -euo pipefail
 command -v adb >/dev/null || { printf '%s\n' 'Android SDK Platform-Tools의 adb가 필요합니다.' >&2; exit 1; }
-SOLARIS_OUT="${1:-Solaris-Android-build58-diagnostics}"
+SOLARIS_OUT="${1:-Solaris-Android-build60-diagnostics}"
 mkdir -p -- "$SOLARIS_OUT"
 adb get-state >/dev/null
 adb shell dumpsys package org.solaris.receiver > "$SOLARIS_OUT/package.txt"

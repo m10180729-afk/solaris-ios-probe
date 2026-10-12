@@ -1,53 +1,31 @@
-# Solaris 0.4.0 build58
+# Solaris 0.4.0 build61
 
-Authenticated cross-platform screen sharing and original-file P2P transfer, designed to accompany Discord. No voice calling.
+Discord와 함께 사용하는 Windows·Android·iOS·iPadOS 화면공유 및 일반 파일 전송 앱이다. Google OAuth PKCE와 기존 UID 계정 연결, 이메일 로그인·복구, 프로필 소개, 중복 방송 방지, PC·모바일 Discord형 UI를 추가했다.
 
-This checkpoint restores the exact build54 Windows capture file and reuses the original ReplayKit capture pump in the unified iOS sender. The native Windows path returns to 1080p60, fast_bilinear and its original 12–18Mbps budget. See `docs/BUILD54_CAPTURE_REFERENCE.json` and run `python3 scripts/check_build54_capture.py` for the retrieved source hashes. Device FPS is not established by source equality.
+- [적용·Google·Supabase·메일·Git Bash 안내](docs/START_BUILD61_KO.md)
+- [구현·실제 검증 범위·미검증 항목](docs/BUILD61_STATUS_KO.md)
+- [Android 별도 작업 병합 안내](docs/CONTINUE_BUILD61_KO.md)
 
-Email/password signup and login, verified-email upgrade of existing UID accounts, password recovery, connected DM and server/channel views, scoped message history and Discord-style responsive navigation are implemented. Android uses capture lifecycle epochs, first-frame readiness, bounded H264 requests and capture/encoder statistics. Incoming screen and app-audio tracks share one playback stream even when their stream IDs differ or are missing. No quality picker is exposed.
+기존 DB는 003_build60_dm.sql 다음 004_build61_accounts_broadcast.sql을 적용한다. 기존 DB에 001_solaris.sql을 재실행하거나 테이블을 삭제하지 않는다. Google·Redirect URLs·Manual Linking·SMTP는 소유자의 설정이 필요하다.
 
-Read [build58 setup](docs/START_BUILD58_KO.md), [verification and limits](docs/BUILD58_STATUS_KO.md), [continuation memo](docs/CONTINUE_BUILD58_KO.md), and [the complete specification](docs/SOLARIS_SPEC_KO.md). Earlier notes remain archived.
+소스 ZIP 전체를 압축 해제한 폴더에서 Git Bash로 실행한다.
 
-No new database migration for build58: existing working build56/57 setups are preserved. New projects use `backend/001_solaris.sql`; old build55 databases use the existing `backend/002_build56_broadcast_ready.sql`. Do not delete account tables or disable RLS to resolve setup failures. The email-code flows need Supabase email templates containing `{{ .Token }}`; real SMTP/auth delivery remains unverified.
+```bash
+bash UPLOAD_GIT_BASH.sh
+```
 
-`UPLOAD_GIT_BASH.sh` verifies the uploaded build57 branch and unchanged build54 main, then pushes an isolated build58 review branch. Official release approval and signing keys remain with the project owner. Tests exercise the uploader against real local Git remotes. Windows EXE and iOS IPA packaging require a successful new Actions run.
+업로더는 기존 이력을 확인하고 build61 검토 브랜치를 만든다. Actions에서 Windows 설치 EXE, Android APK, iOS 재서명 후보 IPA를 빌드한다. main 강제 덮어쓰기·공식 릴리스는 자동으로 하지 않는다.
 
-Automatic JavaScript, SQL, Android, C# and UI checks are documented separately from physical-device and actual-network testing. Do not treat build57 CI, a mocked auth endpoint or a one-gigabyte disk transfer as proof of build58 device performance or Internet P2P transfer.
+공통 UI 원본은 shared다. python3 scripts/prepare_unified.py로 Android/iOS 리소스를 생성하며 Windows도 shared를 포함한다.
 
-The original build54 notes below describe the old transport, not build58's verification status.
+```bash
+npm ci
+npm test
+npm run test:database
+node scripts/unified_ui_test.mjs
+python3 scripts/check_build54_engine.py
+python3 scripts/check_build54_capture.py
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
 
-# Solaris 0.3.2 build54
-
-Solaris shares screens peer to peer using Supabase for signaling. Current working target: Windows hardware H.264/Opus sender → iPad and Windows receiver at 1080p60, with iPad ReplayKit → Windows screen and app sound on its previously validated path. No Moonlight or Apollo installation is needed.
-
-## build54 additions
-
-- Fixes the build53 Android SDK setup failure by explicitly installing supported packages, without the obsolete `tools` default.
-- Fixes native trickle ICE serialization (`candidate:` was missing), guarantees initial bundled host candidates are signaled, and records rejected candidates without aborting the SDP answer.
-- The RTP room gate now removes embedded SDP candidates so a direct SDP success cannot hide a broken trickle signaling path. It retains two independent H.264/Opus receivers and isolated peer recovery.
-- Android receiver APK project with **Windows 화면 받기** and **iPad 화면 받기**. Both reuse the matching build54 WebRTC receiver pages inside a secure-origin WebView. Android is a receiver in this build; Galaxy phone playback must be checked after Actions builds the APK.
-- The Windows native sender allows up to five P2P viewer connections from one hardware encoder. The encoding load is shared, but each receiver has its own RTP/ICE peer and uses upload bandwidth. Five real-device 1080p60 streams are a goal, not an established result.
-- Build52's room-signaling gate for two Windows browser receivers, H.264/Opus decode and recovery is retained in CI. It must pass along with the Android, Windows and iOS builds.
-
-## GitHub Actions files
-
-- `Solaris-Windows-Sender-build54`: extract all files and run `SolarisNativeHost.exe`.
-- `Solaris-0.3.2-build54-integrated`: install the IPA using the existing re-signing process; the HTML receivers are also included.
-- `Solaris-Android-Receiver-build54-debug`: APK for Galaxy device tests. This is a debug-signed test build, not a production release.
-- Test evidence artifacts contain logs, not apps.
-
-The source ZIP is for GitHub upload and cannot itself be installed. See [installation](docs/START_BUILD54_KO.md) and [validation boundaries](docs/BUILD54_VALIDATION.md).
-
-## Platform scope and release gate
-
-| Direction | Current state |
-| --- | --- |
-| Windows → iPad | build51 was confirmed by the user; retest build54 with other concurrent receivers |
-| Windows → Windows | local Chrome RTP room test passed; Actions and physical device performance pending |
-| Windows → Android | receiver APK compiled locally; Actions artifact and Galaxy playback pending |
-| iPad/iPhone → Windows | existing ReplayKit path |
-| iPad/iPhone → Android | receiver page reused; physical Galaxy playback pending |
-| iPad/iPhone → multiple viewers | not implemented; ReplayKit sender has one peer |
-| Android → other platforms | not implemented; native MediaProjection and system audio sender required |
-
-The full four-platform, bidirectional five-viewer release also needs multi-peer iOS and Android senders, five-device stress tests, mixed-network recovery, room access controls, app signing and usable UI. Do not treat passing CI alone as that release gate.
+실제 고화질/FPS·Android capture/crash·메일 도착·Google 계정·iOS 전체 빌드는 별도 검증이 필요하다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 build55–60 문서는 이전 기록이다.

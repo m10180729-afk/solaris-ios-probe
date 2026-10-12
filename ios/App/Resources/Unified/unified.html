@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-yQ6jBEj1l3zj+1NItF/QX0q578h2SDyLaX/KCx9EA80='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-oDbC36ffZsvepiaA95k0EImz+dK5UmAjAvSEB7HgzUU='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Solaris</title><style>:root{color-scheme:dark;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#1e1f22;color:#f2f3f5;--muted:#949ba4;--accent:#5865f2;--line:#3f4147;--top:32px}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid transparent;border-radius:4px;padding:8px 12px;background:#41434b;color:inherit;transition:background .12s}button:hover{background:#50535d}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fa9ff;outline-offset:2px}input,select{border:0;border-radius:4px;padding:10px 12px;background:#1e1f22;color:inherit;max-width:100%;min-width:0}h1{font-size:17px;margin:0}h2{font-size:12px;color:var(--muted);margin:18px 0 8px}p{margin:10px 0}.spacer{flex:1}.muted{color:var(--muted);font-size:12px}.primary{background:var(--accent)}.primary:hover{background:#4752c4}.file-action{background:#3f4659}.danger{color:#ff9fa6;background:#f0717812;border-color:#b95b6355}.danger:hover{background:#a43844;color:#fff}.text-button{color:#aab1ff;background:transparent}.text-button:hover{background:#35373e}.count-badge{border-radius:10px;background:#da373c;color:#fff;font-size:10px;padding:1px 6px}.app-header{display:flex;align-items:center;gap:10px;height:var(--top);padding:0 12px;background:#1e1f22;font-size:12px;user-select:none}.brand-mark{color:#b1b7ff}.version-tag{font-size:10px;color:var(--muted)}[hidden]{display:none!important}#workspace{display:grid;grid-template-columns:72px 240px minmax(0,1fr) 232px;height:calc(100dvh - var(--top));min-height:0}#error{background:#71363e;color:#fff0f0;padding:10px 16px;white-space:pre-wrap;position:fixed;top:var(--top);right:12px;max-width:min(600px,94vw);z-index:30;border-radius:5px;box-shadow:0 6px 20px #0005}
 #server-rail{background:#1e1f22;padding:12px 10px;display:flex;align-items:center;flex-direction:column;gap:8px;overflow:auto}#server-rail button{display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;border-radius:50%;background:#313338;font-size:19px;font-weight:650;position:relative;flex-shrink:0}#server-rail button:hover,#server-rail button.active{background:var(--accent);border-radius:16px}#server-rail button.active:before{content:"";position:absolute;left:-10px;height:30px;width:4px;border-radius:0 4px 4px 0;background:#f2f3f5}#server-rail .home-icon{color:#c5caff}#server-rail .rail-add{color:#3ba55c}#server-rail .rail-add:hover{background:#24805e;color:#fff}#servers{display:flex;flex-direction:column;gap:8px}.rail-divider{width:32px;height:2px;background:#35363c;margin:2px 0;flex-shrink:0}
@@ -17,30 +17,157 @@
 @media(max-width:760px){#panel .row-menu{order:2;margin-left:auto}#panel .row-actions{order:3}#panel .row>.identity{order:1}}
 .video-waiting{padding:32px;text-align:center;color:var(--muted);background:#151619}
 .video-card:has(.video-waiting) video{display:none}
+/* Build60: the conversation is the main DM view; screen sharing is a compact action. */
+#stage[data-page=direct] .stage-scroll{display:flex;flex-direction:column;padding-bottom:16px}
+#stage[data-page=direct] .messages{flex:1;display:flex;flex-direction:column;border:0;margin:0;padding:0;min-height:120px}
+#stage[data-page=direct] #messages-title{display:none}
+#messages{max-height:none;overflow:visible}
+#stage[data-page=direct] #messages{margin-top:auto}
+.dm-profile{padding:12px 0 16px}.dm-profile .row{padding:0}.dm-profile>p{margin:12px 0 0}
+.compact-session{display:flex;align-items:center;gap:10px;padding:10px 12px;border:0;font-size:13px}
+.compact-session span{flex:1}.compact-session button{margin:0;font-size:12px}
+.message-date{display:flex;align-items:center;gap:12px;font-size:11px;color:#b5bac1;margin:20px 0 12px;font-weight:600}
+.message-date:before,.message-date:after{content:"";height:1px;background:#45474e;flex:1}
+.message-row{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:6px 8px;margin:0 -8px;border-radius:4px}
+.message-row:hover{background:#2e3035}.message-row.grouped{padding-top:1px;padding-bottom:1px}
+.message-row.grouped .message-content{grid-column:2}
+.message-author{display:flex;gap:8px;align-items:baseline}.message-author strong{font-size:15px;font-weight:600}.message-author time{font-size:11px;color:var(--muted)}
+.message-text{white-space:pre-wrap;overflow-wrap:anywhere;color:#dbdee1;font-size:15px;line-height:1.45}
+.system-message{color:var(--muted);font-size:12px;padding:7px 0}.send-status{color:var(--muted);font-size:11px}
+.send-failed{color:#f3878a;font-size:12px}.retry-message{margin-left:8px;background:none;color:#aab1ff;font-size:12px;padding:2px 4px}
+.history-button{display:block;margin:4px auto;background:none;color:#b5bac1;font-size:12px}.conversation-start{color:#b5bac1;font-size:14px}
+#chat{background:#383a40;border:0;border-radius:8px;margin:0 16px 18px;padding:8px 10px;display:flex;align-items:flex-end;gap:8px;flex-shrink:0}
+#chat textarea{font:inherit;resize:none;border:0;outline:none;background:none;color:#dbdee1;flex:1;min-width:0;min-height:28px;max-height:128px;padding:4px;line-height:1.45}
+#chat button{background:none;color:#b5bac1;padding:4px 8px}.composer-help{font-size:10px;color:var(--muted);padding:4px 20px;text-align:right}
+#stage:not([data-page=direct]):not([data-page=channel]) .composer-help{display:none}
+#stage[data-page=direct] .toolbar{background:none;border:0;padding:6px 16px}
+#stage[data-page=direct] .toolbar button{background:#383a40}#stage[data-page=direct] .toolbar .primary{background:#5865f2}
+#stage[data-page=direct] .connection-end{display:none}.dm-preview{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.dm-unread{margin-left:auto;background:#f2f3f5;color:#313338;flex-shrink:0}
+.video-card{position:relative}.video-card video,.video-card:has(.video-waiting) video{display:block;aspect-ratio:16/9}
+.video-waiting{position:absolute;inset:auto 0 20%;background:transparent;pointer-events:none}
+.video-failed{padding:20px;background:#2b2d31;border-color:#555961}.video-failed button{margin-top:8px}
+@media(max-width:760px){#chat{margin:0 10px 12px}#stage[data-page=direct] .toolbar{padding:6px 10px}.message-row{grid-template-columns:32px minmax(0,1fr);gap:8px}.message-row .avatar-wrap,.message-row .avatar{width:32px;height:32px}.dm-profile .avatar-wrap,.dm-profile .avatar{width:56px;height:56px;flex-basis:56px}.dm-profile strong{font-size:21px}.composer-help{padding-right:12px}.compact-session{flex-wrap:wrap}}
+#stage[data-page=direct] #panel{margin-top:auto}
+#stage[data-page=direct] .messages{flex:0 0 auto}
+#stage[data-page=direct] #messages{margin-top:0}
+
+/* Build61: shared desktop/iPad structure, with a full-width phone conversation. */
+:root{--top:28px;--app-height:100dvh;--mobile-nav:0px;--surface:#313338;--sidebar:#2b2d31;--raised:#383a40}
+html,body{height:100%;overflow:hidden}body{-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit}button{touch-action:manipulation}
+button:has(.ui-icon){display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.ui-icon{flex-shrink:0;vertical-align:middle}.button-label{min-width:0}
+textarea{border:0;border-radius:4px;background:#1e1f22;color:inherit;padding:12px;max-width:100%;resize:vertical}
+textarea:focus-visible{outline:2px solid #9fa9ff;outline-offset:2px}
+[aria-busy=true]{cursor:progress}.stack-form [aria-busy=true]:after{content:'';display:inline-block;width:12px;height:12px;border:2px solid #fff4;border-top-color:currentColor;border-radius:50%;margin-left:8px;animation:busy-spin .75s linear infinite}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
+#workspace{height:calc(var(--app-height) - var(--top) - var(--mobile-nav));grid-template-columns:72px 240px minmax(0,1fr) 240px}
+.app-header{border-bottom:1px solid #1113}.sidebar-header{height:48px;flex-shrink:0}
+#server-rail button{transition:background .15s,border-radius .15s}#server-rail button:hover:before{content:'';position:absolute;left:-10px;width:4px;height:16px;border-radius:0 4px 4px 0;background:#eee}
+#server-rail button.active:before{height:32px}.sidebar-scroll,#people,.stage-scroll{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#1a1b1e transparent}
+#channel-sidebar .dm{padding:8px;border-radius:4px}.dm>.row{border:0;padding:0;flex-wrap:nowrap;width:100%}
+#channel-sidebar .dm.active{background:#404249}.dm .avatar,.dm .avatar-wrap{width:32px;height:32px;flex-basis:32px}.dm-preview{max-width:145px;font-weight:400}.dm .identity{min-width:0}
+.stage-header{height:48px;min-height:48px;flex-shrink:0;flex-wrap:nowrap;border-bottom:1px solid #232428;box-shadow:0 1px 2px #0002}
+.stage-header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:650}.stage-header h1[data-action=friend-profile]{cursor:pointer}
+#scope-avatar .avatar,#scope-avatar .avatar-wrap{width:26px;height:26px;flex-basis:26px;font-size:12px}#scope-avatar .presence{width:10px;height:10px;border-width:2px}
+#scope-status{margin:0;padding:5px 20px;font-size:11px;background:#2e3035;border-bottom:1px solid #292b2f}
+#stage[data-page=direct] #scope-status{background:transparent;border:0;padding:5px 20px 0}
+.stage-header .toolbar{border:0;margin:0;padding:0;background:transparent;gap:4px;flex-wrap:nowrap}
+.stage-header .toolbar .share-actions{flex-wrap:nowrap;gap:6px}.stage-header .toolbar button{padding:6px 8px;white-space:nowrap;font-size:12px;min-height:32px}
+.stage-header .connection-end{display:none}.members-toggle{background:transparent;color:#b5bac1}.members-toggle[aria-expanded=true]{color:#fff;background:#404249}
+.friend-tabs button{border-radius:4px;white-space:nowrap}.row-actions button{background:#383a40}.row-actions .primary{background:#5865f2}
+#panel>.row{padding:14px 8px;margin:0 -8px;border-radius:8px;border-bottom:1px solid #42444a}.row-menu{border-radius:50%;width:34px;height:34px;padding:6px;background:#292b2f}
+.row-actions{gap:8px}.identity strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row>.identity{min-width:0}
+.empty-state{padding:56px 20px}.empty-mark{width:70px;height:70px;display:grid;place-items:center;border-radius:22px;background:#2b2d31;color:#949cf7;font-size:36px;margin:0 auto 16px}
+#stage[data-page=direct] .stage-scroll{padding:16px 24px 12px}#stage[data-page=direct] #panel{margin-top:auto}.dm-profile .row{gap:16px}.dm-profile .avatar-wrap,.dm-profile .avatar{width:80px;height:80px;flex-basis:80px}
+.dm-profile strong{font-size:28px}.dm-profile>p{white-space:pre-wrap;overflow-wrap:anywhere;max-width:600px}.conversation-start{margin:12px 0 20px}
+.message-row{padding:7px 8px}.message-row.grouped{padding:2px 8px}.message-author strong{color:#f2f3f5}.message-author time{font-size:11px;font-weight:400}
+#chat{margin:0 16px 8px;min-height:48px;align-items:center;padding:8px 12px}#chat textarea{font-size:15px;min-height:28px;background:transparent;resize:none}
+#chat:has(textarea:disabled){opacity:.5}#chat button{min-width:32px;min-height:32px;color:#b5bac1}#chat button:hover{color:#fff;background:#45474e}
+.composer-help{font-size:10px;margin-bottom:6px;padding-top:0}#stage[data-page=direct] .toolbar{padding:0;background:transparent}
+#people{padding:16px 10px;background:#2b2d31}#people .row:hover{background:#35373c;border-radius:4px}#people [role=button]{cursor:pointer}
+#people .profile-card{box-shadow:none;border:0;background:#232428;border-radius:8px;overflow:hidden}#people .profile-card .profile-card-content{padding:14px}#people .profile-card .row:hover{background:transparent}
+#people .profile-card .row{flex-wrap:wrap;padding:0}#people .profile-card .identity{flex-basis:100%;margin-top:4px}#people .profile-card strong{font-size:20px}#people .profile-banner{height:70px}
+#people .profile-card .avatar-wrap,#people .profile-card .avatar{width:56px;height:56px;flex-basis:56px}#people .profile-card h2{margin:14px 0 6px}
+#people .profile-bio{font-size:13px}#people .profile-banner-letter{font-size:56px}
+.profile-card{border-radius:12px;overflow:hidden;background:#232428;border:1px solid #444650;box-shadow:0 10px 24px #0002}
+.profile-banner{height:88px;background:linear-gradient(120deg,#5865a1,#717cbd);position:relative;overflow:hidden}.profile-banner-letter{position:absolute;right:16px;top:-18px;font-size:100px;font-weight:800;color:#ffffff14}
+.profile-card-content{padding:20px}.profile-card-content>.row{border:0;padding:0;gap:14px;margin-top:-48px;position:relative;align-items:flex-end;flex-wrap:nowrap}
+.profile-card-content>.row .avatar-wrap,.profile-card-content>.row .avatar{width:64px;height:64px;flex-basis:64px}.profile-card-content>.row .avatar{outline:5px solid #232428}
+.profile-card-content>.row .identity{padding-bottom:2px}.profile-card-content>.row strong{font-size:22px}.profile-card-content .presence{width:16px;height:16px;border-width:3px;border-color:#232428}
+.profile-divider{height:1px;background:#3a3c42;margin:18px 0 12px}.profile-bio{white-space:pre-wrap;overflow-wrap:anywhere;color:#dbdee1;line-height:1.6;margin:8px 0;font-size:14px}
+.profile-card-content h2{font-size:11px;font-weight:700;color:#f2f3f5;margin:12px 0 6px}.profile-card-content>.primary{margin-top:16px}
+dialog{max-height:calc(var(--app-height) - 32px);overscroll-behavior:contain}dialog.profile-dialog{width:760px;padding:24px;overflow:auto}.profile-settings{display:grid;grid-template-columns:140px minmax(0,1fr);gap:24px}
+.settings-navigation{display:flex;flex-direction:column;gap:4px;border-right:1px solid #44464d;padding-right:16px}.settings-navigation h2{margin:4px 8px 12px;font-size:11px}
+.settings-navigation button{text-align:left;justify-content:flex-start;background:transparent;color:#b5bac1}.settings-navigation button.active{background:#45474f;color:#fff}
+.settings-content{min-width:0}.settings-content h2{font-size:13px}.settings-content .stack-form{margin:16px 0}.stack-form textarea{width:100%;display:block;margin-top:6px;min-height:90px;font-weight:400;line-height:1.5}
+.field-counter{display:block;text-align:right;font-size:11px;color:#949ba4;margin-top:4px;font-weight:400}.profile-photo-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.upload-photo-button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;min-height:36px;background:#5865f2;color:#fff;border-radius:4px;position:relative;overflow:hidden;font-size:13px}
+.upload-photo-button input{position:absolute;inset:0;opacity:0;cursor:pointer;min-width:0}.linked-account{display:inline-flex;padding:8px 12px;background:#3ba55c18;color:#68d69a;border:1px solid #3ba55c44;border-radius:5px}.account-summary{background:#2b2d31;border-radius:8px;padding:14px;font-size:14px;overflow-wrap:anywhere}
+.auth-card{max-width:480px;margin:clamp(16px,6vh,72px) auto;padding:32px;border:1px solid #3c3e46}.auth-card h1{font-size:24px}.auth-tabs{margin:24px 0 16px}.auth-card label{font-size:12px;letter-spacing:.02em}
+.google-button{display:flex;align-items:center;justify-content:center;gap:12px;background:#f2f3f5;color:#232428;width:100%;padding:10px 16px;font-weight:600}.google-button:hover{background:#fff}.google-mark{font-size:20px;font-weight:800;color:#4285f4}
+.auth-divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:#949ba4;font-size:11px}.auth-divider:before,.auth-divider:after{content:'';flex:1;height:1px;background:#45474e}
+#onboarding{max-height:calc(var(--app-height) - var(--top) - 24px);overflow:auto;overscroll-behavior:contain}#auth-pending{border-radius:6px;border:1px solid #5865f255;background:#5865f211;padding:10px 12px;margin-bottom:14px;font-size:12px}
+#error{display:flex;align-items:flex-start;gap:12px;max-height:35dvh;overflow:auto}#error>span{flex:1;min-width:0;overflow-wrap:anywhere}#error>button{flex-shrink:0;background:transparent;color:#ffe5e7;padding:0 4px}
+.mobile-tabs{display:none}#stage .videos:empty{display:none}.video-head .row{min-width:0}.video-head .identity strong{max-width:160px}
+@media(max-width:1180px){#workspace{grid-template-columns:72px 224px minmax(0,1fr)}#workspace.people-open #people{top:calc(var(--top) + 48px);bottom:var(--mobile-nav);width:260px}.stage-header .toolbar .button-label{display:none}.stage-header .toolbar button{min-width:34px}.stage-header .toolbar .danger{color:#ff9fa6}.friend-tabs button{padding:4px 7px}.profile-settings{grid-template-columns:120px minmax(0,1fr)}}
+@media(max-width:760px){
+ :root{--top:24px;--mobile-nav:calc(56px + env(safe-area-inset-bottom,0px))}
+ #workspace{grid-template-columns:minmax(0,1fr)}#server-rail{display:none}#channel-sidebar{display:none}
+ #workspace.nav-open #server-rail{display:flex;position:fixed;left:0;top:var(--top);bottom:var(--mobile-nav);width:64px;z-index:8;padding:12px 8px}
+ #workspace.nav-open #server-rail button{width:44px;height:44px}#workspace.nav-open #channel-sidebar{left:64px;top:var(--top);bottom:var(--mobile-nav);width:min(280px,calc(100vw - 84px));z-index:7}
+ #workspace.nav-open #nav-scrim{inset:var(--top) 0 var(--mobile-nav) 0;z-index:6}
+ .mobile-tabs{position:fixed;left:0;right:0;bottom:0;height:var(--mobile-nav);display:flex;align-items:flex-start;justify-content:space-around;background:#232428;border-top:1px solid #3a3c42;padding:5px 8px env(safe-area-inset-bottom,0px);z-index:5}
+ .mobile-tabs button{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:60px;height:46px;padding:3px 12px;background:transparent;color:#949ba4;font-size:10px;border-radius:8px}.mobile-tabs button.active{color:#fff;background:#3d3f45}
+ .mobile-tabs button .ui-icon{width:22px;height:22px}.keyboard-open{--mobile-nav:0px}.keyboard-open .mobile-tabs,.viewing-fullscreen .mobile-tabs{display:none}
+ .stage-header{height:52px;min-height:52px;flex-wrap:nowrap;padding:6px 10px;gap:8px}.stage-header .mobile-nav{width:36px;height:36px;padding:7px;flex-shrink:0;background:transparent}
+ .stage-header h1{font-size:16px;min-width:36px}.stage-header .spacer{min-width:0}.stage-header .members-toggle{display:block;padding:7px;width:34px;height:36px;flex-shrink:0}
+ .stage-header .toolbar{padding:0;gap:0;flex-shrink:0}.stage-header .toolbar .share-actions{gap:2px}.stage-header .toolbar button{width:34px;min-width:34px;height:36px;padding:7px}
+ .stage-header .toolbar .primary{background:transparent;color:#c0c4ff}.stage-header .toolbar .file-action{background:transparent;color:#b5bac1}.stage-header .toolbar .danger{background:#f0717812;color:#ff9fa6}
+ .stage-header:has(.friend-tabs:not([hidden])){height:auto;min-height:52px;flex-wrap:wrap}.friend-tabs{flex-basis:100%;width:100%;margin:2px 0 0;padding:6px 0 2px;display:flex;gap:3px;overflow:auto;scrollbar-width:none;flex-wrap:nowrap}
+ .friend-tabs button{flex:1 0 auto;font-size:12px;min-height:32px;padding:6px 9px}.friend-tabs .add-friend{flex:0 0 auto}
+ #scope-status,#stage[data-page=direct] #scope-status{padding:4px 14px;font-size:11px}#scope-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .stage-scroll,#stage[data-page=direct] .stage-scroll{padding:14px 16px 10px}.dm-profile .row{gap:12px}.dm-profile .avatar,.dm-profile .avatar-wrap{width:64px;height:64px;flex-basis:64px}.dm-profile strong{font-size:24px}
+ #panel>.row{margin:0 -4px;padding:12px 4px;gap:8px;flex-wrap:wrap}.row-actions{width:auto;margin-left:auto;padding:0;order:2!important;gap:5px}.row-actions button{font-size:12px;padding:7px;min-height:34px}.row-actions .file-action{display:none}#panel .row-menu{order:3!important;width:32px;height:32px;margin-left:0}
+ .row-actions .button-label{display:none}.row-actions .ui-icon{width:20px;height:20px}.identity strong{font-size:14px}.row>.identity{flex-basis:auto!important}.empty-state{padding:32px 12px}
+ #chat{margin:0 10px 4px;min-height:46px;padding:7px 10px;border-radius:10px}#chat textarea{font-size:16px;min-height:28px;line-height:1.5}#chat button{min-height:34px;min-width:34px;padding:6px}.composer-help{font-size:9px;margin-bottom:4px;padding:0 14px}
+ .message-row{grid-template-columns:32px minmax(0,1fr);gap:10px;padding:6px 4px;margin:0 -4px}.message-text{font-size:15px;line-height:1.5}.message-author strong{font-size:14px}.message-author time{font-size:10px}
+ #workspace.people-open #people{top:calc(var(--top) + 52px);bottom:var(--mobile-nav);width:min(280px,calc(100vw - 48px));z-index:6}
+ dialog,dialog.profile-dialog{width:calc(100vw - 20px);max-width:none;padding:20px 16px;max-height:calc(var(--app-height) - 24px);border-radius:12px;margin:auto}
+ dialog h1{font-size:20px;margin-bottom:18px}.profile-settings{display:flex;flex-direction:column;gap:16px}.settings-navigation{flex-direction:row;padding:0 0 10px;border-right:0;border-bottom:1px solid #45474e}.settings-navigation h2{display:none}.settings-navigation button{flex:1;justify-content:center;min-height:36px}
+ .profile-banner{height:72px}.profile-card-content{padding:16px}.profile-card-content>.row{gap:12px}.profile-card-content>.row strong{font-size:20px}
+ .stack-form label input,.stack-form textarea,form input{font-size:16px}.stack-form button{min-height:42px}.stack-form textarea{resize:none}.profile-photo-actions{gap:8px}
+ .auth-card{margin:12px 10px;padding:24px 20px;border-radius:12px}.auth-card h1{font-size:21px}.auth-logo{font-size:36px}.auth-tabs button{min-height:36px;font-size:12px;padding:7px 9px}.auth-tabs{margin:16px 0}
+ .video-card video{max-height:44dvh}.video-head button{min-height:32px}.video-head .button-label{font-size:11px}.version-tag{display:none}
+ #error{top:calc(var(--top) + 4px);right:8px;left:8px;width:auto;max-width:none;z-index:40;padding:12px;font-size:13px}.viewing-fullscreen{--mobile-nav:0px}
+}
+@media(max-width:360px){.stage-header{gap:4px}.stage-header .toolbar button{width:30px;min-width:30px;padding:5px}.mobile-tabs button{min-width:52px;padding:3px 8px}.auth-card{padding:20px 16px}}
+@media(prefers-reduced-motion:reduce){[aria-busy=true]:after{animation:none}#server-rail button{transition:none}}
 </style>
 </head><body>
 <header class="app-header"><strong><span class="brand-mark">◉</span> Solaris</strong><span class="spacer"></span><span class="version-tag">화면공유 · 원본 파일 전송</span></header>
 <div id="error" role="alert" hidden></div>
 <section id="onboarding" class="auth-card" hidden>
 <span class="auth-logo" aria-hidden="true">◉</span><h1>Solaris에 오신 것을 환영해요</h1><p class="muted">친구와 화면을 공유하고 원본 파일을 주고받으세요.</p>
-<nav class="auth-tabs" aria-label="계정"><button data-action="auth-login">로그인</button><button data-action="auth-signup">계정 만들기</button><button data-action="auth-recover">계정 복구</button></nav><p id="onboarding-status" role="status"></p>
+<nav class="auth-tabs" aria-label="계정"><button data-action="auth-login">로그인</button><button data-action="auth-signup">계정 만들기</button><button data-action="auth-recover">계정 복구</button></nav><div id="google-panel"><button id="google-login" data-action="google-login" class="google-button"><span class="google-mark" aria-hidden="true">G</span> Google로 계속하기</button><div class="auth-divider"><span>또는 이메일로 계속하기</span></div></div><p id="onboarding-status" role="status"></p><div id="auth-pending" role="status" hidden>브라우저에서 인증을 마치면 Solaris로 돌아와요. <button data-action="auth-cancel-flow" class="text-button">인증 요청 취소</button></div>
 <form id="login" class="stack-form"><label>이메일<input name="email" type="email" autocomplete="username" required></label><label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">로그인</button><button type="button" data-action="auth-reset" class="text-button">비밀번호를 잊으셨나요?</button></form>
 <form id="email-register" class="stack-form" hidden><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" placeholder="영문·숫자·밑줄 3–32자" required></label><label>닉네임<input name="nickname" maxlength="32" autocomplete="nickname" required></label><label>이메일<input name="email" type="email" autocomplete="email" required></label><label>비밀번호<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="primary">계정 만들기</button><button type="button" data-action="auth-quick" class="text-button">ID로 빠르게 시작</button></form>
 <form id="register" class="stack-form" hidden><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" placeholder="영문·숫자·밑줄 3–32자" required></label><label>닉네임<input name="nickname" maxlength="32" required></label><p class="muted" id="quick-help">이 기기에 계정이 저장됩니다. 나중에 이메일과 비밀번호를 연결하면 다른 기기에서도 로그인할 수 있어요.</p><button class="primary">계정 만들기</button></form>
 <form id="recover" class="stack-form" hidden><label>등록한 이메일<input name="email" type="email" autocomplete="email" required></label><button class="primary">인증 코드 받기</button></form>
-<form id="verify" class="stack-form" hidden><label>이메일<input name="email" type="email" required></label><label>이메일 인증 코드<input name="token" autocomplete="one-time-code" inputmode="numeric" required></label><button class="primary">인증 완료</button></form>
+<form id="verify" class="stack-form" hidden><h2 id="verify-title">이메일 인증</h2><label>이메일<input name="email" type="email" required></label><label>이메일 인증 코드<input name="token" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6,10}" minlength="6" maxlength="10" required></label><p class="form-help">메일의 인증 링크를 열거나, 메일에 표시된 인증 코드를 입력하세요.</p><button class="primary">인증 완료</button><button type="button" data-action="auth-resend" class="text-button">인증 메일 다시 받기</button></form>
 </section>
 <main id="workspace" hidden>
 <nav id="server-rail" aria-label="서버 탐색"><button data-action="friends" class="home-icon" aria-label="친구" title="친구">◉</button><div class="rail-divider"></div><div id="servers"></div><button data-action="server-create" class="rail-add" aria-label="서버 만들기" title="서버 만들기">＋</button><button data-action="server-join" class="rail-add" aria-label="초대코드로 참여" title="초대코드로 참여">↪</button></nav>
-<aside id="channel-sidebar" aria-label="채널 목록"><div class="sidebar-header"><strong id="server-title">개인 메시지</strong><div id="server-tools"></div></div><div class="sidebar-scroll"><nav class="side-navigation"><button data-action="friends"><span>♧</span> 친구</button><button data-action="transfers"><span>⇄</span> 파일 전송 기록 <span id="transfer-count" class="count-badge" hidden></span></button></nav><div class="section-heading"><h2 id="channel-section-title">개인 메시지</h2><button id="channel-add" data-action="channel-create" aria-label="채널 만들기" title="채널 만들기" hidden>＋</button></div><div id="channels"></div><div class="section-heading"><h2><span class="live-dot"></span> 방송 중</h2></div><div id="broadcast-list"></div></div><div id="sidebar-connection" class="sidebar-connection" hidden></div><footer class="self-profile"><button id="self-profile" data-action="profile" aria-label="내 프로필" title="내 프로필"></button><button data-action="settings" class="settings-icon" aria-label="설정" title="설정">⚙</button><span id="connection" role="status">연결 준비</span></footer></aside>
+<aside id="channel-sidebar" aria-label="채널 목록"><div class="sidebar-header"><strong id="server-title">개인 메시지</strong><div id="server-tools"></div></div><div class="sidebar-scroll"><nav class="side-navigation"><button data-action="friends"><span>♧</span> 친구</button><button data-action="transfers"><span>⇄</span> 파일 전송 기록 <span id="transfer-count" class="count-badge" hidden></span></button></nav><div class="section-heading"><h2 id="channel-section-title">개인 메시지</h2><button id="channel-add" data-action="channel-create" aria-label="채널 만들기" title="채널 만들기" hidden>＋</button></div><div id="channels"></div><div class="section-heading"><h2><span class="live-dot"></span> 방송 중</h2></div><div id="broadcast-list"></div></div><div id="sidebar-connection" class="sidebar-connection" hidden></div><footer class="self-profile"><button id="self-profile" data-icon="user" data-action="profile" aria-label="내 프로필" title="내 프로필"></button><button data-icon="settings" data-action="settings" class="settings-icon" aria-label="설정" title="설정">⚙</button><span id="connection" role="status">연결 준비</span></footer></aside>
 <button id="nav-scrim" data-action="close-nav" aria-label="목록 닫기" hidden></button>
-<section id="stage"><div class="stage-header"><button class="mobile-nav" id="nav-toggle" data-action="toggle-nav" aria-label="채널 목록 열기" aria-expanded="false">☰</button><span id="scope-symbol" class="channel-symbol" aria-hidden="true">♧</span><h1 id="scope-title">친구</h1><div id="friend-tabs" class="friend-tabs" aria-label="친구 필터"></div><span class="spacer"></span><button class="members-toggle" data-action="toggle-people" aria-label="참여자 목록 보기" aria-expanded="false">참여자</button></div><p id="scope-status" class="muted"></p><div class="stage-scroll"><div id="panel"></div><div id="viewing"><div id="videos" class="videos"></div></div><section class="messages"><h2 id="messages-title">연결 및 전송 메시지</h2><div id="messages" role="log" aria-live="polite"></div></section></div><div class="toolbar" id="session-controls" hidden><div class="share-actions"><button data-action="share" id="share" class="primary">화면공유</button><button data-action="stop" id="stop" class="danger" hidden>화면공유 중지</button><button data-action="send-file" class="file-action">파일 보내기</button></div><button data-action="end-session" class="danger connection-end">연결 종료</button></div><form id="chat"><input name="message" maxlength="2000" autocomplete="off" aria-label="간단한 메시지" placeholder="친구에게 메시지 보내기" disabled><button aria-label="메시지 보내기" disabled>➤</button></form></section>
+<section id="stage"><div class="stage-header"><button class="mobile-nav" id="nav-toggle" data-icon="menu" data-action="toggle-nav" aria-label="채널 목록 열기" aria-expanded="false">☰</button><span id="scope-symbol" class="channel-symbol" aria-hidden="true">♧</span><span id="scope-avatar" hidden></span><h1 id="scope-title">친구</h1><div id="friend-tabs" class="friend-tabs" aria-label="친구 필터"></div><span class="spacer"></span><button class="members-toggle" data-icon="friends" data-action="toggle-people" aria-label="참여자 목록 보기" aria-expanded="false">참여자</button></div><p id="scope-status" class="muted"></p><div class="stage-scroll"><div id="panel"></div><div id="viewing"><div id="videos" class="videos"></div></div><section class="messages"><h2 id="messages-title">연결 및 전송 메시지</h2><div id="messages" role="log" aria-live="polite"></div></section></div><div class="toolbar" id="session-controls" hidden><div class="share-actions"><button data-icon="screen" data-action="share" id="share" class="primary">화면공유</button><button data-icon="stop" data-action="stop" id="stop" class="danger" hidden>화면공유 중지</button><button data-icon="files" data-action="send-file" class="file-action">파일 보내기</button></div><button data-icon="leave" data-action="end-session" class="danger connection-end">연결 종료</button></div><div id="composer-help" class="composer-help"></div><form id="chat"><textarea name="message" maxlength="2000" rows="1" aria-label="메시지" placeholder="친구에게 메시지 보내기" disabled></textarea><button data-icon="send" aria-label="메시지 보내기" disabled>➤</button></form></section>
 <aside id="people" aria-label="참여자와 요청"><h2 id="participants-title">온라인 친구</h2><div id="participants"></div><div class="request-section"><h2>화면공유 요청 <span id="request-count" class="count-badge" hidden></span></h2><div id="requests"></div></div></aside>
 </main>
+<nav id="mobile-tabs" class="mobile-tabs" aria-label="주요 메뉴" hidden><button data-action="mobile-menu" data-icon="message" aria-label="대화와 채널 목록"><span>대화</span></button><button data-action="mobile-friends" data-icon="friends" aria-label="친구 목록"><span>친구</span></button><button data-action="mobile-files" data-icon="files" aria-label="파일 전송 기록"><span>파일</span></button><button data-action="mobile-profile" data-icon="user" aria-label="내 프로필"><span>나</span></button></nav>
 <dialog id="dialog"><button id="dialog-close" class="close" aria-label="대화상자 닫기">✕</button><div id="dialog-content"></div></dialog>
 <script>(async()=>{
 // Public project key, never a service-role key. Enable anonymous Auth and apply backend/001_solaris.sql.
-const config={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',version:'0.4.0-build58',repository:'m10180729-afk/solaris-ios-probe'};
+const config={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',version:'0.4.0-build61',repository:'m10180729-afk/solaris-ios-probe'};
 
 // Incremental SHA-256. A checkpoint is <400 bytes, regardless of file size.
 const K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
@@ -54,10 +181,16 @@ class SHA256 {
 }
 
 
-const VERSION='0.4.0-build58';
+const MAX_FILE_BYTES=100*1024**2;
+const VERSION='0.4.0-build61';
 function readSettings(text){let v;try{v=JSON.parse(text??'{}');}catch{v={};}if(!v||typeof v!=='object')v={};return{maxReceive:Number.isInteger(v.maxReceive)&&v.maxReceive>=1&&v.maxReceive<=5?v.maxReceive:4,updateChannel:['stable','test'].includes(v.updateChannel)?v.updateChannel:'test',preventDuplicates:v.preventDuplicates!==false};}
 const uuid=()=>crypto.randomUUID();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function requestTimeout(milliseconds=15000){
+ if(globalThis.AbortSignal?.timeout)return AbortSignal.timeout(milliseconds);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(new DOMException('서버 응답 시간이 초과되었습니다.','TimeoutError')),milliseconds);
+ timer.unref?.();return controller.signal;
+}
 const safeName=name=>{let s=String(name).normalize('NFC').replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g,'_').replace(/^[. ]+|[. ]+$/g,'').slice(0,160)||'download';return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(s)?'download_'+s:s;};
 const toBase64=b=>{let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(s);};
 const fromBase64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -78,7 +211,7 @@ class DiskFiles {
  constructor(bridge,ledger=new Ledger('solaris-file-handles')){this.bridge=bridge;this.ledger=ledger;this.handles=new Map();}
  async get(id){let v=this.handles.get(id);if(!v){v=await this.ledger.get(id);if(v)this.handles.set(id,v);}return v;}
  async remember(id,v){this.handles.set(id,v);const{writer,...durable}=v;await this.ledger.set(id,durable);}
- async pick(){if(this.bridge.native)return this.bridge.call('pickFile');if(!globalThis.showOpenFilePicker)throw new Error('대용량 파일 전송은 설치된 Solaris 앱에서 사용하세요.');const[h]=await showOpenFilePicker();const f=await h.getFile(),id=uuid();await this.remember(id,{handle:h,source:true,size:f.size,modified:f.lastModified});return{id,name:f.name,size:f.size,modified:f.lastModified};}
+ async pick(){if(this.bridge.native)return this.bridge.call('pickFile');if(!globalThis.showOpenFilePicker)throw new Error('파일 전송은 설치된 Solaris 앱에서 사용하세요.');const[h]=await showOpenFilePicker();const f=await h.getFile(),id=uuid();await this.remember(id,{handle:h,source:true,size:f.size,modified:f.lastModified});return{id,name:f.name,size:f.size,modified:f.lastModified};}
  async read(id,offset,length){if(this.bridge.native)return fromBase64((await this.bridge.call('readFile',{id,offset,length})).data);const v=await this.get(id);if(!v)throw new Error('원본 파일을 다시 선택하세요.');const f=await v.handle.getFile();if(f.size!==v.size||f.lastModified!==v.modified)throw new Error('원본 파일이 변경되었습니다.');return new Uint8Array(await f.slice(offset,offset+length).arrayBuffer());}
  async create(id,name,size){name=safeName(name);if(this.bridge.native)return this.bridge.call('createReceiver',{id,name,size});if(!globalThis.showSaveFilePicker)throw new Error('디스크 저장을 지원하는 Solaris 앱이 필요합니다.');const handle=await showSaveFilePicker({suggestedName:name}),writer=await handle.createWritable({keepExistingData:false});await this.remember(id,{handle,writer,source:false,size,extent:0});return{id,name};}
  async write(id,offset,data){if(this.bridge.native)return this.bridge.call('writeFile',{id,offset,data:toBase64(data)});const v=await this.get(id);if(!v||v.source)throw new Error('저장 파일을 다시 선택하세요.');if(!v.writer){v.writer=await v.handle.createWritable({keepExistingData:true});v.extent=(await v.handle.getFile()).size;}if(offset>v.extent||offset+data.length>v.size)throw new Error('파일 청크 순서 오류');await v.writer.write({type:'write',position:offset,data});v.extent=Math.max(v.extent,offset+data.length);}
@@ -89,34 +222,246 @@ class DiskFiles {
  async discard(id){if(this.bridge.native)return this.bridge.call('discardFile',{id});await this.handles.get(id)?.writer?.abort();this.handles.delete(id);await this.ledger.delete(id);}
 }
 
+// All browser returns use PKCE. Verifiers stay in the protected native vault.
+const MOBILE_AUTH_REDIRECT='solaris://auth/callback';
+const WINDOWS_AUTH_REDIRECT='http://127.0.0.1:43854/auth/callback';
+const authBase64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function authURLAllowed(value,project){
+ try{const u=new URL(value);return !u.username&&!u.password&&u.protocol==='https:'&&(
+  u.origin===project&&u.pathname==='/auth/v1/authorize'&&u.searchParams.get('provider')==='google'||
+  u.hostname==='accounts.google.com'&&u.port===''&&u.pathname.startsWith('/o/oauth2/'));
+ }catch{return false;}
+}
+function authReturnAllowed(value,base){
+ try{const u=new URL(value),b=new URL(base);return !u.username&&!u.password&&u.protocol===b.protocol&&u.host===b.host&&u.pathname===b.pathname&&!u.hash;}
+ catch{return false;}
+}
+class AuthFlow {
+ constructor(api){this.api=api;this.pending=null;this.serial=Promise.resolve();}
+ async read(){
+  if(this.pending)return this.pending;
+  const v=this.api.bridge.native?await this.api.bridge.call('vaultGet',{key:'auth-flow'}):await this.api.ledger.get?.('auth-flow');
+  try{this.pending=typeof v==='string'?JSON.parse(v):v??null;}catch{this.pending=null;}
+  return this.pending;
+ }
+ async write(value){this.pending=value;if(this.api.bridge.native)await this.api.bridge.call('vaultSet',{key:'auth-flow',value:JSON.stringify(value)});else await this.api.ledger.set('auth-flow',value);}
+ async redirect(){
+  if(this.api.bridge.native){const p=await this.api.bridge.call('platform');return p.platform==='windows'?WINDOWS_AUTH_REDIRECT:MOBILE_AUTH_REDIRECT;}
+  const u=new URL(globalThis.location.href);if(!/^https?:$/.test(u.protocol))throw new Error('로그인은 설치된 Solaris 앱에서 진행하세요.');u.search='';u.hash='';return u.href;
+ }
+ async prepare(kind,{email=null,uid=this.api.session?.user?.id??null}={}){
+  const base=await this.redirect(),state=crypto.randomUUID(),verifier=authBase64(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge=authBase64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
+  const redirect=new URL(base);redirect.searchParams.set('solaris_state',state);
+  const pending={kind,base,state,verifier,email,uid,expires:Date.now()+(kind.startsWith('google')?10:60)*60000};
+  await this.write(pending);
+  if(this.api.bridge.native)await this.api.bridge.call('authListen',{redirectTo:redirect.href});
+  return{pending,redirectTo:redirect.href,challenge};
+ }
+ async google(link=false){
+  if(link)await this.api.ensure();else if(this.api.session)throw new Error('내 프로필에서 Google 계정 연결을 이용하세요.');
+  const f=await this.prepare(link?'google-link':'google'),query=new URLSearchParams({provider:'google',redirect_to:f.redirectTo,code_challenge:f.challenge,code_challenge_method:'s256'});
+  let url=this.api.config.url+'/auth/v1/authorize?'+query;
+  if(link){query.set('skip_http_redirect','true');const r=await this.api.auth('user/identities/authorize?'+query,undefined,true);url=r.url;}
+  if(!authURLAllowed(url,this.api.config.url))throw new Error('Google 로그인 주소를 확인할 수 없습니다.');
+  if(this.api.bridge.native)await this.api.bridge.call('authOpen',{url});else globalThis.location.assign(url);
+  return f.pending;
+ }
+ complete(value){const task=this.serial.then(()=>this.consume(value));this.serial=task.catch(()=>{});return task;}
+ async consume(value){
+  const f=await this.read();if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
+  if(!authReturnAllowed(value,f.base))throw new Error('잘못된 인증 반환 주소입니다.');
+  const u=new URL(value);if(u.searchParams.get('solaris_state')!==f.state)throw new Error('다른 로그인 요청의 반환입니다. 다시 시작하세요.');
+  if(u.searchParams.has('error'))throw new Error('인증이 완료되지 않았습니다. 취소했거나 인증 링크가 만료되었을 수 있어요.');
+  const code=u.searchParams.get('code');if(!code||code.length>4096)throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
+  if((this.api.session?.user?.id??null)!==f.uid)throw new Error('계정이 변경되어 이전 인증 요청을 취소했습니다.');
+  const revision=++this.api.revision,s=await this.api.auth('token?grant_type=pkce',{auth_code:code,code_verifier:f.verifier});
+  if(f.uid&&s.user?.id!==f.uid)throw new Error('계정 연결은 기존 UID를 유지해야 합니다.');
+  const user=await this.api.auth('user',undefined,s.access_token);if(user.id!==s.user?.id)throw new Error('인증된 계정을 확인하지 못했습니다.');s.user=user;
+  if(revision!==this.api.revision||this.pending?.state!==f.state)throw new Error('로그인 요청이 취소되었습니다.');
+  await this.api.acceptSession(s,revision);await this.write(null);
+  return{kind:f.kind,session:s};
+ }
+ async cancel(){this.api.revision++;await this.write(null);if(this.api.bridge.native)await this.api.bridge.call('authCancel').catch(()=>{});}
+}
+
+
 
 class API extends EventTarget {
- constructor(config,bridge,ledger){super();if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.url)||!/^sb_publishable_/.test(config.key))throw new Error('Invalid project configuration');this.config=config;this.bridge=bridge;this.ledger=ledger;this.session=null;this.revision=0;this.saveQueue=Promise.resolve();}
+ constructor(config,bridge,ledger){super();if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.url)||!/^sb_publishable_/.test(config.key))throw new Error('Invalid project configuration');this.config=config;this.bridge=bridge;this.ledger=ledger;this.session=null;this.revision=0;this.saveQueue=Promise.resolve();this.authFlow=new AuthFlow(this);}
  async save(){const session=this.session,revision=this.revision;if(session&&!session.expires_at)session.expires_at=Date.now()/1000+(session.expires_in??3600);const next=this.saveQueue.then(async()=>{if(revision!==this.revision||session!==this.session)return;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:JSON.stringify(session)});else await this.ledger.set('auth',session);this.dispatchEvent(new Event('auth'));});this.saveQueue=next.catch(()=>{});await next;}
  async init(){this.revision++;let stored=this.bridge.native?await this.bridge.call('vaultGet',{key:'session'}):await this.ledger.get('auth');this.session=typeof stored==='string'?JSON.parse(stored):stored;if(this.session)await this.ensure();}
- async auth(path,body,bearer=false){const r=await fetch(this.config.url+'/auth/v1/'+path,{method:body?'POST':'GET',headers:{apikey:this.config.key,'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+this.session.access_token}:{})},body:body?JSON.stringify(body):undefined,redirect:'error'});const v=await r.json();if(!r.ok)throw new Error(v.msg||v.message||v.error_description||'인증 실패');return v;}
+ async auth(path,body,bearer=false,options={}){const url=new URL(this.config.url+'/auth/v1/'+path);if(options.redirectTo)url.searchParams.set('redirect_to',options.redirectTo);const token=typeof bearer==='string'?bearer:bearer?this.session?.access_token:null;const r=await fetch(url.href,{method:options.method??(body?'POST':'GET'),headers:{apikey:this.config.key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined,redirect:'error',signal:requestTimeout()});const v=await r.json();if(!r.ok){const e=new Error(v.msg||v.message||v.error_description||'인증 실패');e.code=v.code??v.error_code;e.status=r.status;throw e;}return v;}
  async signup(){const revision=++this.revision,session=await this.auth('signup',{});return this.acceptSession(session,revision);}
  async ensure(){if(!this.session)throw new Error('Authentication required');if(this.session.expires_at*1000>Date.now()+90000)return;if(this.bridge.native){const raw=await this.bridge.call('vaultGet',{key:'session'});const s=typeof raw==='string'?JSON.parse(raw):raw;if(s?.user?.id===this.session.user.id&&s.expires_at>this.session.expires_at)this.session=s;}if(this.session.expires_at*1000>Date.now()+90000)return;if(!this.refreshing){const revision=this.revision,uid=this.session.user.id;this.refreshing=(async()=>{const session=await this.auth('token?grant_type=refresh_token',{refresh_token:this.session.refresh_token});if(revision!==this.revision)return;if(session.user?.id!==uid)throw new Error('갱신된 계정이 일치하지 않습니다.');this.session=session;await this.save();})().finally(()=>this.refreshing=null);}await this.refreshing;}
- async rpc(action,args={}){await this.ensure();const r=await fetch(this.config.url+'/rest/v1/rpc/solaris_action',{method:'POST',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({action,args}),redirect:'error'});const v=await r.json();if(!r.ok)throw new Error(v.message||'서버 요청 실패');return v;}
- async recoverEmail(email){await this.ensure();const r=await fetch(this.config.url+'/auth/v1/user',{method:'PUT',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({email}),redirect:'error'});const v=await r.json();if(!r.ok)throw new Error(v.msg||v.message||'복구 이메일 연결 실패');return v;}
- async verifyEmailLink(email,token){const uid=this.session?.user?.id,revision=++this.revision,s=await this.auth('verify',{email,token,type:'email_change'});if(revision!==this.revision)return s;if(s.access_token){if(!uid||s.user?.id!==uid)throw new Error('복구 이메일은 기존 계정의 UID에 연결되어야 합니다.');this.session=s;await this.save();}return s;}
- async emailOTP(email){return this.auth('otp',{email,create_user:false});}
+ async rpc(action,args={}){const uid=this.session?.user?.id;await this.ensure();if(this.session?.user?.id!==uid)throw new Error('계정이 변경되었습니다. 다시 시도하세요.');const r=await fetch(this.config.url+'/rest/v1/rpc/solaris_action',{method:'POST',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({action,args}),redirect:'error',signal:requestTimeout()});const v=await r.json();if(!r.ok)throw new Error(v.message||'서버 요청 실패');return v;}
+ async emailFlow(kind,email){const f=await this.authFlow.prepare(kind,{email:email.trim()});return{redirectTo:f.redirectTo,challenge:f.challenge};}
+ async recoverEmail(email){await this.ensure();const f=await this.emailFlow('email-change',email);return this.auth('user',{email:email.trim(),code_challenge:f.challenge,code_challenge_method:'s256'},true,{method:'PUT',redirectTo:f.redirectTo});}
+ async verifyEmailLink(email,token){const uid=this.session?.user?.id,revision=++this.revision,s=await this.auth('verify',{email,token,type:'email_change'});if(revision!==this.revision)return s;if(s.user?.id&&s.user.id!==uid)throw new Error('복구 이메일은 기존 계정의 UID에 연결되어야 합니다.');if(s.access_token){if(!uid||s.user?.id!==uid)throw new Error('복구 이메일은 기존 계정의 UID에 연결되어야 합니다.');this.session=s;await this.save();}return s;}
+ async emailOTP(email){const f=await this.emailFlow('email',email);return this.auth('otp',{email:email.trim(),create_user:false,code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});}
  async verifyOTP(email,token){return this.verifyAccount(email,token,'email');}
  async acceptSession(session,revision){if(!session?.access_token||!session?.refresh_token||!session?.user?.id)throw new Error('인증 응답이 유효하지 않습니다. 다시 로그인하세요.');if(revision!==this.revision)return this.session;this.session=session;await this.save();return session;}
  async login(email,password){const revision=++this.revision,session=await this.auth('token?grant_type=password',{email:email.trim(),password});return this.acceptSession(session,revision);}
- async registerEmail(email,password,profile){if(password.length<8)throw new Error('비밀번호는 8자 이상으로 설정하세요.');const revision=++this.revision,value=await this.auth('signup',{email:email.trim(),password,data:{solaris_user_id:profile.user_id,solaris_nickname:profile.nickname}});if(value.access_token)return{session:await this.acceptSession(value,revision),confirmationRequired:false};return{confirmationRequired:true,email:email.trim()};}
+ async registerEmail(email,password,profile){if(password.length<8)throw new Error('비밀번호는 8자 이상으로 설정하세요.');const f=await this.emailFlow('signup',email),revision=++this.revision,value=await this.auth('signup',{email:email.trim(),password,data:{solaris_user_id:profile.user_id,solaris_nickname:profile.nickname},code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});if(value.access_token)return{session:await this.acceptSession(value,revision),confirmationRequired:false};return{confirmationRequired:true,email:email.trim()};}
  async verifyAccount(email,token,type='signup'){if(!['signup','email','recovery'].includes(type))throw new Error('유효하지 않은 인증 방식입니다.');const revision=++this.revision,session=await this.auth('verify',{email:email.trim(),token:token.trim(),type});return this.acceptSession(session,revision);}
- async passwordReset(email){return this.auth('recover',{email:email.trim()});}
- async updateUser(value){await this.ensure();const response=await fetch(this.config.url+'/auth/v1/user',{method:'PUT',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(value),redirect:'error'});const user=await response.json();if(!response.ok)throw new Error(user.msg||user.message||'계정 변경 실패');if(user.id!==this.session.user.id)throw new Error('계정 UID가 일치하지 않습니다.');this.session={...this.session,user};await this.save();return user;}
+ async passwordReset(email){const f=await this.emailFlow('recovery',email);return this.auth('recover',{email:email.trim(),code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});}
+ async resendVerification(email,type){if(type==='signup'){const f=await this.authFlow.read();if(!f||f.kind!=='signup'||f.email!==email.trim()||Date.now()>f.expires)throw new Error('가입을 시작한 기기에서 인증 메일을 다시 요청하세요. 이미 받은 코드는 직접 입력할 수 있어요.');const url=new URL(f.base);url.searchParams.set('solaris_state',f.state);if(this.bridge.native)await this.bridge.call('authListen',{redirectTo:url.href});return this.auth('resend',{email:email.trim(),type:'signup'},false,{redirectTo:url.href});}if(type==='recovery')return this.passwordReset(email);return this.emailOTP(email);}
+ google(link=false){return this.authFlow.google(link);}
+ authReturn(url){return this.authFlow.complete(url);}
+ authSettings(){return this.auth('settings');}
+ async updateUser(value){await this.ensure();const response=await fetch(this.config.url+'/auth/v1/user',{method:'PUT',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(value),redirect:'error',signal:requestTimeout()});const user=await response.json();if(!response.ok)throw new Error(user.msg||user.message||'계정 변경 실패');if(user.id!==this.session.user.id)throw new Error('계정 UID가 일치하지 않습니다.');this.session={...this.session,user};await this.save();return user;}
  async account(){await this.ensure();const user=await this.auth('user',undefined,true);if(user.id!==this.session.user.id)throw new Error('계정 UID가 일치하지 않습니다.');this.session={...this.session,user};await this.save();return user;}
  async setPassword(password){if(password.length<8)throw new Error('비밀번호는 8자 이상으로 설정하세요.');const user=await this.account();if(!user.email_confirmed_at)throw new Error('이메일 인증을 먼저 완료하세요.');return this.updateUser({password});}
- async logout(){await this.ensure();const response=await fetch(this.config.url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token},redirect:'error'});if(!response.ok&&response.status!==401)throw new Error('로그아웃에 실패했습니다. 다시 시도하세요.');await this.clearSession();}
+ async logout(){await this.ensure();const response=await fetch(this.config.url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token},redirect:'error',signal:requestTimeout()});if(!response.ok&&response.status!==401)throw new Error('로그아웃에 실패했습니다. 다시 시도하세요.');await this.clearSession();}
  async clearSession(){this.revision++;this.session=null;await this.saveQueue;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:'null'});else await this.ledger.set('auth',null);this.dispatchEvent(new Event('auth'));}
- async avatar(path,blob){await this.ensure();const h={apikey:this.config.key,Authorization:'Bearer '+this.session.access_token};const r=await fetch(this.config.url+'/storage/v1/object/solaris-avatars/'+path,{method:blob?'POST':'DELETE',headers:{...h,...(blob?{'Content-Type':blob.type}:{})},body:blob,redirect:'error'});if(!r.ok)throw new Error('프로필 사진 저장 실패');}
- async avatarURL(path){await this.ensure();const r=await fetch(this.config.url+'/storage/v1/object/authenticated/solaris-avatars/'+path,{headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token},redirect:'error'});if(!r.ok)return null;return URL.createObjectURL(await r.blob());}
+ async avatar(path,blob){await this.ensure();const h={apikey:this.config.key,Authorization:'Bearer '+this.session.access_token};const r=await fetch(this.config.url+'/storage/v1/object/solaris-avatars/'+path,{method:blob?'POST':'DELETE',headers:{...h,...(blob?{'Content-Type':blob.type}:{})},body:blob,redirect:'error',signal:requestTimeout()});if(!r.ok)throw new Error('프로필 사진 저장 실패');}
+ async avatarURL(path){await this.ensure();const r=await fetch(this.config.url+'/storage/v1/object/authenticated/solaris-avatars/'+path,{headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token},redirect:'error',signal:requestTimeout()});if(!r.ok)return null;return URL.createObjectURL(await r.blob());}
  async signal(scope,recipient,payload){return this.rpc('signal',{scope_kind:scope.kind,scope_id:scope.id,recipient,payload});}
  diagnostics(){return redact({version:this.config.version,uid:this.session?.user?.id,platform:navigator.userAgent});}
 }
+
+const {BUILD54_DESKTOP_MODE,mediaCodecs,tuneDesktopSDP,applySenderPolicy,tuneScreenOfferSDP,selectCodecs,selectAudioCodecs}=(()=>{
+// Original build54 policy functions, Git 4c50dbe. Keep their bodies unchanged.
+const log=message=>console.warn(message);
+const BUILD54_DESKTOP_MODE=Object.freeze({id:'hardware60',label:'Solaris 하드웨어 1080p60',fps:60,startKbps:12000,minKbps:4000,maxKbps:28000,maxBitrate:28000000,degradationPreference:'maintain-framerate',transport:'native-rtp'});
+const selectedMode=BUILD54_DESKTOP_MODE;
+
+function mediaCodecs(kind){
+  const caps=(kind==='sender'?RTCRtpSender:RTCRtpReceiver).getCapabilities?.('video')?.codecs||[];
+  const h264=caps.filter(c=>(c.mimeType||'').toLowerCase()==='video/h264');
+  if(!h264.length)throw Error('H.264 WebRTC 코덱을 사용할 수 없습니다. 최신 Edge/Chrome과 GPU 드라이버를 사용하세요.');
+  return[...h264,...caps.filter(c=>/\/(rtx|red|ulpfec|flexfec-03)$/i.test(c.mimeType||''))];
+}
+
+function tuneDesktopSDP(sdp,mode=selectedMode){
+  const lines=sdp.replace(/\r\n/g,'\n').split('\n');let inVideo=false,inAudio=false;
+  const h264=new Set(),opus=new Set();
+  for(const line of lines){if(line.startsWith('m=')){inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio ');}let m=inVideo&&line.match(/^a=rtpmap:(\d+) H264\/90000$/i);if(m)h264.add(m[1]);m=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);if(m)opus.add(m[1]);}
+  inVideo=false;inAudio=false;const out=[];
+  for(const line of lines){
+    if(line.startsWith('m=')){inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio ');}
+    if((inVideo||inAudio)&&/^b=(AS|TIAS):/.test(line))continue;
+    const audioFmtp=inAudio&&line.match(/^a=fmtp:(\d+) /i);if(audioFmtp&&opus.has(audioFmtp[1]))continue;
+    let tuned=line;const fmtp=inVideo&&line.match(/^a=fmtp:(\d+) (.+)$/i);
+    if(fmtp&&h264.has(fmtp[1])){
+      const base=fmtp[2].replace(/profile-level-id=([0-9a-f]{4})[0-9a-f]{2}/i,(_m,p)=>`profile-level-id=${p}33`)
+        .replace(/;(x-google-(start|min|max)-bitrate)=\d+/gi,'');
+      tuned=`a=fmtp:${fmtp[1]} ${base};x-google-start-bitrate=${mode.startKbps};x-google-min-bitrate=${mode.minKbps};x-google-max-bitrate=${mode.maxKbps}`;
+    }
+    out.push(tuned);
+    if(inVideo&&line.startsWith('c=')){out.push(`b=AS:${mode.maxKbps}`);out.push(`b=TIAS:${mode.maxBitrate}`);}
+    if(inAudio&&line.startsWith('c=')){out.push('b=AS:256');out.push('b=TIAS:256000');}
+    const op=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);if(op&&opus.has(op[1]))out.push(`a=fmtp:${op[1]} stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1`);
+  }
+  return out.join('\r\n');
+}
+
+async function applySenderPolicy(sender,mode=selectedMode){
+  const configure=(p,extended)=>{
+    if(!p.encodings?.length)p.encodings=[{}];
+    for(const e of p.encodings){e.active=true;e.maxBitrate=mode.maxBitrate;e.maxFramerate=mode.fps;e.scaleResolutionDownBy=1;if(extended){e.priority='high';e.networkPriority='high';}}
+    if(extended)p.degradationPreference=mode.degradationPreference;
+    return p;
+  };
+  try{await sender.setParameters(configure(sender.getParameters(),true));}
+  catch(firstError){
+    log(`브라우저가 확장 RTP 정책 일부를 거부하여 핵심 ${mode.label} 정책으로 재시도: `+firstError.message);
+    await sender.setParameters(configure(sender.getParameters(),false));
+  }
+}
+
+function tuneScreenOfferSDP(sdp){
+  // Actual CRLF, not literal backslash-r/backslash-n as in build19.
+  const lines=sdp.replace(/\r\n/g,'\n').split('\n');
+  const h264Payloads=new Set();
+  const opusPayloads=new Set();
+  let videoSection=false,audioSection=false;
+  for(const line of lines){
+    if(line.startsWith('m=')) { videoSection=line.startsWith('m=video ');audioSection=line.startsWith('m=audio '); }
+    const match=videoSection&&line.match(/^a=rtpmap:(\d+) H264\/90000$/i);
+    if(match) h264Payloads.add(match[1]);
+    const opus=audioSection&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);
+    if(opus) opusPayloads.add(opus[1]);
+  }
+  let inVideo=false,inAudio=false;
+  const out=[];
+  for(const line of lines){
+    if(line.startsWith('m=')) { inVideo=line.startsWith('m=video ');inAudio=line.startsWith('m=audio '); }
+    if((inVideo||inAudio) && /^b=(AS|TIAS):/.test(line)) continue;
+    const audioFmtp=inAudio&&line.match(/^a=fmtp:(\d+) (.+)$/i);
+    if(audioFmtp&&opusPayloads.has(audioFmtp[1])) continue;
+    let tuned=line;
+    const fmtp=inVideo&&line.match(/^a=fmtp:(\d+) (.+)$/i);
+    if(fmtp&&h264Payloads.has(fmtp[1])) {
+      // Chromium advertises H.264 level 3.1 (..1f) even when the Windows
+      // hardware decoder can receive the native iPad frame.  1920x1324@60
+      // needs level 5.1: 9,960 macroblocks/frame and 597,600 macroblocks/s.
+      // Leaving 3.1 negotiated makes VideoToolbox reject every frame, which
+      // is exactly the build23 encodedFrames=0 failure.
+      const parameters=fmtp[2].replace(/profile-level-id=([0-9a-f]{4})[0-9a-f]{2}/i,
+        (_match,prefix)=>`profile-level-id=${prefix}33`);
+      tuned=`a=fmtp:${fmtp[1]} ${parameters}`;
+    }
+    out.push(tuned);
+    if(inVideo && line.startsWith('c=')){
+      out.push('b=AS:60000');
+      out.push('b=TIAS:60000000');
+    }
+    if(inAudio && line.startsWith('c=')){
+      out.push('b=AS:256');
+      out.push('b=TIAS:256000');
+    }
+    const opusRtpmap=inAudio&&line.match(/^a=rtpmap:(\d+) opus\/48000\/2$/i);
+    if(opusRtpmap&&opusPayloads.has(opusRtpmap[1])) {
+      // Stereo must be negotiated by both ends.  Opus remains lossy by design,
+      // but 48 kHz / 256 kbps avoids the telephone-call processing profile.
+      out.push(`a=fmtp:${opusRtpmap[1]} stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1`);
+    }
+  }
+  // RTX apt stays untouched; H.264 level and Opus stereo are explicit.
+  return out.join('\r\n');
+}
+
+function selectCodecs(transceiver,mode){
+  try {
+    if(!transceiver || typeof transceiver.setCodecPreferences!=='function' ||
+       typeof RTCRtpReceiver==='undefined' || typeof RTCRtpReceiver.getCapabilities!=='function') {
+      throw Error('이 브라우저는 코덱 고정을 지원하지 않습니다. 최신 Edge 또는 Chrome을 사용하세요.');
+    }
+    const codecs=RTCRtpReceiver.getCapabilities('video')?.codecs||[];
+    const wanted=mode==='vp8'?'video/vp8':'video/h264';
+    const preferred=codecs.filter(c=>(c.mimeType||'').toLowerCase()===wanted);
+    if(!preferred.length) throw Error(`${wanted.replace('video/','').toUpperCase()} 코덱을 사용할 수 없습니다.`);
+    const repair=codecs.filter(c=>/\/(rtx|red|ulpfec|flexfec-03)$/i.test(c.mimeType||''));
+    // "Preferred" still allowed build23 to negotiate VP8/libvpx. Include only
+    // the requested media codec (plus packet-repair codecs), making the offer
+    // incapable of silently selecting another encoder.
+    transceiver.setCodecPreferences([...preferred,...repair]);
+    return mode==='vp8'?'VP8 software compatibility':'H264 only (hardware required)';
+  } catch(e) {
+    log(`코덱 설정 실패: ${e.message}`);
+    throw e;
+  }
+}
+
+function selectAudioCodecs(transceiver){
+  try {
+    if(!transceiver || typeof transceiver.setCodecPreferences!=='function' ||
+       typeof RTCRtpReceiver==='undefined' || typeof RTCRtpReceiver.getCapabilities!=='function') {
+      throw Error('이 브라우저는 오디오 코덱 고정을 지원하지 않습니다. 최신 Edge 또는 Chrome을 사용하세요.');
+    }
+    const codecs=RTCRtpReceiver.getCapabilities('audio')?.codecs||[];
+    const opus=codecs.filter(c=>(c.mimeType||'').toLowerCase()==='audio/opus');
+    if(!opus.length) throw Error('Opus 코덱을 사용할 수 없습니다.');
+    transceiver.setCodecPreferences(opus);
+    return 'Opus 48kHz stereo · 256kbps';
+  } catch(e) {
+    log(`화면 소리 코덱 설정 실패: ${e.message}`);
+    throw e;
+  }
+}
+
+return {BUILD54_DESKTOP_MODE,mediaCodecs,tuneDesktopSDP,applySenderPolicy,tuneScreenOfferSDP,selectCodecs,selectAudioCodecs};})();
 
 
 // One high-quality policy on every platform. Native capture keeps the source's
@@ -124,12 +469,12 @@ class API extends EventTarget {
 // the requesting peer's bitrate, never the shared source or its frame rate.
 const HIGH_QUALITY=Object.freeze({width:1920,height:1080,fps:60,mbps:12,maxMbps:18,mode:'high',engine:'build54'});
 function nativeQuality(platform){return platform==='ios'?{...HIGH_QUALITY,mbps:28,maxMbps:60,maxLongSide:1920}:{...HIGH_QUALITY};}
-function preferScreenCodec(pc){const codecs=globalThis.RTCRtpReceiver?.getCapabilities?.('video')?.codecs;if(!codecs)return;const h264=codecs.filter(c=>c.mimeType.toLowerCase()==='video/h264');if(!h264.length)return;const rest=codecs.filter(c=>c.mimeType.toLowerCase()!=='video/h264');for(const t of pc.getTransceivers?.()??[])if(t.receiver?.track?.kind==='video'&&t.setCodecPreferences)t.setCodecPreferences([...h264,...rest]);}
+function preferScreenCodec(pc){const codecs=globalThis.RTCRtpReceiver?.getCapabilities?.('video')?.codecs;if(!codecs)return;const h264=codecs.filter(c=>c.mimeType.toLowerCase()==='video/h264');if(!h264.length)return;const rest=codecs.filter(c=>/\/(rtx|red|ulpfec|flexfec-03)$/i.test(c.mimeType));for(const t of pc.getTransceivers?.()??[])if(t.receiver?.track?.kind==='video'&&t.setCodecPreferences)t.setCodecPreferences([...h264,...rest]);}
 class AdaptiveQuality {
  constructor(target){this.target={...HIGH_QUALITY,...target};this.level=0;this.bad=0;this.good=0;}
  sample(s){if(!s||s.frames<10||s.state==='failed'||s.state==='disconnected')return null;const bad=s.loss>3||s.rtt>350||s.jitter>60;this.bad=bad?this.bad+1:0;this.good=!bad&&s.loss<1&&s.rtt<200?this.good+1:0;if(this.bad>=3){this.level=Math.min(3,this.level+1);this.bad=0;this.good=0;}else if(this.good>=8){this.level=Math.max(0,this.level-1);this.good=0;}if(this.sentLevel===this.level)return null;this.sentLevel=this.level;const q=this.target;this.current={...q,mbps:Math.max(Math.min(8,q.mbps),Math.round(q.mbps*[1,.85,.7,.55][this.level]))};return this.current;}
 }
-function qualityGrade(s){if(!s||s.state==='disconnected'||s.state==='failed'||!s.active)return{color:'black',text:s?.active===false?'방송 미참여':'연결 끊김 / 측정 불가'};const score=Math.max((s.rtt??0)/80,(s.loss??0)/1.5,(s.jitter??0)/15,s.stalled?10:0);return score<=1?{color:'blue',text:'매우 좋음'}:score<=2?{color:'green',text:'좋음'}:score<=3?{color:'yellow',text:'보통'}:score<=5?{color:'orange',text:'나쁨'}:{color:'red',text:'매우 나쁨'};}
+function qualityGrade(s){if(s?.active&&s.frames===0)return{color:'black',text:'첫 영상 대기'};if(s?.qualityMeasured===false&&s.active&&s.frames>0)return{color:'black',text:'영상 수신 중 · 품질 측정 불가'};if(!s||s.state==='disconnected'||s.state==='failed'||!s.active)return{color:'black',text:s?.active===false?'방송 미참여':'연결 끊김 / 측정 불가'};const score=Math.max((s.rtt??0)/80,(s.loss??0)/1.5,(s.jitter??0)/15,s.stalled?10:0);return score<=1?{color:'blue',text:'매우 좋음'}:score<=2?{color:'green',text:'좋음'}:score<=3?{color:'yellow',text:'보통'}:score<=5?{color:'orange',text:'나쁨'}:{color:'red',text:'매우 나쁨'};}
 function viewerAllowed(remote,b,snapshot){if(b.scope.kind==='direct')return snapshot.sessions?.some(s=>s.id===b.scope.id&&s.state==='accepted'&&[s.a,s.b].includes(remote))??false;const server=snapshot.channels?.find(c=>c.id===b.scope.id)?.server_id;return !!server&&snapshot.members?.some(m=>m.server_id===server&&m.profile.uid===remote);}
 class QualityMeter {
  constructor(){this.last=null;this.smoothed=null;}
@@ -159,7 +504,7 @@ class QualityMeter {
 class Peer extends EventTarget {
  constructor({id,remote,scope,api,iceServers,polite}){super();Object.assign(this,{id,remote,scope,api,polite});this.pc=new RTCPeerConnection({iceServers,bundlePolicy:'max-bundle'});this.makingOffer=false;this.ignoreOffer=false;this.settingAnswer=false;this.ice=[];this.serial=Promise.resolve();this.closed=false;this.epoch=uuid();this.remoteEpoch=null;
   this.pc.onicecandidate=e=>{if(e.candidate)this.send({candidate:e.candidate.toJSON()}).catch(e=>this.error(e));};
-  this.pc.onnegotiationneeded=()=>this.enqueue(async()=>{try{this.makingOffer=true;await this.pc.setLocalDescription();await this.send({description:this.pc.localDescription.toJSON()});}finally{this.makingOffer=false;}});
+  this.pc.onnegotiationneeded=()=>this.enqueue(async()=>{try{this.makingOffer=true;if(this.transformOffer){const offer=await this.pc.createOffer();await this.pc.setLocalDescription({type:'offer',sdp:this.transformOffer(offer.sdp)});}else await this.pc.setLocalDescription();await this.send({description:this.pc.localDescription.toJSON()});}finally{this.makingOffer=false;}});
   this.pc.ontrack=e=>this.dispatchEvent(new CustomEvent('track',{detail:e}));
   this.pc.ondatachannel=e=>this.dispatchEvent(new CustomEvent('channel',{detail:e.channel}));
   this.pc.onconnectionstatechange=()=>this.dispatchEvent(new CustomEvent('state',{detail:this.pc.connectionState}));
@@ -167,44 +512,171 @@ class Peer extends EventTarget {
  error(e){this.dispatchEvent(new CustomEvent('error',{detail:e}));}
  enqueue(fn){const next=this.serial.then(()=>{if(!this.closed)return fn();});this.serial=next.catch(e=>this.error(e));return next;}
  send(v){return this.api.signal(this.scope,this.remote,{type:'rtc',peer:this.id,epoch:this.epoch,...v,...(v.description?.type==='answer'?{replyTo:this.remoteEpoch}:{})});}
- receive(v){return this.enqueue(async()=>{if(v.description){const d=v.description;if(d.type==='answer'&&v.replyTo!==this.epoch)return;const ready=!this.makingOffer&&(this.pc.signalingState==='stable'||this.settingAnswer),collision=d.type==='offer'&&!ready;this.ignoreOffer=!this.polite&&collision;if(this.ignoreOffer)return;this.remoteEpoch=v.epoch;this.settingAnswer=d.type==='answer';try{await this.pc.setRemoteDescription(d);}finally{this.settingAnswer=false;}for(const c of this.ice.splice(0)){if(c.epoch===this.remoteEpoch)await this.pc.addIceCandidate(c.candidate);}if(d.type==='offer'){await this.pc.setLocalDescription();await this.send({description:this.pc.localDescription.toJSON()});}}else if(v.candidate){if(this.ignoreOffer)return;if(this.pc.remoteDescription&&v.epoch===this.remoteEpoch)await this.pc.addIceCandidate(v.candidate);else if(this.ice.length<128)this.ice.push(v);}});}
+ receive(v){return this.enqueue(async()=>{if(v.description){const d=v.description;if(d.type==='answer'&&v.replyTo!==this.epoch)return;const ready=!this.makingOffer&&(this.pc.signalingState==='stable'||this.settingAnswer),collision=d.type==='offer'&&!ready;this.ignoreOffer=!this.polite&&collision;if(this.ignoreOffer)return;this.remoteEpoch=v.epoch;this.settingAnswer=d.type==='answer';try{await this.pc.setRemoteDescription(d);}finally{this.settingAnswer=false;}for(const c of this.ice.splice(0)){if(c.epoch===this.remoteEpoch)await this.pc.addIceCandidate(c.candidate);}if(d.type==='offer'){await this.pc.setLocalDescription(await this.pc.createAnswer());await this.send({description:this.pc.localDescription.toJSON()});}}else if(v.candidate){if(this.ignoreOffer)return;if(this.pc.remoteDescription&&v.epoch===this.remoteEpoch)await this.pc.addIceCandidate(v.candidate);else if(this.ice.length<128)this.ice.push(v);}});}
  close(){this.closed=true;this.pc.close();this.ice=[];}
 }
+// Serialize a UID’s receiver teardown across WebView/app engine replacements.
+const viewerOperations=new Map();
+// Native capture teardown must also finish before a replacement engine starts.
+const publisherOperations=new WeakMap();
 class Media extends EventTarget {
- constructor(api,bridge,settings){super();this.api=api;this.bridge=bridge;this.settings=settings;this.peers=new Map();this.nativePeers=new Map();this.meters=new Map();this.watching=new Map();this.early=new Map();this.stream=null;this.broadcast=null;this.snapshot={broadcasts:[]};this.native=bridge.native;this.reconnects=0;this.nativeListener=e=>this.nativeEvent(e.detail);bridge.addEventListener('event',this.nativeListener);this.timer=setInterval(()=>this.tick().catch(e=>this.error(e)),2500);}
- get uid(){return this.api.session.user.id;}
+ constructor(api,bridge,settings){super();this.api=api;this.ownerUID=api.session.user.id;this.joining=new Map();this.bridge=bridge;this.settings=settings;this.peers=new Map();this.nativePeers=new Map();this.nativeReceivers=new Map();this.meters=new Map();this.watching=new Map();this.early=new Map();this.stream=null;this.broadcast=null;this.snapshot={broadcasts:[]};this.native=bridge.native;this.reconnects=0;this.nativeListener=e=>this.nativeEvent(e.detail);bridge.addEventListener('event',this.nativeListener);this.timer=setInterval(()=>this.tick().catch(e=>this.error(e)),2500);}
+ async platform(){return this.platformInfo??=(this.native?await this.bridge.call('platform'):{platform:'browser'});}
+ get uid(){return this.ownerUID;}
  get ice(){return this.settings.iceServers??[{urls:['stun:stun.l.google.com:19302','stun:global.stun.twilio.com:3478']}];}
  error(e){this.dispatchEvent(new CustomEvent('error',{detail:e}));}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
- async start(scope){await this.stop();let platform='browser',nativeSignaling=false;if(this.native){const p=await this.bridge.call('platform');platform=p.platform;nativeSignaling=p.nativeSignaling===true;}const q=nativeQuality(platform);let transport='browser';if(platform==='windows'||platform==='android')transport='native';if(platform==='ios')transport='replaykit';
-  if(transport==='browser'){this.stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:q.width},height:{ideal:q.height},frameRate:{ideal:q.fps,max:q.fps}},audio:false});this.stream.getVideoTracks()[0].onended=()=>this.stop().catch(e=>this.error(e));}
-  try{const result=await this.api.rpc('broadcast_start',{scope_kind:scope.kind,scope_id:scope.id,transport,quality:q});this.broadcast={id:result.id,publisher:this.uid,scope,quality:q,transport,nativeSignaling,started:Date.now(),pending:transport==='replaykit'};if(transport==='replaykit'){await this.api.ensure();await this.bridge.call('broadcastPrepare',{...this.broadcast,url:this.api.config.url,key:this.api.config.key,accessToken:this.api.session.access_token,refreshToken:this.api.session.refresh_token,expiresAt:this.api.session.expires_at,uid:this.uid,iceServers:this.ice});this.emit('picker',this.broadcast);}else if(transport==='native'){await this.api.ensure();await this.bridge.call('mediaStart',{id:result.id,quality:q,iceServers:this.ice,...(nativeSignaling?{scope,url:this.api.config.url,key:this.api.config.key,uid:this.uid}:{})});}if(transport!=='replaykit'&&!nativeSignaling)await this.api.rpc('broadcast_touch',{id:result.id});this.emit('broadcast',this.broadcast);return this.broadcast;}catch(e){await this.stop();throw e;}
+ start(scope){
+  if(this.closed)return Promise.reject(new Error('종료된 화면공유 엔진입니다.'));
+  if(this.starting)return this.starting;
+  const epoch=this.startEpoch=(this.startEpoch??0)+1,task=this.startOnce({...scope},epoch);
+  this.starting=task;this.emit('starting',true);
+  const finish=()=>{if(this.starting===task)this.starting=null;this.emit('starting',false);};task.then(finish,finish);return task;
  }
- async stop(){const b=this.broadcast;this.broadcast=null;for(const t of this.stream?.getTracks()??[])t.stop();this.stream=null;if(b){if(b.transport!=='browser')await this.bridge.call('mediaStop',{id:b.id}).catch(()=>{});await this.api.rpc('broadcast_stop',{id:b.id}).catch(()=>{});}for(const[k,p]of this.peers)if(p.sending){p.close();this.peers.delete(k);}this.nativePeers.clear();this.emit('broadcast',null);}
- async watch(b){if(b.publisher===this.uid)return;if(this.watching.size>=(this.settings.maxReceive??4))throw new Error('동시 시청 제한에 도달했습니다. 설정에서 변경할 수 있습니다.');if(this.watching.has(b.id))return;await this.api.rpc('broadcast_watch',{id:b.id});this.watching.set(b.id,{broadcast:b,lastJoin:0,lastFrame:Date.now(),retries:0,frames:0,adaptive:new AdaptiveQuality({...HIGH_QUALITY,...b.quality})});await this.join(b);}
- async join(b,recover){const w=this.watching.get(b.id);if(!w)return;w.lastJoin=Date.now();await this.api.signal({kind:b.scope_kind,id:b.scope_id},b.publisher,{type:recover?'media-recover':'media-join',broadcast:b.id,...(recover??{})});}
- async unwatch(id){const w=this.watching.get(id);if(!w)return;const connection=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending),connectionID=connection?.nativeConnection,epoch=connection?.epoch;this.watching.delete(id);for(const[k,p]of this.peers)if(p.broadcast===id){p.close();this.peers.delete(k);this.meters.delete(k);}await this.api.rpc('broadcast_unwatch',{id}).catch(()=>{});await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-leave',broadcast:id,connectionID,epoch}).catch(()=>{});this.emit('removed',id);}
+ checkStart(epoch){if(this.closed||this.startEpoch!==epoch||this.api.session?.user?.id!==this.uid)throw new DOMException('화면공유 시작이 취소되었습니다.','AbortError');}
+ async startOnce(scope,epoch){
+  await this.stopCurrent();this.checkStart(epoch);
+  let platform='browser',nativeSignaling=false,stream=null,created=null;
+  try{
+   if(this.native){const p=await this.platform();platform=p.platform;nativeSignaling=p.nativeSignaling===true;}
+   this.checkStart(epoch);const q=nativeQuality(platform),transport=platform==='ios'?'replaykit':['windows','android'].includes(platform)?'native':'browser';
+   if(transport==='browser'){
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:q.width},height:{ideal:q.height},frameRate:{ideal:q.fps,max:q.fps}},audio:false});
+    this.checkStart(epoch);this.stream=stream;stream.getVideoTracks()[0].onended=()=>this.stop().catch(e=>this.error(e));
+   }
+   created=await this.api.rpc('broadcast_start',{scope_kind:scope.kind,scope_id:scope.id,transport,quality:q,attempt_id:uuid()});
+   this.checkStart(epoch);const b=this.broadcast={id:created.id,publisher:this.uid,scope,quality:q,transport,nativeSignaling,started:Date.now(),pending:transport==='replaykit'};
+   if(transport==='replaykit'){
+    await this.api.ensure();this.checkStart(epoch);await this.bridge.call('broadcastPrepare',{...b,url:this.api.config.url,key:this.api.config.key,accessToken:this.api.session.access_token,refreshToken:this.api.session.refresh_token,expiresAt:this.api.session.expires_at,uid:this.uid,iceServers:this.ice});this.checkStart(epoch);this.emit('picker',b);
+   }else if(transport==='native'){
+    await this.api.ensure();this.checkStart(epoch);await this.bridge.call('mediaStart',{id:b.id,quality:q,iceServers:this.ice,...(nativeSignaling?{scope,url:this.api.config.url,key:this.api.config.key,uid:this.uid}:{})});
+   }
+   this.checkStart(epoch);if(transport!=='replaykit'&&!nativeSignaling){const alive=await this.api.rpc('broadcast_touch',{id:b.id});if(!alive)throw new Error('다른 기기에서 화면공유가 시작되어 이 방송을 종료합니다.');}
+   this.checkStart(epoch);this.emit('broadcast',b);return b;
+  }catch(e){
+   for(const t of stream?.getTracks()??[]){t.onended=null;t.stop();}
+   await this.stopCurrent();if(created&&this.api.session?.user?.id===this.uid)await this.api.rpc('broadcast_stop',{id:created.id}).catch(()=>{});throw e;
+  }
+ }
+ async stop(){this.startEpoch=(this.startEpoch??0)+1;await this.stopCurrent();}
+ async stopCurrent(){
+  const b=this.broadcast;this.broadcast=null;
+  for(const t of this.stream?.getTracks()??[]){t.onended=null;t.stop();}this.stream=null;
+  for(const[k,p]of this.peers)if(p.sending){p.close();this.peers.delete(k);this.meters.delete(k);}
+  this.nativePeers.clear();this.emit('broadcast',null);
+  // A new start waits for the previous native stop, even after UI recovers.
+  const before=publisherOperations.get(this.bridge)??Promise.resolve();
+  this.publisherCleanup=before.then(async()=>{if(b)await Promise.allSettled([...(b.transport!=='browser'?[this.bridge.call('mediaStop',{id:b.id})]:[]),...(this.api.session?.user?.id===this.uid?[this.api.rpc('broadcast_stop',{id:b.id})]:[])]);});
+  publisherOperations.set(this.bridge,this.publisherCleanup);
+  await this.publisherCleanup;
+  if(publisherOperations.get(this.bridge)===this.publisherCleanup)publisherOperations.delete(this.bridge);
+ }
+ watch(b){
+  if(this.closed||b.publisher===this.uid||this.watching.has(b.id))return Promise.resolve();
+  if(this.joining.has(b.id))return this.joining.get(b.id);
+  const pending=[...this.joining.keys()].filter(id=>!this.watching.has(id)).length;
+  if(this.watching.size+pending>=(this.settings.maxReceive??4))return Promise.reject(new Error('동시 시청 제한에 도달했습니다. 설정에서 변경할 수 있습니다.'));
+  const key=this.uid+':'+b.id,prior=viewerOperations.get(key);
+  const task=(async()=>{
+   if(prior)await prior.catch(()=>{});if(this.closed)return;
+   await this.api.rpc('broadcast_watch',{id:b.id});
+   if(this.closed){if(this.api.session?.user?.id===this.uid)await this.api.rpc('broadcast_unwatch',{id:b.id}).catch(()=>{});return;}
+   this.watching.set(b.id,{broadcast:b,lastJoin:0,lastFrame:Date.now(),started:Date.now(),retries:0,frames:0});
+   try{await this.join(b);}catch(e){this.unwatch(b.id);throw e;}
+  })();
+  this.joining.set(b.id,task);viewerOperations.set(key,task);
+  const finish=()=>{this.joining.delete(b.id);if(viewerOperations.get(key)===task)viewerOperations.delete(key);};task.then(finish,finish);return task;
+ }
+ async join(b,recover){if(recover)this.emit('state',{id:b.id,state:'reconnecting'});if(b.transport==='replaykit')return this.viewerOffer(b,!!recover);const w=this.watching.get(b.id);if(!w)return;w.lastJoin=Date.now();await this.api.signal({kind:b.scope_kind,id:b.scope_id},b.publisher,{type:recover?'media-recover':'media-join',broadcast:b.id,...(recover??{})});}
+ async receiverPeer(b,connectionID){
+  const id='media:'+b.id+':'+this.uid,scope={kind:b.scope_kind,id:b.scope_id};
+  this.peers.get(id)?.close();this.peers.delete(id);
+  const p=this.make(id,b.publisher,scope,b.id);p.nativeConnection=connectionID;p.pc.onnegotiationneeded=null;
+  p.pc.onicecandidate=e=>{if(e.candidate)this.api.signal(scope,b.publisher,{type:'native-ice',broadcast:b.id,connectionID,candidate:e.candidate.toJSON()}).catch(e=>this.error(e));};return p;
+ }
+ async startNativeReceiver(b,connectionID,replayKit){
+  const previous=this.nativeReceivers.get(b.id);if(previous?.connectionID===connectionID)return;
+  if(previous)await this.bridge.call('mediaReceiveStop',{id:b.id});
+  const n={connectionID,stats:null,started:Date.now()};this.nativeReceivers.set(b.id,n);
+  try{await this.bridge.call('mediaReceiveStart',{id:b.id,viewerID:this.uid,connectionID,replayKit,iceServers:this.ice});if(!this.closed&&this.watching.has(b.id)&&this.nativeReceivers.get(b.id)===n)this.emit('track',{id:b.id,native:true,stream:null});}
+  catch(e){if(this.nativeReceivers.get(b.id)===n){this.nativeReceivers.delete(b.id);this.bridge.call('mediaReceiveStop',{id:b.id,connectionID}).catch(()=>{});}throw e;}
+ }
+ async viewerOffer(b,recover=false){
+  const w=this.watching.get(b.id);if(!w)return;w.lastJoin=Date.now();
+  const scope={kind:b.scope_kind,id:b.scope_id},id='media:'+b.id+':'+this.uid;
+  if((await this.platform()).nativeReceive){if(this.nativeReceivers.has(b.id)&&!recover)return;await this.startNativeReceiver(b,uuid(),true);return;}
+  const existing=this.peers.get(id);
+  if(existing&&!recover){if(existing.pc.localDescription)await this.api.signal(scope,b.publisher,{type:'native-receive-offer',broadcast:b.id,connectionID:existing.nativeConnection,sdp:existing.pc.localDescription.sdp});return;}
+  const connectionID=uuid(),p=await this.receiverPeer(b,connectionID);
+  selectCodecs(p.pc.addTransceiver('video',{direction:'recvonly'}),'h264');selectAudioCodecs(p.pc.addTransceiver('audio',{direction:'recvonly'}));
+  const offer=await p.pc.createOffer();await p.pc.setLocalDescription({type:'offer',sdp:tuneScreenOfferSDP(offer.sdp)});
+  await this.api.signal(scope,b.publisher,{type:'native-receive-offer',broadcast:b.id,connectionID,sdp:p.pc.localDescription.sdp});
+ }
+ unwatch(id){
+  const w=this.watching.get(id);if(!w)return Promise.resolve();
+  const connection=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending),connectionID=connection?.nativeConnection??this.nativeReceivers.get(id)?.connectionID,epoch=connection?.epoch;
+  this.watching.delete(id);const native=this.nativeReceivers.delete(id);this.early.delete(connectionID);
+  for(const[k,p]of this.peers)if(p.broadcast===id&&!p.sending){p.close();this.peers.delete(k);this.meters.delete(k);}
+  this.emit('removed',id);
+  // Never leave a black video, native overlay or fullscreen waiting on HTTP.
+  const pending=Promise.allSettled([...(native?[this.bridge.call('mediaReceiveStop',{id,connectionID})]:[]),this.api.rpc('broadcast_unwatch',{id}),this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-leave',broadcast:id,connectionID,epoch})]);
+  this.cleanup??=new Map();this.cleanup.set(id,pending);const key=this.uid+':'+id;viewerOperations.set(key,pending);pending.finally(()=>{if(this.cleanup.get(id)===pending)this.cleanup.delete(id);if(viewerOperations.get(key)===pending)viewerOperations.delete(key);});
+  return Promise.resolve();
+ }
+ failWatch(id,error){if(!this.watching.has(id))return;this.unwatch(id);this.emit('view-failed',{id,error});}
  async refreshAuth(){const b=this.broadcast;if(b?.publisher&&b.publisher!==this.uid){await this.stop();return;}if(!b||b.transport!=='replaykit')return;await this.bridge.call('broadcastRefresh',{...b,url:this.api.config.url,key:this.api.config.key,accessToken:this.api.session.access_token,refreshToken:this.api.session.refresh_token,expiresAt:this.api.session.expires_at,uid:this.uid,iceServers:this.ice});}
  async adjust(remote,quality,connectionID){const b=this.broadcast;if(!b)return;const q={...b.quality,mbps:Math.max(Math.min(8,b.quality.mbps),Math.min(b.quality.mbps,Number(quality?.mbps)||b.quality.mbps))};if(b.transport==='native'){if(this.nativePeers.get(remote)!==connectionID)return;await this.bridge.call('mediaQuality',{id:b.id,viewerID:remote,connectionID,quality:q});}else if(b.transport==='browser'){const p=this.peers.get('media:'+b.id+':'+remote);if(!p)return;for(const sender of p.pc.getSenders()){if(sender.track?.kind!=='video')continue;const par=sender.getParameters();if(!par.encodings?.length)continue;par.encodings[0].maxBitrate=q.mbps*1e6;par.encodings[0].maxFramerate=q.fps;par.encodings[0].scaleResolutionDownBy=1;await sender.setParameters(par);}}}
- async update(snapshot){this.snapshot=snapshot;if(this.native&&!this.broadcast&&snapshot.broadcasts.some(b=>b.publisher===this.uid)){const status=await this.bridge.call('mediaStatus');const own=snapshot.broadcasts.find(b=>b.id===status.id&&b.publisher===this.uid);if(status.active&&own){this.broadcast={id:own.id,publisher:own.publisher,transport:own.transport,scope:{kind:own.scope_kind,id:own.scope_id},quality:own.quality,nativeSignaling:status.nativeSignaling===true,started:Date.now(),seen:true,pending:false};for(const p of status.peers??[])this.nativePeers.set(p.viewerID,p.connectionID);this.emit('broadcast',this.broadcast);}}if(this.broadcast){if(snapshot.broadcasts.some(b=>b.id===this.broadcast.id)){this.broadcast.seen=true;this.broadcast.missing=0;}else if(this.broadcast.seen){this.broadcast.missing=(this.broadcast.missing??0)+1;if(this.broadcast.missing>=3)await this.stop();}}for(const[id]of this.watching)if(!snapshot.broadcasts.some(b=>b.id===id))await this.unwatch(id);for(const[k,p]of this.peers)if(p.sending&&(!this.broadcast||!viewerAllowed(p.remote,this.broadcast,snapshot))){p.close();this.peers.delete(k);}for(const[remote,cid]of this.nativePeers){if(this.broadcast&&!viewerAllowed(remote,this.broadcast,snapshot)){await this.bridge.call('mediaLeave',{id:this.broadcast.id,viewerID:remote,connectionID:cid});this.nativePeers.delete(remote);}}}
- make(id,remote,scope,broadcast,sending=false){let p=this.peers.get(id);if(p)return p;p=new Peer({id,remote,scope,api:this.api,iceServers:this.ice,polite:this.uid>remote});p.broadcast=broadcast;p.sending=sending;p.addEventListener('track',e=>{const track=e.detail.track;p.remoteStream??=e.detail.streams?.[0]??new MediaStream();if(!p.remoteStream.getTracks().some(t=>t.id===track.id))p.remoteStream.addTrack(track);this.emit('track',{id:broadcast,stream:p.remoteStream,track});});p.addEventListener('error',e=>this.error(e.detail));p.addEventListener('state',e=>this.emit('state',{id:broadcast,state:e.detail}));this.peers.set(id,p);this.meters.set(id,new QualityMeter());return p;}
- async handle(s){const v=s.payload,remote=s.sender,scope={kind:s.scope_kind,id:s.scope_kind==='friend'?remote:s.scope_id};if(this.broadcast?.nativeSignaling&&v.broadcast===this.broadcast.id&&['media-join','media-recover','media-leave','media-heartbeat','media-quality','native-answer','native-ice'].includes(v.type))return;if(v.type==='media-quality'&&this.broadcast?.id===v.broadcast){await this.adjust(remote,v.quality,v.connectionID);return;}if(v.type==='media-join'||v.type==='media-recover'){const b=this.broadcast;if(!b||b.id!==v.broadcast)return;if(b.transport==='replaykit')return;if(b.transport==='native'){await this.bridge.call(v.type==='media-recover'?'mediaRecover':'mediaJoin',{id:b.id,viewerID:remote,connectionID:v.connectionID});return;}const id='media:'+b.id+':'+remote;if(v.type==='media-recover'){const existing=this.peers.get(id);if(existing&&existing.epoch!==v.epoch)return;existing?.close();this.peers.delete(id);}const p=this.make(id,remote,b.scope,b.id,true);if(p.pc.getSenders().length===0)for(const t of this.stream.getTracks()){const sender=p.pc.addTrack(t,this.stream);if(t.kind==='video'){const par=sender.getParameters();if(par.encodings?.length){par.encodings[0].maxBitrate=b.quality.mbps*1e6;par.encodings[0].maxFramerate=b.quality.fps;await sender.setParameters(par);}}}return;}
+ async update(snapshot){this.snapshot=snapshot;if(this.native&&!this.starting&&!this.broadcast&&snapshot.broadcasts.some(b=>b.publisher===this.uid)){const status=await this.bridge.call('mediaStatus');const own=snapshot.broadcasts.find(b=>b.id===status.id&&b.publisher===this.uid);if(status.active&&own&&!this.starting&&!this.broadcast&&this.api.session?.user?.id===this.uid){this.broadcast={id:own.id,publisher:own.publisher,transport:own.transport,scope:{kind:own.scope_kind,id:own.scope_id},quality:own.quality,nativeSignaling:status.nativeSignaling===true,started:Date.now(),seen:true,pending:false};for(const p of status.peers??[])this.nativePeers.set(p.viewerID,p.connectionID);this.emit('broadcast',this.broadcast);}}if(this.broadcast){if(snapshot.broadcasts.some(b=>b.id===this.broadcast.id)){this.broadcast.seen=true;this.broadcast.missing=0;}else if(this.broadcast.seen){this.broadcast.missing=(this.broadcast.missing??0)+1;if(this.broadcast.missing>=3)await this.stop();}}for(const[id]of this.watching)if(!snapshot.broadcasts.some(b=>b.id===id))await this.unwatch(id);for(const[k,p]of this.peers)if(p.sending&&(!this.broadcast||!viewerAllowed(p.remote,this.broadcast,snapshot))){p.close();this.peers.delete(k);}for(const[remote,cid]of this.nativePeers){if(this.broadcast&&!viewerAllowed(remote,this.broadcast,snapshot)){await this.bridge.call('mediaLeave',{id:this.broadcast.id,viewerID:remote,connectionID:cid});this.nativePeers.delete(remote);}}}
+ make(id,remote,scope,broadcast,sending=false){let p=this.peers.get(id);if(p)return p;p=new Peer({id,remote,scope,api:this.api,iceServers:this.ice,polite:this.uid>remote});p.broadcast=broadcast;p.sending=sending;p.transformOffer=sending?tuneDesktopSDP:null;p.addEventListener('track',e=>{const track=e.detail.track;try{if(e.detail.receiver&&'jitterBufferTarget'in e.detail.receiver)e.detail.receiver.jitterBufferTarget=this.watching.get(broadcast)?.broadcast.transport==='replaykit'?750:500;}catch{}p.remoteStream??=e.detail.streams?.[0]??new MediaStream();if(!p.remoteStream.getTracks().some(t=>t.id===track.id))p.remoteStream.addTrack(track);this.emit('track',{id:broadcast,stream:p.remoteStream,track});});p.addEventListener('error',e=>this.error(e.detail));p.addEventListener('state',e=>this.emit('state',{id:broadcast,state:e.detail}));this.peers.set(id,p);this.meters.set(id,new QualityMeter());return p;}
+ async handle(s){const v=s.payload,remote=s.sender,scope={kind:s.scope_kind,id:s.scope_kind==='friend'?remote:s.scope_id};if(this.broadcast?.nativeSignaling&&v.broadcast===this.broadcast.id&&['media-join','media-recover','media-leave','media-heartbeat','media-quality','native-answer','native-ice'].includes(v.type))return;if(v.type==='media-quality')return;if(v.type==='media-join'||v.type==='media-recover'){const b=this.broadcast;if(!b||b.id!==v.broadcast)return;if(b.transport==='replaykit')return;if(b.transport==='native'){await this.bridge.call(v.type==='media-recover'?'mediaRecover':'mediaJoin',{id:b.id,viewerID:remote,connectionID:v.connectionID});return;}const id='media:'+b.id+':'+remote;if(v.type==='media-recover'){const existing=this.peers.get(id);if(existing&&existing.epoch!==v.epoch)return;existing?.close();this.peers.delete(id);}const p=this.make(id,remote,b.scope,b.id,true);if(p.pc.getSenders().length===0)for(const t of this.stream.getTracks()){const sender=p.pc.addTrack(t,this.stream);if(t.kind==='video')await applySenderPolicy(sender);}return;}
   if(v.type==='media-leave'){if(this.broadcast?.id!==v.broadcast)return;if(this.broadcast.transport==='native'){if(v.connectionID!==this.nativePeers.get(remote))return;await this.bridge.call('mediaLeave',{id:v.broadcast,viewerID:remote,connectionID:v.connectionID});this.nativePeers.delete(remote);}const id='media:'+v.broadcast+':'+remote;const existing=this.peers.get(id);if(existing&&existing.remoteEpoch!==v.epoch)return;existing?.close();this.peers.delete(id);return;}
   if(v.type==='media-heartbeat'&&this.broadcast?.id===v.broadcast&&this.broadcast.transport==='native'){await this.bridge.call('mediaHeartbeat',{id:v.broadcast,viewerID:remote,connectionID:v.connectionID,fps:v.fps,framesDecoded:v.framesDecoded});return;}
-  if(v.type==='native-offer'){const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote)return;const id='media:'+v.broadcast+':'+this.uid;let p=this.peers.get(id);if(p?.nativeConnection===v.connectionID){if(p.pc.localDescription)await this.api.signal(scope,remote,{type:'native-answer',broadcast:v.broadcast,connectionID:v.connectionID,sdp:p.pc.localDescription.sdp});return;}if(p){p.close();this.peers.delete(id);}p=this.make(id,remote,scope,v.broadcast);p.nativeConnection=v.connectionID;p.pc.onicecandidate=e=>{if(e.candidate)this.api.signal(scope,remote,{type:'native-ice',broadcast:v.broadcast,connectionID:v.connectionID,candidate:e.candidate.toJSON()}).catch(e=>this.error(e));};await p.pc.setRemoteDescription({type:'offer',sdp:v.sdp});preferScreenCodec(p.pc);for(const c of this.early.get(v.connectionID)??[])await p.pc.addIceCandidate(c).catch(e=>this.error(e));this.early.delete(v.connectionID);await p.pc.setLocalDescription(await p.pc.createAnswer());await this.api.signal(scope,remote,{type:'native-answer',broadcast:v.broadcast,connectionID:v.connectionID,sdp:p.pc.localDescription.sdp});return;}
-  if(v.type==='native-answer'||v.type==='native-ice'){if(this.broadcast?.id===v.broadcast&&this.broadcast.transport==='native'){await this.bridge.call(v.type==='native-answer'?'mediaAnswer':'mediaIce',{id:v.broadcast,viewerID:remote,connectionID:v.connectionID,sdp:v.sdp,...v.candidate});return;}const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote||v.type!=='native-ice')return;const p=this.peers.get('media:'+v.broadcast+':'+this.uid);if(p?.nativeConnection===v.connectionID&&p.pc.remoteDescription)await p.pc.addIceCandidate(v.candidate).catch(e=>this.error(e));else{const q=this.early.get(v.connectionID)??[];if(q.length<128)q.push(v.candidate);this.early.set(v.connectionID,q);}return;}
+  if(v.type==='native-offer'){
+   const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote||w.broadcast.transport==='replaykit')return;
+   if((await this.platform()).nativeReceive){await this.startNativeReceiver(w.broadcast,v.connectionID,false);await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:v});for(const candidate of this.early.get(v.connectionID)??[])await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:{type:'native-ice',connectionID:v.connectionID,candidate}});this.early.delete(v.connectionID);return;}
+   const id='media:'+v.broadcast+':'+this.uid;let p=this.peers.get(id);
+   if(p?.nativeConnection===v.connectionID){if(p.pc.localDescription)await this.api.signal(scope,remote,{type:'native-answer',broadcast:v.broadcast,connectionID:v.connectionID,sdp:p.pc.localDescription.sdp});return;}
+   p=await this.receiverPeer(w.broadcast,v.connectionID);await p.pc.setRemoteDescription({type:'offer',sdp:v.sdp});preferScreenCodec(p.pc);
+   for(const c of this.early.get(v.connectionID)??[])await p.pc.addIceCandidate(c).catch(e=>this.error(e));this.early.delete(v.connectionID);
+   await p.pc.setLocalDescription(await p.pc.createAnswer());await this.api.signal(scope,remote,{type:'native-answer',broadcast:v.broadcast,connectionID:v.connectionID,sdp:p.pc.localDescription.sdp});return;
+  }
+  if(v.type==='native-receive-answer'){
+   const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote||w.broadcast.transport!=='replaykit')return;
+   const n=this.nativeReceivers.get(v.broadcast);if(n?.connectionID===v.connectionID){await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:v});return;}
+   const p=this.peers.get('media:'+v.broadcast+':'+this.uid);if(!p||p.nativeConnection!==v.connectionID||p.pc.remoteDescription)return;
+   await p.pc.setRemoteDescription({type:'answer',sdp:v.sdp});for(const c of this.early.get(v.connectionID)??[])await p.pc.addIceCandidate(c).catch(e=>this.error(e));this.early.delete(v.connectionID);return;
+  }
+  if(v.type==='native-answer'||v.type==='native-ice'){if(this.broadcast?.id===v.broadcast&&this.broadcast.transport==='native'){await this.bridge.call(v.type==='native-answer'?'mediaAnswer':'mediaIce',{id:v.broadcast,viewerID:remote,connectionID:v.connectionID,sdp:v.sdp,...v.candidate});return;}const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote||v.type!=='native-ice')return;const n=this.nativeReceivers.get(v.broadcast);if(n?.connectionID===v.connectionID){await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:v});return;}const p=this.peers.get('media:'+v.broadcast+':'+this.uid);if(p?.nativeConnection===v.connectionID&&p.pc.remoteDescription)await p.pc.addIceCandidate(v.candidate).catch(e=>this.error(e));else{if(this.early.size>=16&&!this.early.has(v.connectionID))this.early.delete(this.early.keys().next().value);const q=this.early.get(v.connectionID)??[];if(q.length<128)q.push(v.candidate);this.early.set(v.connectionID,q);}return;}
   if(v.type==='rtc'&&v.peer.startsWith('media:')){const parts=v.peer.split(':'),bid=parts[1],viewer=parts[2];const w=this.watching.get(bid);if(w?.broadcast.publisher===remote&&viewer===this.uid){await this.make(v.peer,remote,scope,bid).receive(v);}else if(this.broadcast?.id===bid&&viewer===remote&&this.broadcast.transport==='browser'){const p=this.peers.get(v.peer);if(p)await p.receive(v);}return;}
  }
- async nativeEvent(m){try{const b=this.broadcast;if(!b)return;if(m.type==='rtp-signal'&&m.session===b.id){this.nativePeers.set(m.viewerID,m.connectionID);const v=m.kind==='offer'?{type:'native-offer',broadcast:b.id,connectionID:m.connectionID,sdp:m.payload.sdp}:{type:'native-ice',broadcast:b.id,connectionID:m.connectionID,candidate:m.payload};await this.api.signal(b.scope,m.viewerID,v);}if(m.type==='media-signal'&&m.id===b.id){this.nativePeers.set(m.viewerID,m.payload.connectionID);if(!b.nativeSignaling)await this.api.signal(b.scope,m.viewerID,m.payload);}if(m.type==='rtp-metrics'&&m.session===b.id||m.type==='media-metrics'&&m.id===b.id)this.emit('diagnostics',redact(m));if(m.type==='media-peer-error'&&m.id===b.id)this.error(new Error(m.error??'화면공유 연결 오류'));if(m.type==='media-ended'&&m.id===b.id||m.type==='rtp-status'&&m.session===b.id&&m.state==='error'){if(m.error)this.error(new Error(m.error));await this.stop();}}catch(e){this.error(e);}}
- async tick(){const b=this.broadcast;if(b?.transport==='replaykit'){const status=await this.bridge.call('mediaStatus');if(status.active&&status.id===b.id){if(b.pending){b.pending=false;this.emit('broadcast',b);}}else if(!b.pending||Date.now()-b.started>45000)await this.stop();}if(b&&b.transport!=='replaykit'&&!b.nativeSignaling){const alive=await this.api.rpc('broadcast_touch',{id:b.id});if(!alive)await this.stop();}for(const[id,w]of this.watching){let p=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending);if(!p){if(Date.now()-w.lastJoin>5000)await this.join(w.broadcast);continue;}try{const stats=this.meters.get(p.id).measure(await p.pc.getStats(),p.pc.connectionState);if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;}w.frames=stats.frames;this.emit('quality',{id,stats,grade:qualityGrade(stats)});const q=w.adaptive.sample(stats)??(Date.now()-(w.lastQualitySent??0)>10000?w.adaptive.current:null);if(q){w.lastQualitySent=Date.now();await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-quality',broadcast:id,connectionID:p.nativeConnection,quality:q});}if(p.nativeConnection)await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-heartbeat',broadcast:id,connectionID:p.nativeConnection,fps:stats.fps,framesDecoded:stats.frames});if((p.pc.connectionState==='failed'||(p.pc.connectionState==='disconnected'||stats.stalled)&&Date.now()-w.lastFrame>15000)&&Date.now()-w.lastJoin>Math.min(30000,3000*2**w.retries)){p.close();this.peers.delete(p.id);this.reconnects++;w.retries++;await this.join(w.broadcast,{connectionID:p.nativeConnection,epoch:p.remoteEpoch});}}catch(e){this.error(e);}}}
- close(){clearInterval(this.timer);this.bridge.removeEventListener('event',this.nativeListener);for(const p of this.peers.values())p.close();this.peers.clear();this.broadcast=null;}
+ async nativeEvent(m){try{
+  if(m.type==='media-receiver-signal'||m.type==='media-receiver-stats'){
+   const w=this.watching.get(m.id),n=this.nativeReceivers.get(m.id);if(!w||!n||n.connectionID!==m.connectionID)return;
+   if(m.type==='media-receiver-stats'){n.stats=m.stats;this.emit('state',{id:m.id,state:m.stats?.state});this.emit('diagnostics',redact(m));return;}
+   const payload=m.payload??{};const type=m.kind==='viewer-offer'?'native-receive-offer':m.kind==='ice'?'native-ice':'native-answer';
+   if(m.kind==='answer'&&!payload.sdp)return;
+   await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type,broadcast:m.id,connectionID:m.connectionID,...(m.kind==='ice'?{candidate:payload}:{sdp:payload.sdp})});return;
+  }
+  const b=this.broadcast;if(!b)return;if(m.type==='rtp-signal'&&m.session===b.id){this.nativePeers.set(m.viewerID,m.connectionID);const v=m.kind==='offer'?{type:'native-offer',broadcast:b.id,connectionID:m.connectionID,sdp:m.payload.sdp}:{type:'native-ice',broadcast:b.id,connectionID:m.connectionID,candidate:m.payload};await this.api.signal(b.scope,m.viewerID,v);}if(m.type==='media-signal'&&m.id===b.id){this.nativePeers.set(m.viewerID,m.payload.connectionID);if(!b.nativeSignaling)await this.api.signal(b.scope,m.viewerID,m.payload);}if(m.type==='rtp-metrics'&&m.session===b.id||m.type==='media-metrics'&&m.id===b.id)this.emit('diagnostics',redact(m));if(m.type==='media-peer-error'&&m.id===b.id)this.error(new Error(m.error??'화면공유 연결 오류'));if(m.type==='media-ended'&&m.id===b.id||m.type==='rtp-status'&&m.session===b.id&&m.state==='error'){if(m.error)this.error(new Error(m.error));if(this.broadcast===b)await this.stop();}}catch(e){this.error(e);}}
+ async tick(){if(this.closed||this.ticking)return;this.ticking=true;try{await this.tickOnce();}finally{this.ticking=false;}}
+ async tickOnce(){const b=this.broadcast;if(b?.transport==='replaykit'){const status=await this.bridge.call('mediaStatus');if(status.active&&status.id===b.id){if(b.pending){b.pending=false;this.emit('broadcast',b);}}else if(this.broadcast===b&&(!b.pending||Date.now()-b.started>45000))await this.stop();}if(b&&b.transport!=='replaykit'&&!b.nativeSignaling){const alive=await this.api.rpc('broadcast_touch',{id:b.id});if(!alive&&this.broadcast===b)await this.stop();}for(const[id,w]of this.watching){if(this.closed||this.watching.get(id)!==w)continue;if(w.retries>=2&&Date.now()-w.lastFrame>20000){this.failWatch(id,new Error('영상 연결을 복구하지 못했습니다. 다시 시청해 주세요.'));continue;}const n=this.nativeReceivers.get(id);if(n){await this.tickNative(id,w,n);continue;}let p=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending);if(!p){if(Date.now()-w.lastJoin>5000){if(Date.now()-w.started>20000)w.retries++;await this.join(w.broadcast);}continue;}try{const stats=this.meters.get(p.id).measure(await p.pc.getStats(),p.pc.connectionState);if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;}w.frames=stats.frames;this.emit('quality',{id,stats,grade:qualityGrade(stats)});if(p.nativeConnection)await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-heartbeat',broadcast:id,connectionID:p.nativeConnection,fps:stats.fps,framesDecoded:stats.frames});if((p.pc.connectionState==='failed'||(p.pc.connectionState==='disconnected'||stats.stalled||stats.frames===0)&&Date.now()-w.lastFrame>20000)&&Date.now()-w.lastJoin>Math.min(30000,3000*2**w.retries)){p.close();this.peers.delete(p.id);this.reconnects++;w.retries++;w.lastFrame=Date.now();await this.join(w.broadcast,{connectionID:p.nativeConnection,epoch:p.remoteEpoch});}}catch(e){this.error(e);}}}
+ async tickNative(id,w,n){
+  const stats=n.stats??{active:true,state:'connecting',frames:0,fps:0};
+  if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;}w.frames=stats.frames;
+  this.emit('quality',{id,stats,grade:qualityGrade(stats)});
+  await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type:'media-heartbeat',broadcast:id,connectionID:n.connectionID,fps:stats.fps,framesDecoded:stats.frames});
+  if((stats.state==='failed'||(stats.state==='disconnected'||stats.stalled||stats.frames===0)&&Date.now()-w.lastFrame>20000)&&Date.now()-w.lastJoin>Math.min(30000,3000*2**w.retries)){
+   this.emit('state',{id,state:'reconnecting'});this.nativeReceivers.delete(id);await this.bridge.call('mediaReceiveStop',{id,connectionID:n.connectionID}).catch(()=>{});if(this.watching.get(id)!==w)return;w.retries++;this.reconnects++;w.lastFrame=Date.now();await this.join(w.broadcast,{connectionID:n.connectionID});
+  }
+ }
+ close(){this.startEpoch=(this.startEpoch??0)+1;this.closed=true;clearInterval(this.timer);for(const id of [...this.watching.keys()])this.unwatch(id);for(const t of this.stream?.getTracks()??[]){t.onended=null;t.stop();}this.stream=null;for(const[id]of this.nativeReceivers)this.bridge.call('mediaReceiveStop',{id}).catch(()=>{});this.nativeReceivers.clear();this.bridge.removeEventListener('event',this.nativeListener);for(const p of this.peers.values())p.close();this.peers.clear();this.broadcast=null;}
 }
 
 
 
 
 const CHUNK=16*1024-8,WINDOW=8*CHUNK,MAX_BUFFER=512*1024;
-const validOffer=v=>/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v?.id??'')&&typeof v.name==='string'&&v.name.length<=256&&Number.isSafeInteger(v.size)&&v.size>=0&&v.size<=16*1024**4&&(v.sha256===undefined||/^[0-9a-f]{64}$/.test(v.sha256));
+const validOffer=v=>/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v?.id??'')&&typeof v.name==='string'&&v.name.length<=256&&Number.isSafeInteger(v.size)&&v.size>=0&&v.size<=MAX_FILE_BYTES&&(v.sha256===undefined||/^[0-9a-f]{64}$/.test(v.sha256));
 const validCheckpoint=(s,offset)=>s?.bytes===offset&&Array.isArray(s.h)&&s.h.length===8&&s.h.every(n=>Number.isInteger(n)&&n>=0&&n<=0xffffffff)&&Array.isArray(s.tail)&&s.tail.length===offset%64&&s.tail.every(n=>Number.isInteger(n)&&n>=0&&n<=255);
 const terminal=r=>['complete','cancelled','rejected'].includes(r.state);
 const integrityError=message=>Object.assign(new Error(message),{code:'integrity'});
@@ -213,8 +685,9 @@ class Transfers extends EventTarget {
  get uid(){return this.api.session.user.id;}
  emit(r){const dt=Math.max(.001,(Date.now()-(r.speedAt??Date.now()))/1000),speed=Math.max(0,r.offset-(r.speedOffset??r.offset))/dt;this.dispatchEvent(new CustomEvent('change',{detail:{...r,speed,eta:speed?(r.size-r.offset)/speed:null}}));}
  async save(r){r.updated=Date.now();const{onAck,...durable}=r;await this.ledger.set('transfer:'+r.id,durable);this.emit(r);}
- async init(){for(const r of await this.ledger.all())if(r?.id&&r?.direction&&r.owner===this.uid){if(['transferring','verifying','accepted'].includes(r.state)){r.state='paused';r.pauseReason='network';}this.records.set(r.id,r);}}
+ async init(){for(const r of await this.ledger.all())if(r?.id&&r?.direction&&r.owner===this.uid){if(['transferring','verifying','accepted'].includes(r.state)){r.state='paused';r.pauseReason='network';}if(r.size>MAX_FILE_BYTES&&!terminal(r)){r.state='failed';r.retryable=false;r.error='대용량 전송은 더 이상 지원하지 않습니다. 최대 100MiB 파일을 선택하세요.';}this.records.set(r.id,r);}}
  async offer(peer,scope,source,options={}){
+  if(!Number.isSafeInteger(source?.size)||source.size<0||source.size>MAX_FILE_BYTES)throw new Error('파일은 최대 100MiB까지 보낼 수 있습니다.');
   if(options.deduplicate??true){const prior=[...this.records.values()].filter(r=>r.direction==='send'&&r.peer===peer&&r.state==='complete'&&r.size===source.size&&r.name===safeName(source.name)&&r.hash);if(prior.length){const hash=await this.disk.hash(source.id),same=prior.find(r=>r.hash===hash);if(same)return{...same,duplicate:true};}}
   const sourceHash=await this.disk.hash(source.id);const r={id:uuid(),owner:this.uid,sourceHash,peer,scope,sourceId:source.id,name:safeName(source.name),size:source.size,modified:source.modified??0,direction:'send',state:'offered',offset:0,hashState:new SHA256().snapshot(),deduplicate:options.deduplicate??true,attempt:uuid()};this.records.set(r.id,r);await this.save(r);await this.announce(r);return r;
  }
@@ -340,6 +813,91 @@ class DiagnosticLog {
 
 
 
+// One store per signed-in UID. Network retries reuse client_id, so a delayed
+// reply cannot duplicate a sent message or write into the next user's ledger.
+class DirectMessages extends EventTarget {
+ constructor(api,ledger,uid){super();Object.assign(this,{api,ledger,uid});this.threads={};this.views={};this.historyEnd={};this.unread={};this.cursor=0;this.revision=0;this.savedRevision=0;this.queue=Promise.resolve();this.requests=new Map();this.active=null;this.closed=false;}
+ async init(){const saved=await this.ledger.get('dm:'+this.uid);if(saved){this.threads=saved.threads??{};this.unread=saved.unread??{};this.cursor=saved.cursor??0;}for(const list of Object.values(this.threads))for(const m of list)if(m.status==='sending')m.status='failed';}
+ view(peer){return this.views[peer]??this.list(peer);}
+ latest(peer){delete this.views[peer];this.changed(peer);}
+ list(peer){return this.threads[peer]??[];}
+ changed(peer){this.revision++;this.dispatchEvent(new CustomEvent('change',{detail:{peer}}));this.scheduleSave();}
+ scheduleSave(){if(this.saveTimer||this.closed)return;this.saveTimer=setTimeout(()=>{this.saveTimer=null;this.flush().catch(e=>this.dispatchEvent(new CustomEvent('error',{detail:e})));},150);}
+ async flush(){clearTimeout(this.saveTimer);this.saveTimer=null;const work=this.queue.then(async()=>{if(this.savedRevision===this.revision)return;const rev=this.revision;await this.ledger.set('dm:'+this.uid,structuredClone({threads:this.threads,unread:this.unread,cursor:this.cursor}));this.savedRevision=rev;});this.queue=work.catch(()=>{});await work;}
+ merge(rows){
+  const touched=new Set();
+  for(const row of rows??[]){
+   if(!row?.id||typeof row.text!=='string'||row.text.length>2000||![row.sender,row.recipient].includes(this.uid))continue;
+   const peer=row.sender===this.uid?row.recipient:row.sender,list=this.list(peer),index=list.findIndex(m=>m.id===row.id||m.client_id===row.client_id&&m.sender===row.sender);
+   const next={...row,status:'sent'},previous=index<0?null:list[index];
+   this.cursor=Math.max(this.cursor,Number(row.seq)||0);
+   if(previous?.id===next.id&&previous.status==='sent')continue;
+   if(index<0){list.push(next);if(row.recipient===this.uid&&peer!==this.active)this.unread[peer]=(this.unread[peer]??0)+1;}else list[index]=next;
+   list.sort((a,b)=>Date.parse(a.created_at)-Date.parse(b.created_at)||(Number(a.seq)||0)-(Number(b.seq)||0));
+   this.threads[peer]=list.slice(-200);touched.add(peer);
+  }
+  for(const peer of touched)this.changed(peer);
+ }
+ select(peer){this.active=peer;if(this.unread[peer]){this.unread[peer]=0;this.changed(peer);}}
+ async history(peer,before){
+  if(this.closed)return;const key=peer+':'+(before??'latest');if(this.requests.has(key))return this.requests.get(key);
+  const task=(async()=>{const rows=await this.api.rpc('dm_history',{target:peer,limit:50,...(before?{before}:{})});if(!this.closed){this.merge(rows);this.historyEnd[peer]=rows.length<50;if(before&&rows.length){const unique=new Map([...rows,...this.view(peer)].map(m=>[m.id??m.client_id,{...m,status:m.status??'sent'}]));this.views[peer]=[...unique.values()].sort((a,b)=>Date.parse(a.created_at)-Date.parse(b.created_at)).slice(0,200);this.changed(peer);}}return rows;})();
+  this.requests.set(key,task);try{return await task;}finally{this.requests.delete(key);}
+ }
+ async send(peer,text,clientID=uuid()){
+  if(this.closed)throw new Error('대화를 다시 열어주세요.');text=text.trim();if(!text||text.length>2000)throw new Error('메시지는 1–2000자로 입력하세요.');
+  const list=this.list(peer),existing=list.find(m=>m.client_id===clientID&&m.sender===this.uid);
+  if(existing?.status==='sent')return existing;if(existing?.status==='sending')return;
+  const row=existing??{client_id:clientID,sender:this.uid,recipient:peer,text,created_at:new Date().toISOString()};row.status='sending';row.error=null;
+  if(!existing){list.push(row);this.threads[peer]=list.slice(-200);}this.changed(peer);await this.flush();
+  try{const result=await this.api.rpc('dm_send',{target:peer,client_id:clientID,text:row.text});if(!this.closed)this.merge([result]);return result;}
+  catch(e){if(!this.closed&&row.status!=='sent'){row.status='failed';row.error=e.message;this.changed(peer);}throw e;}
+ }
+ close(){this.closed=true;clearTimeout(this.saveTimer);return this.flush();}
+}
+
+// Native video overlays use the original video bounds, plus a local clipping
+// mask. Clipping the bounds themselves would stretch the Metal video surface.
+function clipVideoBounds(rect,bounds){
+ let left=rect.left,top=rect.top,right=rect.right,bottom=rect.bottom;
+ for(const b of bounds){left=Math.max(left,b.left);top=Math.max(top,b.top);right=Math.min(right,b.right);bottom=Math.min(bottom,b.bottom);}
+ return{clipX:Math.max(0,left-rect.left),clipY:Math.max(0,top-rect.top),clipWidth:Math.max(0,right-left),clipHeight:Math.max(0,bottom-top)};
+}
+function resetVideoFullscreen(doc,bridge){
+ const viewing=doc.querySelector('#viewing');viewing?.classList.remove('native-fullscreen');
+ for(const card of doc.querySelectorAll('.video-card.focused'))card.classList.remove('focused');
+ if(doc.fullscreenElement)doc.exitFullscreen?.().catch(()=>{});
+ for(const video of doc.querySelectorAll('#videos video'))if(video.webkitDisplayingFullscreen)video.webkitExitFullscreen?.();
+ if(bridge.native)bridge.call('fullscreen',{enabled:false}).catch(()=>{});
+}
+
+// Small, bundled SVG controls: no remote font or image dependency.
+const iconPaths={
+ friends:['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2','M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8','M22 21v-2a4 4 0 0 0-3-3.87','M16 3.13a4 4 0 0 1 0 7.75'],
+ message:['M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5A8.5 8.5 0 0 1 9.5 3H12a9 9 0 0 1 9 8.5','M7 9h8','M7 13h6'],
+ screen:['M3 4h18v12H3z','M8 21h8','M12 16v5','M8 10l4-4 4 4','M12 6v7'],
+ files:['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z','M14 2v6h6','M8 13h8','M8 17h6'],
+ settings:['M9.5 3h5l.6 2.4 2.1 1.2 2.4-.7 2.5 4.3-1.8 1.7v2.4l1.8 1.7-2.5 4.3-2.4-.7-2.1 1.2-.6 2.4h-5l-.6-2.4-2.1-1.2-2.4.7-2.5-4.3 1.8-1.7v-2.4L2 9.5l2.5-4.3 2.4.7L9 4.7z','M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
+ user:['M20 21v-2a7 7 0 0 0-14 0v2','M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+ members:['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2','M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8','M20 8v6','M17 11h6'],
+ menu:['M4 6h16','M4 12h16','M4 18h16'],more:['M5 12h.01','M12 12h.01','M19 12h.01'],
+ chevron:['M6 9l6 6 6-6'],plus:['M12 5v14','M5 12h14'],close:['M6 6l12 12','M6 18 18 6'],
+ send:['M22 2 9 15','M22 2-7 20-4-9-9-4z'],search:['M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16','M17 17l5 5'],
+ leave:['M9 3H4v18h5','M10 12h12','M18 8l4 4-4 4'],hash:['M4 9h16','M3 15h16','M10 3 6 21','M18 3l-4 18'],
+ full:['M8 3H3v5','M16 3h5v5','M21 16v5h-5','M8 21H3v-5'],stop:['M6 6h12v12H6z'],
+ check:['M20 6 9 17l-5-5']
+};
+function icon(name,size=20){
+ const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+ for(const[k,v]of Object.entries({viewBox:'0 0 24 24',width:size,height:size,fill:'none',stroke:'currentColor','stroke-width':1.8,'stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false',class:'ui-icon'}))svg.setAttribute(k,v);
+ for(const d of iconPaths[name]??iconPaths.message){const path=document.createElementNS(ns,'path');path.setAttribute('d',d);svg.append(path);}return svg;
+}
+
+
+
+
+
+
 
 
 
@@ -349,10 +907,12 @@ class DiagnosticLog {
 const $=s=>document.querySelector(s), bridge=new Bridge(), ledger=new Ledger();
 const api=new API(config,bridge,ledger), disk=new DiskFiles(bridge);
 const emptySnapshot=()=>({friends:[],servers:[],channels:[],members:[],sessions:[],broadcasts:[],blocks:[],signals:[]});
-let media,files,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
+let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
-let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},uiKey='',searchDraft='';
-let verification={type:'email',reset:false},nativeFullscreen=false,chatSave=Promise.resolve();
+let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
+let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
+let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve();const authReturns=new Set();
+let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
 const avatarCache=new Map(),autoWatchDisabled=new Set(),autoWatchAttempt=new Map();
 
 function el(tag,text=null,attrs={}){
@@ -362,17 +922,27 @@ function el(tag,text=null,attrs={}){
 }
 function button(text,action,id,attrs={}){
  const danger=['server-leave','server-delete','channel-delete','friend-remove','block','file-cancel','file-reject'].includes(action);
- return el('button',text,{type:'button','data-action':action,...(id?{'data-id':id}:{}),...attrs,class:[attrs.class??'',danger?'danger':''].filter(Boolean).join(' ')});
+ const n=el('button',null,{type:'button','data-action':action,...(id?{'data-id':id}:{}),...attrs,class:[attrs.class??'',danger?'danger':''].filter(Boolean).join(' ')});
+ const glyph={'friend':'message','friend-menu':'more','server-settings':'chevron','session-request':'screen','friend-file':'files','watch':'screen','unwatch':'stop','fullscreen':'full','profile':'user','end-session':'leave'}[action];
+ if(text!==null){if(glyph)n.append(icon(glyph,18));if(!['friend-menu','server-settings'].includes(action))n.append(el('span',text,{class:'button-label'}));}return n;
 }
+function setButtonLabel(n,text,glyph){n.replaceChildren(...(glyph?[icon(glyph,18)]:[]),el('span',text,{class:'button-label'}));}
 function error(e){
  let text=e.message??String(e);
+ if(e.name==='AbortError'&&/화면공유/.test(text))return;
+ if(e.code==='email_address_not_authorized'||/Email address not authorized/i.test(text))text='이메일 발송이 제한되어 있어요. 프로젝트 소유자가 Supabase의 SMTP 설정을 확인해야 합니다.';
+ if(e.status===429||/rate limit|over_email_send_rate_limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 인증 메일을 다시 요청하세요.';
+ if(/manual linking|manual_linking_disabled/i.test(text))text='기존 계정에 Google을 연결하려면 Supabase에서 Manual Linking을 활성화해야 합니다.';
+ if(/provider.*(disabled|not enabled)|Unsupported provider/i.test(text))text='Google 로그인이 아직 설정되지 않았어요. Supabase의 Google 제공자 설정을 확인하세요.';
+ if(e.code==='otp_expired'||/Token has expired|invalid.*otp/i.test(text))text='인증 코드가 만료되었거나 일치하지 않아요. 메일을 다시 요청하세요.';
  if(/Anonymous sign-ins are disabled/i.test(text))text='ID로 시작하려면 익명 인증을 활성화해야 합니다. 이메일 계정 만들기는 익명 인증 없이 사용할 수 있어요.';
- if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 소스에 포함된 backend/001_solaris.sql을 Supabase SQL Editor에서 실행하세요.';
- log?.record('error',{message:text});$('#error').textContent=text;$('#error').hidden=false;
+ if(/Unknown action.*dm_|Unknown Solaris action|Unknown action/i.test(text))text='개인 메시지 업데이트가 필요합니다. Supabase SQL Editor에서 backend/003_build60_dm.sql을 실행하세요.';
+ if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 처음 설정하는 프로젝트는 backend/001_solaris.sql을 실행하세요. 이미 사용 중인 DB는 테이블을 삭제하거나 001을 재실행하지 말고 빌드61 안내의 업데이트 SQL과 스키마 새로고침을 확인하세요.';
+ text=String(text).replace(/https?:\/\/\S+/g,'[주소 숨김]');log?.record('error',{message:text});$('#error').replaceChildren(el('span',text),button('닫기','dismiss-error',null,{'aria-label':'오류 안내 닫기'}));$('#error').hidden=false;
 }
 async function run(fn,control){
- try{$('#error').hidden=true;if(control)control.disabled=true;await fn();}
- catch(e){error(e);}finally{if(control?.isConnected)control.disabled=false;}
+ try{$('#error').hidden=true;if(control){control.disabled=true;control.setAttribute('aria-busy','true');}await fn();}
+ catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');}}
 }
 function identity(p={},online){
  const wrap=el('div',null,{class:'row'}),avatar=el('span',null,{class:'avatar-wrap'});
@@ -381,11 +951,12 @@ function identity(p={},online){
  info.append(el('strong',p.nickname??'참여자'),el('div','@'+(p.user_id??''),{class:'muted'}));wrap.append(avatar,info);
  if(p.avatar_path){
   const path=p.avatar_path,load=avatarCache.get(path)??api.avatarURL(path).catch(()=>null);avatarCache.set(path,load);
-  Promise.resolve(load).then(url=>{if(url&&wrap.isConnected)av.replaceWith(el('img',null,{src:url,class:'avatar',alt:(p.nickname??'사용자')+' 프로필'}));});
+  Promise.resolve(load).then(url=>{if(url&&av.isConnected)av.replaceWith(el('img',null,{src:url,class:'avatar',alt:(p.nickname??'사용자')+' 프로필'}));});
  }
  return wrap;
 }
 function modal(title,body){
+ $('#dialog').classList.toggle('profile-dialog',body.classList.contains('profile-settings')||body.classList.contains('profile-card'));
  $('#dialog-content').replaceChildren(el('h1',title),body);if(!$('#dialog').open)$('#dialog').showModal();
 }
 function confirmAction(title,text){
@@ -408,22 +979,53 @@ function formModal(title,id,fields,submitText,data={}){
  form.querySelector('input')?.focus();
 }
 function showAuth(mode='login',status=''){
- $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#onboarding-status').textContent=status;
+ $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#mobile-tabs').hidden=true;$('#onboarding-status').textContent=status;
  const active=mode==='signup'?'email-register':mode==='quick'||mode==='claim'?'register':mode==='recover'||mode==='reset'?'recover':mode==='verify'?'verify':'login';
  for(const f of $('#onboarding').querySelectorAll('form'))f.hidden=f.id!==active;
  for(const b of $('.auth-tabs').children)b.classList.toggle('active',b.dataset.action==='auth-'+mode);
  $('#onboarding').dataset.mode=mode;
+ $('#google-panel').hidden=['claim','verify'].includes(mode);$('#google-login').disabled=googleBusy||providers?.external?.google===false;
+ $('#verify-title').textContent=verification.type==='recovery'?'비밀번호 복구 인증':'이메일 인증';
  $('#quick-help').textContent=mode==='claim'?'로그인이 완료되었습니다. 사용할 고유 ID와 닉네임을 설정하세요.':'이 기기에 계정이 저장됩니다. 내 프로필에서 이메일과 비밀번호를 연결하면 다른 기기에서도 로그인할 수 있어요.';
 }
 function conversationKey(s=scope,f=friend){return s?.kind==='channel'?'channel:'+s.id:f?'friend:'+f.uid:'activity';}
 function renderMessages(){
- const host=$('#messages'),items=conversations[conversationKey()]??[];host.replaceChildren();
- for(const item of items){const row=el('div',null,{class:'message'+(item.author?'':' system-message')});if(item.author)row.append(el('strong',item.author));row.append(document.createTextNode(item.text));host.append(row);}
+ const host=$('#messages'),key=conversationKey(),isDM=page==='direct'&&!!friend;
+ const items=isDM?[...(conversations[key]??[]).filter(m=>m.author).map(m=>({...m,legacy:true,created_at:new Date(m.time).toISOString()})),...(dm?.view(friend.uid)??[])]:conversations[key]??[];
+ const token=JSON.stringify([key,isDM,items,friend?.nickname,friend?.avatar_path,snapshot.me?.nickname,snapshot.me?.avatar_path]);if(token===messageKey)return;
+ const scroll=$('.stage-scroll'),atBottom=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<90,switching=host.dataset.conversation!==key;
+ messageKey=token;host.dataset.conversation=key;host.replaceChildren();
+ if(isDM&&dm?.views[friend.uid])host.append(button('최근 대화로 이동','dm-latest',friend.uid,{class:'history-button'}));if(isDM&&items.length&&!dm?.historyEnd[friend.uid])host.append(button('이전 메시지 보기','dm-history',friend.uid,{class:'history-button'}));
+ let date='',previous;
+ for(const item of items){
+  const stamp=new Date(item.created_at??item.time),day=stamp.toLocaleDateString('ko-KR');
+  if(day!==date){host.append(el('div',day,{class:'message-date',role:'separator'}));date=day;previous=null;}
+  const system=item.legacy?!item.author:!isDM&&!item.author;
+  if(system){host.append(el('div',item.text,{class:'system-message'}));previous=null;continue;}
+  const sender=item.sender,p=sender===loadedUID?snapshot.me:sender===friend?.uid?friend:friendRecord(sender)?.profile;
+  const grouped=sender&&previous?.sender===sender&&stamp-new Date(previous.created_at)<300000;
+  const row=el('div',null,{class:'message-row'+(grouped?' grouped':'')+(item.status==='sending'?' sending':''),...(item.id?{'data-message-id':item.id}:{})});
+  if(!grouped){const avatar=identity(p??{nickname:item.author??'참여자'}).querySelector('.avatar-wrap');row.append(avatar);}
+  const content=el('div',null,{class:'message-content'});
+  if(!grouped){const header=el('div',null,{class:'message-author'});header.append(el('strong',p?.nickname??item.author??'참여자'),el('time',stamp.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),{datetime:stamp.toISOString(),title:stamp.toLocaleString('ko-KR')}));content.append(header);}
+  content.append(el('div',item.text,{class:'message-text'}));
+  if(item.status==='failed')content.append(el('span','보내지 못했습니다.',{class:'send-failed'}),button('다시 보내기','dm-retry',item.client_id,{class:'retry-message'}));
+  else if(item.status==='sending')content.append(el('span','보내는 중…',{class:'send-status'}));
+  row.append(content);host.append(row);previous=item;
+ }
+ if(!items.length&&isDM)host.append(el('p','@'+friend.nickname+'님과의 대화가 시작되는 곳이에요.',{class:'conversation-start'}));
+ if(switching||atBottom)requestAnimationFrame(()=>{scroll.scrollTop=scroll.scrollHeight;layoutNativeScreens();});
+}
+function updateDMNavigation(){
+ for(const row of $('#channels').querySelectorAll('.dm')){
+  const peer=row.dataset.id,latest=dm?.list(peer).at(-1),preview=row.querySelector('.dm-preview'),badge=row.querySelector('.dm-unread');
+  if(preview)preview.textContent=latest?.text??'대화를 시작해 보세요.';
+  if(badge){const n=dm?.unread[peer]??0;badge.hidden=!n;badge.textContent=n>99?'99+':n;}
+ }
 }
 function message(text,author=null,key=conversationKey()){
- const list=conversations[key]??[];list.push({text:String(text).slice(0,2000),author,time:Date.now()});conversations[key]=list.slice(-100);
- const uid=loadedUID,data=structuredClone(conversations);
- if(uid)chatSave=chatSave.then(()=>ledger.set('messages:'+uid,data)).catch(error);
+ if(!author&&key.startsWith('friend:'))key='activity';const list=conversations[key]??[];list.push({text:String(text).slice(0,2000),author,time:Date.now()});conversations[key]=list.slice(-100);
+ const uid=loadedUID;clearTimeout(message.saveTimer);message.saveTimer=setTimeout(()=>{const data=structuredClone(conversations);if(uid)chatSave=chatSave.then(()=>ledger.set('messages:'+uid,data)).catch(error);},150);
  if(key===conversationKey())renderMessages();
 }
 function closeNav(){
@@ -446,8 +1048,7 @@ async function leaveChannel(){
 async function selectFriend(uid){
  const f=friendRecord(uid);if(!f||f.status!=='accepted')throw new Error('수락된 친구 관계가 필요합니다.');
  await leaveChannel();
- if(media.broadcast?.scope.kind==='direct'&&media.broadcast.scope.id!==sessionFor(uid)?.id)await media.stop();
- friend=f.profile;server=null;page='direct';
+ friend=f.profile;server=null;page='direct';messageKey='';$('#messages').dataset.conversation='';dm?.select(uid);dm?.history(uid).catch(error);
  const s=sessionFor(uid);scope=s?.state==='accepted'?{kind:'direct',id:s.id}:null;
  closeNav();uiKey='';render();persistNavigation();
 }
@@ -466,7 +1067,7 @@ async function selectServer(id){
 async function pollOnce(){
  if(polling||!api.session||!media)return;polling=true;
  try{
-  const next=await api.rpc('sync',{cursor});if(api.session?.user?.id!==loadedUID)return;snapshot=next;
+  const next=await api.rpc('sync',{cursor,dm_cursor:dm?.cursor??0});if(api.session?.user?.id!==loadedUID)return;snapshot=next;dm?.merge(next.messages);delete snapshot.messages;
   if(friend){const f=friendRecord(friend.uid);if(f?.status==='accepted')friend=f.profile;else{friend=null;scope=null;page='friends';}}
   if(server&&!snapshot.servers.some(s=>s.id===server)){server=null;scope=null;page='friends';}
   if(scope?.kind==='channel'&&!snapshot.channels.some(c=>c.id===scope.id)){await media.stop();scope=null;page=server?'channel':'friends';}
@@ -474,10 +1075,11 @@ async function pollOnce(){
   for(const signal of next.signals??[]){try{await handle(signal);}catch(e){error(e);}cursor=Math.max(cursor,signal.id);}
   lastPoll=Date.now();$('#connection').textContent='온라인 · '+VERSION;showSelf(true);
   await media.update(snapshot);await files.reconcile(snapshot);
+  const liveIDs=new Set(snapshot.broadcasts.map(b=>b.id));for(const id of autoWatchDisabled)if(!liveIDs.has(id))autoWatchDisabled.delete(id);for(const id of autoWatchAttempt.keys())if(!liveIDs.has(id))autoWatchAttempt.delete(id);
   if(Date.now()-(files.lastRecovery??0)>5000){files.lastRecovery=Date.now();await files.reconnect();}
   if(scope?.kind==='direct')for(const b of snapshot.broadcasts.filter(b=>b.scope_kind==='direct'&&b.scope_id===scope.id&&b.publisher!==loadedUID)){
    if(!media.watching.has(b.id)&&!autoWatchDisabled.has(b.id)&&Date.now()-(autoWatchAttempt.get(b.id)??0)>5000){
-    autoWatchAttempt.set(b.id,Date.now());try{await media.watch(b);video({id:b.id});}catch(e){error(e);}
+    autoWatchAttempt.set(b.id,Date.now());try{await media.watch(b);video({id:b.id});}catch(e){autoWatchDisabled.add(b.id);renderVideoFailure(b.id,e);error(e);}
    }
   }
   render();
@@ -494,22 +1096,27 @@ async function boot(){
    if(m.solaris_user_id&&m.solaris_nickname){try{me=await api.rpc('profile',{user_id:m.solaris_user_id,nickname:m.solaris_nickname});}catch(e){if(/duplicate|unique/i.test(e.message)){showAuth('claim','이미 사용 중인 ID입니다. 새 고유 ID를 선택하세요.');$('#register [name=nickname]').value=m.solaris_nickname;return;}throw e;}}
    if(!me){showAuth('claim');return;}
   }
-  clearInterval(timer);media?.close();files?.close();await log?.flush();await chatSave;
+  clearInterval(timer);exitViewingFullscreen();nativeScreens.clear();if(media&&media.ownerUID!==me.uid)await media.stop();media?.close();files?.close();await dm?.close();clearTimeout(message.saveTimer);if(loadedUID)await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log?.flush();await chatSave;
+  if(loadedUID!==me.uid){for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();}
   loadedUID=me.uid;snapshot=emptySnapshot();snapshot.me=me;scope=null;server=null;friend=null;cursor=0;page='friends';uiKey='';
-  conversations=await ledger.get('messages:'+me.uid)??{};diagnostics={};autoWatchDisabled.clear();autoWatchAttempt.clear();$('#videos').replaceChildren();
+  conversations=await ledger.get('messages:'+me.uid)??{};messageKey='';drafts={};$('#chat').dataset.conversation='';$('#chat textarea').value='';dm=new DirectMessages(api,ledger,me.uid);await dm.init();dm.addEventListener('change',()=>{updateDMNavigation();renderMessages();});dm.addEventListener('error',e=>error(e.detail));diagnostics={};autoWatchDisabled.clear();autoWatchAttempt.clear();$('#videos').replaceChildren();
   log=new DiagnosticLog(ledger,me.uid);await log.load();log.record('app-start',{version:VERSION});
   media=new Media(api,bridge,settings);files=new Transfers(api,disk,ledger,media.ice,()=>!!media.broadcast||media.watching.size>0);await files.init();
   media.addEventListener('error',e=>error(e.detail));
+  media.addEventListener('starting',()=>{uiKey='';render();});
   media.addEventListener('broadcast',e=>{
    const b=e.detail;log.record(b?.pending?'broadcast-preparing':b?'broadcast-start':'broadcast-stop',{transport:b?.transport});
    if(b){scope=b.scope;page=scope.kind==='channel'?'channel':'direct';if(scope.kind==='channel'){server=snapshot.channels.find(c=>c.id===scope.id)?.server_id??server;friend=null;}else{const s=activeSession(scope);if(s)friend=friendRecord(s.a===loadedUID?s.b:s.a)?.profile??friend;server=null;}}
    message(b?.pending?'시스템 화면공유 시작을 기다리고 있습니다.':b?'화면공유를 시작했습니다.':'화면공유를 종료했습니다.');uiKey='';render();
   });
   media.addEventListener('track',e=>video(e.detail));
-  media.addEventListener('removed',e=>{document.getElementById('video-'+e.detail)?.remove();uiKey='';render();});
+  media.addEventListener('state',e=>{if(['failed','disconnected','connecting','reconnecting'].includes(e.detail.state)){const card=document.getElementById('video-'+e.detail.id);if(card&&!card.classList.contains('video-failed')&&!card.querySelector('.video-waiting'))card.append(el('div','화면을 다시 연결하고 있습니다…',{class:'video-waiting'}));layoutNativeScreens();}});
+  media.addEventListener('removed',e=>{nativeScreens.delete(e.detail);videoResize?.unobserve(document.querySelector('#video-'+e.detail+' video')??$('#viewing'));if(fullscreenID===e.detail||!media.watching.size)exitViewingFullscreen();document.getElementById('video-'+e.detail)?.remove();layoutNativeScreens();delete diagnostics[e.detail];uiKey='';render();});
+  media.addEventListener('view-failed',e=>{autoWatchDisabled.add(e.detail.id);renderVideoFailure(e.detail.id,e.detail.error);});
   media.addEventListener('quality',e=>{
    const q=document.getElementById('quality-'+e.detail.id);
-   if(q){q.replaceChildren(el('span',null,{class:'quality-dot '+e.detail.grade.color}),document.createTextNode(e.detail.grade.text+' · '+e.detail.stats.width+'×'+e.detail.stats.height+' · '+e.detail.stats.fps.toFixed(1)+'fps'));q.title=(e.detail.stats.codec??'')+' · RTT '+Math.round(e.detail.stats.rtt)+'ms';}
+   if(q){q.replaceChildren(el('span',null,{class:'quality-dot '+e.detail.grade.color}),document.createTextNode(e.detail.grade.text+' · '+(e.detail.stats.width??0)+'×'+(e.detail.stats.height??0)+' · '+(e.detail.stats.fps??0).toFixed(1)+'fps'));q.title=(e.detail.stats.codec??'')+' · RTT '+(Number.isFinite(e.detail.stats.rtt)?Math.round(e.detail.stats.rtt)+'ms':'측정 불가');}
+   const v=document.querySelector('#video-'+e.detail.id+' video');if(e.detail.stats.frames>0&&!['failed','disconnected'].includes(e.detail.stats.state)){document.querySelector('#video-'+e.detail.id+' .video-waiting')?.remove();if(v&&e.detail.stats.width&&e.detail.stats.height)v.style.aspectRatio=e.detail.stats.width+'/'+e.detail.stats.height;layoutNativeScreens();}
    diagnostics[e.detail.id]=e.detail.stats;
   });
   media.addEventListener('diagnostics',e=>diagnostics.native=e.detail);
@@ -521,7 +1128,7 @@ async function boot(){
   files.addEventListener('offer',e=>{message(e.detail.name+' 파일 전송 요청이 도착했습니다.');page='transfers';uiKey='';renderTransfers();render();notify('파일 수신 요청',e.detail.name);});
   files.addEventListener('complete',e=>{log.record('file-complete',{direction:e.detail.direction,size:e.detail.size});message(e.detail.name+' 전송 완료 · SHA-256 확인');notify('파일 전송 완료',e.detail.name);});
   files.addEventListener('error',e=>error(e.detail));
-  $('#onboarding').hidden=true;$('#workspace').hidden=false;await poll();
+  $('#onboarding').hidden=true;$('#workspace').hidden=false;$('#mobile-tabs').hidden=false;await poll();
   const saved=await ledger.get('navigation:'+me.uid);
   if(!media.broadcast&&saved?.friend&&friendRecord(saved.friend)?.status==='accepted')await selectFriend(saved.friend);
   else if(!media.broadcast&&saved?.channel&&snapshot.channels.some(c=>c.id===saved.channel))await enterChannel(saved.channel);
@@ -542,7 +1149,7 @@ async function handle(s){
  if(v.type.startsWith('file-')||v.type==='rtc'&&v.peer?.startsWith('files:'))await files.handle(s);else await media.handle(s);
 }
 function displayKey(){
- return JSON.stringify({snapshot,page,friend:friend?.uid,server,scope,friendFilter,watching:[...media.watching.keys()],broadcast:media.broadcast?.id,preparing:media.broadcast?.pending},(key,value)=>['last_seen','updated_at','created_at','signals','rate_limits'].includes(key)?undefined:value);
+ return JSON.stringify({snapshot,page,friend:friend?.uid,server,scope,friendFilter,watching:[...media.watching.keys()],broadcast:media.broadcast?.id,preparing:media.broadcast?.pending},(key,value)=>['last_seen','updated_at','created_at','signals','rate_limits','messages'].includes(key)?undefined:value);
 }
 function updateBadges(){
  if(!files)return;const n=[...files.records.values()].filter(r=>['offered','accepted','transferring','paused'].includes(r.state)).length;
@@ -564,7 +1171,8 @@ function render(){
   const row=button(null,'channel',c.id,{class:selected?'active':'','aria-current':selected?'page':'false',title:c.name});
   row.append(el('span','#',{class:'channel-symbol'}),el('span',c.name,{class:'channel-name'}));
   if(live.length)row.append(el('span','LIVE '+live.length,{class:'live-label'}));cc.append(row);
- }else for(const f of accepted){const row=button(null,'friend',f.profile.uid,{class:'dm '+(friend?.uid===f.profile.uid?'active':''),'aria-label':f.profile.nickname+' 개인 메시지'});row.append(identity(f.profile,f.online));cc.append(row);}
+ }else for(const f of accepted){const row=button(null,'friend',f.profile.uid,{class:'dm '+(friend?.uid===f.profile.uid?'active':''),'aria-label':f.profile.nickname+' 개인 메시지'});row.append(identity(f.profile,f.online));row.querySelector('.identity .muted').classList.add('dm-preview');row.append(el('span',null,{class:'dm-unread count-badge',hidden:'true'}));cc.append(row);}
+ updateDMNavigation();
  if(!cc.childElementCount)cc.append(el('p',current?'아직 채널이 없습니다.':'친구를 추가하면 여기에 표시됩니다.',{class:'muted'}));
  for(const b of $('.side-navigation').querySelectorAll('button'))b.classList.toggle('active',b.dataset.action===page);
  const liveList=$('#broadcast-list');liveList.replaceChildren();
@@ -579,44 +1187,57 @@ function render(){
  for(const m of members){
   const row=identity(m.profile,m.online),b=snapshot.broadcasts.find(b=>b.publisher===m.profile.uid&&media.watching.has(b.id)),stat=b?diagnostics[b.id]:null;
   if(stat){const grade=qualityGrade(stat);row.append(el('span',null,{class:'quality-dot '+grade.color,title:grade.text,'aria-label':grade.text}));}
-  people.append(row);
+  row.dataset.action='user-profile';row.dataset.id=m.profile.uid;row.setAttribute('role','button');row.tabIndex=0;people.append(row);
  }
  if(!people.childElementCount)people.append(el('p','온라인 사용자가 없습니다.',{class:'muted'}));
+ if(page==='direct'&&friend){people.replaceChildren(profileCard(friend,friendRecord(friend.uid)?.online));$('#participants-title').textContent='사용자 프로필';}
  const requests=snapshot.sessions.filter(s=>s.state==='requested'&&s.requester!==loadedUID),req=$('#requests');req.replaceChildren();
  for(const s of requests){const f=friendRecord(s.requester),row=identity(f?.profile,f?.online);row.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));req.append(row);}
  if(!requests.length)req.append(el('p','새로운 요청이 없습니다.',{class:'muted'}));$('#request-count').hidden=!requests.length;$('#request-count').textContent=requests.length;
  $('#scope-title').textContent=page==='transfers'?'파일 전송':page==='channel'?(snapshot.channels.find(c=>c.id===scope?.id)?.name??current?.name??'채널'):page==='direct'?friend?.nickname??'개인 메시지':'친구';
- $('#scope-symbol').textContent=page==='channel'?'#':page==='transfers'?'⇄':page==='direct'?'@':'♧';
- $('#scope-status').textContent=page==='direct'?(scope?'화면공유 연결됨 · 서로 동시에 공유할 수 있어요.':friendRecord(friend?.uid)?.online?'온라인 · 화면공유를 요청해 보세요.':'오프라인 · 화면공유와 파일 전송은 상대방이 접속하면 사용할 수 있어요.'):page==='channel'?'이 채널에서 화면과 파일을 공유하세요.':page==='transfers'?'원본 파일 · 전송 수락 · 이어받기 · SHA-256 확인':'친구와 간편하게 화면과 파일을 공유하세요.';
+ $('#scope-symbol').replaceChildren(icon(page==='channel'?'hash':page==='transfers'?'files':page==='direct'?'message':'friends',24));
+ $('#scope-symbol').hidden=page==='direct'&&!!friend;$('#scope-avatar').hidden=page!=='direct'||!friend;
+ if(page==='direct'&&friend){const key=JSON.stringify([friend.uid,friend.avatar_path,friend.nickname,friendRecord(friend.uid)?.online]);if($('#scope-avatar').dataset.identity!==key){$('#scope-avatar').replaceChildren(identity(friend,friendRecord(friend.uid)?.online).querySelector('.avatar-wrap'));$('#scope-avatar').dataset.identity=key;}}
+ $('#scope-title').dataset.action=page==='direct'?'friend-profile':'';$('#scope-title').dataset.id=friend?.uid??'';
+ $('#scope-status').textContent=page==='direct'?(scope?'화면공유 연결됨 · 서로 동시에 공유할 수 있어요.':friendRecord(friend?.uid)?.online?'온라인':'오프라인 · 메시지를 남겨보세요.'):page==='channel'?'이 채널에서 화면과 파일을 공유하세요.':page==='transfers'?'원본 파일 · 전송 수락 · 이어받기 · SHA-256 확인':'친구와 간편하게 화면과 파일을 공유하세요.';
+ for(const card of $('#videos').querySelectorAll('.video-failed'))if(!snapshot.broadcasts.some(b=>'video-'+b.id===card.id))card.remove();
+ $('#stage').dataset.page=page;$('.messages').hidden=!['direct','channel'].includes(page);$('#chat').hidden=!['direct','channel'].includes(page);if(page!=='direct')dm?.select(null);
  $('#friend-tabs').hidden=page!=='friends';
  const tabs=$('#friend-tabs');tabs.replaceChildren();for(const [id,text]of [['online','온라인'],['all','모두'],['pending','대기 중'],['blocked','차단 목록'],['add','친구 추가']])tabs.append(button(text,'friend-filter',id,{class:(friendFilter===id?'active ':'')+(id==='add'?'add-friend':'')}));
- $('#session-controls').hidden=!scope&&!friend&&!media.broadcast;
- $('#share').hidden=!!media.broadcast;$('#stop').hidden=!media.broadcast;$('#share').disabled=!scope;
+ $('#session-controls').hidden=!scope&&!friend&&!media.broadcast&&!media.starting;
+ $('#share').hidden=!!media.broadcast||!!media.starting;$('#stop').hidden=!media.broadcast&&!media.starting;$('#share').disabled=(!scope&&!friend)||!!media.starting;setButtonLabel($('#share'),scope?'화면공유':'화면공유 요청','screen');setButtonLabel($('#stop'),media.starting?'시작 취소':'화면공유 중지','stop');
  document.querySelector('[data-action="send-file"]').disabled=!scope&&!friend;
  document.querySelector('[data-action="end-session"]').disabled=!scope;
- $('#chat input').disabled=!scope&&!friend;$('#chat button').disabled=!scope&&!friend;
- $('#chat input').placeholder=friend?'@'+friend.nickname+'에게 메시지 보내기':scope?.kind==='channel'?'#'+$('#scope-title').textContent+'에 메시지 보내기':'친구나 채널을 선택하세요.';
- $('#messages-title').textContent=friend?'개인 메시지':'연결 및 전송 메시지';
- const connection=$('#sidebar-connection');connection.hidden=!scope;connection.replaceChildren();if(scope)connection.append(el('span','● '+(scope.kind==='direct'?'개인 연결':'# '+$('#scope-title').textContent)),button('✕','end-session',null,{'aria-label':'현재 연결 종료'}));
+ const compose=conversationKey(),prior=$('#chat').dataset.conversation;if(prior!==compose){if(prior)drafts[prior]=$('#chat textarea').value;$('#chat textarea').value=drafts[compose]??'';$('#chat textarea').style.height='auto';$('#chat').dataset.conversation=compose;}
+ $('#chat textarea').disabled=!scope&&!friend;$('#chat button').disabled=!scope&&!friend;
+ $('#chat textarea').placeholder=friend?'@'+friend.nickname+'에게 메시지 보내기':scope?.kind==='channel'?'#'+$('#scope-title').textContent+'에 메시지 보내기':'친구나 채널을 선택하세요.';
+ $('#messages-title').textContent=friend?'개인 메시지':'채널 메시지';$('#composer-help').textContent=matchMedia('(pointer: coarse)').matches?'줄바꿈 · 보내기 버튼으로 전송':'Enter로 보내기 · Shift+Enter로 줄바꿈';
+ const connection=$('#sidebar-connection');connection.hidden=!scope;connection.replaceChildren();if(scope)connection.append(el('span','● '+(scope.kind==='direct'?'개인 연결':'# '+(snapshot.channels.find(c=>c.id===scope.id)?.name??'채널'))),button('✕','end-session',null,{'aria-label':'현재 연결 종료'}));
  if(page==='friends')renderFriends();else if(page==='direct')renderDirect();else if(page==='channel')renderChannel();
+ const toolbar=$('#session-controls'),header=$('.stage-header');if(['direct','channel'].includes(page)){if(toolbar.parentElement!==header)header.insertBefore(toolbar,header.querySelector('[data-action=toggle-people]'));}else if(toolbar.parentElement===header)$('#stage').insertBefore(toolbar,$('#chat'));
+ for(const b of $('#mobile-tabs').children){const active=b.dataset.action==='mobile-friends'?page==='friends':b.dataset.action==='mobile-files'?page==='transfers':b.dataset.action==='mobile-menu'?['direct','channel'].includes(page):false;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');}
  refreshVideoIdentities();renderMessages();
 }
 function emptyState(title,text){
  const n=el('div',null,{class:'empty-state'});n.append(el('div','◉',{class:'empty-mark'}),el('h2',title),el('p',text));return n;
 }
 function renderFriends(){
- const prior=$('#friend-search input'),draft=prior?.value??searchDraft,focused=prior===document.activeElement,start=prior?.selectionStart,end=prior?.selectionEnd;
- const panel=$('#panel');panel.dataset.page='friends';panel.replaceChildren();
- const form=el('form',null,{id:'friend-search'});form.append(el('input',null,{name:'user_id',placeholder:'친구의 고유 ID로 추가하기',required:'true','aria-label':'친구 고유 ID'}),el('button','검색',{class:'primary'}));panel.append(form);
- const input=form.querySelector('input');input.value=draft;input.oninput=()=>searchDraft=input.value;
- if(focused){input.focus({preventScroll:true});input.setSelectionRange(start??draft.length,end??draft.length);}
+ const panel=$('#panel');panel.dataset.page='friends';const adding=friendFilter==='add';
+ let form=panel.querySelector('#friend-search');
+ if(!form||form.dataset.mode!==(adding?'add':'filter')){
+  form=el('form',null,{id:'friend-search','data-mode':adding?'add':'filter'});
+  const input=el('input',null,{name:adding?'user_id':'filter',placeholder:adding?'친구의 고유 ID로 추가하기':'친구 이름 또는 ID 검색','aria-label':adding?'친구 고유 ID':'친구 목록 검색'});input.value=adding?searchDraft:friendListQuery;
+  input.addEventListener('input',()=>{if(adding)searchDraft=input.value;else{friendListQuery=input.value;renderFriends();}});form.append(input);
+  if(adding){input.required=true;form.append(el('button','검색',{class:'primary'}));}else form.addEventListener('submit',e=>{e.preventDefault();e.stopPropagation();});
+ }
+ for(const child of [...panel.children])if(child!==form)child.remove();if(form.parentElement!==panel)panel.prepend(form);
  if(friendFilter==='add'){panel.append(emptyState('친구 추가','중복될 수 있는 닉네임 대신 고유 ID로 친구를 찾아보세요.'));return;}
  if(friendFilter==='blocked'){
   panel.append(el('h2','차단한 사용자 — '+snapshot.blocks.length));
   for(const p of snapshot.blocks){const row=identity(p);row.append(button('차단 해제','unblock',p.uid));panel.append(row);}
   if(!snapshot.blocks.length)panel.append(emptyState('차단한 사용자가 없습니다.','친구 메뉴에서 사용자 차단을 관리할 수 있어요.'));return;
  }
- const friends=snapshot.friends.filter(f=>friendFilter==='pending'?f.status!=='accepted':friendFilter==='online'?f.status==='accepted'&&f.online:true);
+ const friends=snapshot.friends.filter(f=>!friendListQuery||[f.profile.nickname,f.profile.user_id].some(v=>v?.toLocaleLowerCase().includes(friendListQuery.toLocaleLowerCase()))).filter(f=>friendFilter==='pending'?f.status==='pending':f.status==='accepted'&&(friendFilter!=='online'||f.online));
  panel.append(el('h2',(friendFilter==='pending'?'대기 중':friendFilter==='online'?'온라인':'친구')+' — '+friends.length));
  for(const f of friends){
   const row=identity(f.profile,f.status==='accepted'?f.online:undefined),actions=el('div',null,{class:'row-actions'});
@@ -625,19 +1246,18 @@ function renderFriends(){
   else actions.append(button('수락','friend-accept',f.profile.uid,{class:'primary'}),button('거절','friend-reject',f.profile.uid));
   row.append(actions,button('⋯','friend-menu',f.profile.uid,{class:'row-menu','aria-label':f.profile.nickname+' 친구 메뉴'}));panel.append(row);
  }
- if(!friends.length)panel.append(emptyState('함께할 친구를 찾아보세요.','위의 검색창에서 고유 ID로 친구 요청을 보낼 수 있어요.'));
+ if(!friends.length)panel.append(emptyState('함께할 친구를 찾아보세요.','친구 추가에서 고유 ID로 친구 요청을 보낼 수 있어요.'));
 }
 function renderDirect(){
  const panel=$('#panel');panel.dataset.page='direct';panel.replaceChildren();if(!friend)return;
- const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online));panel.append(profile);
- const s=sessionFor(friend.uid),banner=el('div',null,{class:'session-banner'});
- if(s?.state==='accepted')banner.append(el('div','화면공유 연결됨',{class:'banner-title'}),el('p','아래 화면공유 버튼을 누르면 내 화면을 공유할 수 있어요. 상대방이 공유하면 자동으로 연결합니다.',{class:'muted'}));
- else if(s?.state==='requested'){
-  banner.append(el('div',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.',{class:'banner-title'}));
-  if(s.requester===loadedUID)banner.append(el('p','상대방이 수락하면 연결됩니다.',{class:'muted'}),button('요청 취소','session-cancel',s.id));
+ const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online),el('p',friend.bio||'@'+friend.nickname+'님과의 개인 메시지입니다.',{class:'profile-bio muted'}));panel.append(profile);
+ const s=sessionFor(friend.uid);if(!s||s.state==='ended')return;
+ const banner=el('div',null,{class:'session-banner compact-session'});
+ if(s.state==='accepted')banner.append(el('span','화면공유 연결됨'),button('연결 종료','end-session',null,{class:'danger'}));
+ else{banner.append(el('span',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.'));
+  if(s.requester===loadedUID)banner.append(button('요청 취소','session-cancel',s.id));
   else banner.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));
- }else banner.append(el('div','친구와 화면을 공유해 보세요.',{class:'banner-title'}),el('p','화면공유는 상대방이 수락한 뒤 시작됩니다. 메시지와 파일 전송은 친구 관계에서 사용할 수 있어요.',{class:'muted'}),button('화면공유 요청','session-request',friend.uid,{class:'primary'}));
- panel.append(banner);
+ }panel.append(banner);
 }
 function renderChannel(){
  const panel=$('#panel');panel.dataset.page='channel';panel.replaceChildren();
@@ -662,7 +1282,32 @@ function refreshVideoIdentities(){
   const who=identity(b.profile,true);who.classList.add('broadcast-identity');head.querySelector('.broadcast-identity')?.replaceWith(who);head.dataset.identity=key;
  }
 }
-function video({id,stream}){
+const nativeScreens=new Set();let nativeLayoutTimer,nativeLayoutHadItems=false;
+const videoResize=globalThis.ResizeObserver?new ResizeObserver(()=>layoutNativeScreens()):null;
+function layoutNativeScreens(){
+ if(!bridge.native)return;clearTimeout(nativeLayoutTimer);
+ nativeLayoutTimer=setTimeout(()=>{
+  const workspace=$('#workspace'),blocked=!!document.querySelector('dialog[open]')||workspace.hidden||workspace.classList.contains('nav-open')||workspace.classList.contains('people-open');
+  const items=[...nativeScreens].map(id=>{
+   const video=document.querySelector('#video-'+id+' video'),r=video?.getBoundingClientRect();if(!r)return{id,visible:false};
+   const bounds=[{left:0,top:0,right:innerWidth,bottom:innerHeight}];
+   for(let parent=video.parentElement;parent;parent=parent.parentElement){const style=getComputedStyle(parent);if(/auto|scroll|hidden|clip/.test(style.overflow+style.overflowX+style.overflowY))bounds.push(parent.getBoundingClientRect());}
+   const clip=clipVideoBounds(r,bounds),ready=!video.closest('.video-card').querySelector('.video-waiting');
+   return{id,x:r.x,y:r.y,width:r.width,height:r.height,...clip,visible:!blocked&&ready&&video.getClientRects().length>0&&clip.clipWidth>0&&clip.clipHeight>0};
+  });
+  if(items.length||nativeLayoutHadItems)bridge.call('mediaReceiveLayout',{viewportWidth:innerWidth,items}).catch(()=>{});nativeLayoutHadItems=items.length>0;
+ },40);
+}
+new MutationObserver(layoutNativeScreens).observe($('#stage'),{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','style']});
+new MutationObserver(layoutNativeScreens).observe($('#workspace'),{attributes:true,attributeFilter:['class','hidden']});
+new MutationObserver(layoutNativeScreens).observe($('#dialog'),{attributes:true,attributeFilter:['open']});
+window.addEventListener('resize',layoutNativeScreens);document.addEventListener('scroll',layoutNativeScreens,true);
+function exitViewingFullscreen(){document.body.classList.remove('viewing-fullscreen');nativeFullscreen=false;fullscreenID=null;resetVideoFullscreen(document,bridge);layoutNativeScreens();}
+function renderVideoFailure(id,e){
+ nativeScreens.delete(id);exitViewingFullscreen();document.getElementById('video-'+id)?.remove();
+ const card=el('article',null,{id:'video-'+id,class:'video-card video-failed',role:'status'});card.append(el('strong','화면공유에 연결하지 못했어요.'),el('p',e?.message??'연결 상태를 확인한 뒤 다시 시도하세요.',{class:'muted'}),button('다시 시청','watch',id,{class:'primary'}));$('#videos').append(card);layoutNativeScreens();
+}
+function video({id,stream,native=false}){
  let card=document.getElementById('video-'+id);
  if(!card){
   const b=snapshot.broadcasts.find(b=>b.id===id),head=el('div',null,{class:'video-head'});
@@ -671,13 +1316,15 @@ function video({id,stream}){
   head.append(who,el('span','연결 중',{id:'quality-'+id,class:'quality'}),button('확대','focus',id),button('전체화면','fullscreen',id),button('시청 중지','unwatch',id));
   card.append(head,el('div','화면을 연결하는 중입니다…',{class:'video-waiting'}),el('video',null,{autoplay:'true',playsinline:'true',controls:'true'}));$('#videos').append(card);
  }
+ if(native){nativeScreens.add(id);const v=card.querySelector('video');v.dataset.native='true';videoResize?.observe(v);layoutNativeScreens();}
  if(stream){
-  card.querySelector('.video-waiting')?.remove();const v=card.querySelector('video');
+  const v=card.querySelector('video');v.onloadeddata=()=>{card.querySelector('.video-waiting')?.remove();layoutNativeScreens();};if(v.readyState>=2)card.querySelector('.video-waiting')?.remove();
   if(v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>message('영상의 재생 버튼을 눌러주세요.'));}
  }
 }
 async function fullscreen(id){
- const viewing=$('#viewing');document.getElementById('video-'+id)?.classList.add('focused');
+ fullscreenID=id;if(nativeScreens.has(id)){try{await bridge.call('mediaReceiveFullscreen',{id});}catch(e){exitViewingFullscreen();throw e;}return;}
+ document.body.classList.add('viewing-fullscreen');const viewing=$('#viewing');document.getElementById('video-'+id)?.classList.add('focused');
  if(document.fullscreenElement){await document.exitFullscreen();return;}
  if(nativeFullscreen){nativeFullscreen=false;viewing.classList.remove('native-fullscreen');await bridge.call('fullscreen',{enabled:false});return;}
  try{if(viewing.requestFullscreen){await viewing.requestFullscreen();return;}}catch{}
@@ -701,41 +1348,69 @@ function serverSettings(id){
  const danger=el('section',null,{class:'danger-zone'});
  danger.append(el('h2',srv.owner===loadedUID?'서버 삭제':'서버 탈퇴'),el('p',srv.owner===loadedUID?'서버와 모든 채널이 삭제됩니다.':'탈퇴 후 다시 참여하려면 초대코드가 필요합니다.',{class:'muted'}),srv.owner===loadedUID?button('서버 삭제','server-delete',id):button('서버 탈퇴','server-leave',id));body.append(danger);modal(srv.name+' · 서버 메뉴',body);
 }
-async function profileModal(){
- const user=await api.account(),body=el('div');body.append(identity(snapshot.me));
- const edit=el('form',null,{id:'profile-edit',class:'stack-form'});edit.append(field('닉네임','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}),el('button','닉네임 저장',{class:'primary'}));
- body.append(edit,el('h2','프로필 사진'),el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file'}),button('사진 삭제','avatar-delete'),el('h2','로그인 및 계정 복구'));
- body.append(el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일을 연결하면 다른 기기에서 같은 계정으로 로그인할 수 있어요.',{class:'muted'}));
+function profileCard(p,online){
+ const card=el('section',null,{class:'profile-card'}),banner=el('div',null,{class:'profile-banner'}),content=el('div',null,{class:'profile-card-content'});
+ banner.append(el('span',p?.nickname?.[0]??'S',{class:'profile-banner-letter','aria-hidden':'true'}));card.append(banner);
+ content.append(identity(p,online),el('div',null,{class:'profile-divider'}),el('h2','내 소개'),el('p',p?.bio||'아직 소개가 없어요.',{class:'profile-bio'+(p?.bio?'':' muted')}));
+ card.append(content);return card;
+}
+async function profileModal(tab='profile'){
+ const user=await api.account(),body=el('div',null,{class:'profile-settings'}),nav=el('nav',null,{class:'settings-navigation','aria-label':'사용자 설정'}),content=el('div',null,{class:'settings-content'});
+ nav.append(el('h2','사용자 설정'),button('프로필','profile-tab','profile',{class:tab==='profile'?'active':''}),button('내 계정','profile-tab','account',{class:tab==='account'?'active':''}));body.append(nav,content);
+ const profile=el('section',null,{'data-profile-pane':'profile'});profile.hidden=tab!=='profile';
+ const edit=el('form',null,{id:'profile-edit',class:'stack-form'}),preview=profileCard(snapshot.me,true);
+ edit.append(field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
+ const label=el('label','내 소개'),bio=el('textarea',null,{name:'bio',rows:'4',maxlength:'380',placeholder:'좋아하는 것, 지금 하고 있는 일… 나를 소개해 보세요.'}),count=el('span',null,{class:'field-counter'});bio.value=snapshot.me.bio??'';label.append(bio,count);edit.append(label);
+ const updatePreview=()=>{if(Array.from(bio.value).length>190)bio.value=Array.from(bio.value).slice(0,190).join('');count.textContent=Array.from(bio.value).length+' / 190';preview.querySelector('.profile-bio').textContent=bio.value||'아직 소개가 없어요.';preview.querySelector('.profile-card-content strong').textContent=edit.elements.nickname.value||snapshot.me.nickname;};bio.addEventListener('input',updatePreview);edit.elements.nickname.addEventListener('input',updatePreview);updatePreview();
+ edit.append(el('button','변경사항 저장',{class:'primary'}));profile.append(preview,el('h2','프로필 편집'),el('p','고유 ID: @'+snapshot.me.user_id,{class:'form-help'}),edit,el('h2','프로필 사진'));
+ const photos=el('div',null,{class:'profile-photo-actions'}),upload=el('label','프로필 사진 변경',{class:'upload-photo-button'});upload.append(el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file','aria-label':'프로필 사진 변경'}));photos.append(upload,button('사진 삭제','avatar-delete'));profile.append(photos);
+ const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';account.append(el('h2','로그인 및 계정 복구'),el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일이나 Google을 연결해 같은 계정으로 다시 로그인할 수 있어요.',{class:'account-summary'}));
+ const google=user.identities?.some(i=>i.provider==='google');account.append(el('h2','연결된 계정'),el('p',google?'Google 계정 연결됨':'Google 계정을 연결하면 기존 친구와 서버가 유지돼요.',{class:'form-help'}));
+ if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('span','Google 연결됨',{class:'linked-account'}));
+ const status=el('p',null,{id:'account-auth-status',role:'status',class:'form-help'});account.append(status);
  if(!user.email_confirmed_at){
-  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));body.append(rec);
-  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',required:'true'}),el('button','이메일 연결 완료'));body.append(verify);
+  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));account.append(rec);
+  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',inputmode:'numeric',pattern:'[0-9]{6,10}',required:'true'}),el('p','메일의 인증 링크를 열거나, 메일에 적힌 코드를 입력하세요.',{class:'form-help'}),el('button','이메일 연결 완료'));account.append(verify);
  }else{
-  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('로그인 비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));
-  body.append(pw,el('p','이메일과 비밀번호로 로그인하면 친구·서버·프로필이 그대로 유지됩니다.',{class:'muted'}),button('로그아웃','logout',null,{class:'danger'}));
+  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));account.append(pw);
  }
- modal('내 프로필',body);
+ const recoverable=user.email_confirmed_at||google;account.append(el('p','다른 기기에서도 로그인하면 친구·서버·프로필이 그대로 유지됩니다.',{class:'form-help'}));if(recoverable)account.append(el('section',null,{class:'danger-zone'}));if(recoverable)account.lastElementChild.append(button('로그아웃','logout',null,{class:'danger'}));content.append(profile,account);modal('사용자 설정',body);
 }
 async function action(a,id){
+ if(a==='mobile-menu'){await action('toggle-nav');return;}
+ if(a==='mobile-friends'){await action('friends');return;}
+ if(a==='mobile-files'){await action('transfers');return;}
+ if(a==='mobile-profile'){closeNav();await profileModal();return;}
+ if(a==='dismiss-error'){$('#error').hidden=true;return;}
+ if(a==='profile-tab'){for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]'))b.classList.toggle('active',b.dataset.id===id);return;}
+ if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;return;}
+ if(a==='auth-resend'){const email=$('#verify [name=email]').value.trim();if(!email)throw new Error('이메일을 입력하세요.');if(Date.now()-(verification.requestedAt??0)<60000)throw new Error('인증 메일은 1분 뒤 다시 요청할 수 있어요.');await api.resendVerification(email,verification.type);verification.requestedAt=Date.now();localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#onboarding-status').textContent='인증 메일을 다시 요청했어요. 받은 편지함과 스팸함을 확인하세요.';return;}
+ if(a==='google-login'||a==='google-link'){
+  if(googleBusy)return;googleBusy=true;try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
+ }
  if(a.startsWith('auth-')){showAuth(a.slice(5));return;}
  if(a==='toggle-nav'){const on=$('#workspace').classList.toggle('nav-open');$('#nav-toggle').setAttribute('aria-expanded',String(on));$('#nav-scrim').hidden=!on;return;}
  if(a==='close-nav'){closeNav();return;}
  if(a==='toggle-people'){const on=$('#workspace').classList.toggle('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded',String(on));return;}
  if(a==='friends'){
-  await leaveChannel();if(media.broadcast)await media.stop();server=null;friend=null;scope=null;page='friends';uiKey='';closeNav();render();persistNavigation();return;
+  server=null;friend=null;page='friends';uiKey='';closeNav();render();persistNavigation();return;
  }
  if(a==='friend-filter'){friendFilter=id;uiKey='';render();return;}
  if(a==='transfers'){page='transfers';renderTransfers();uiKey='';closeNav();render();persistNavigation();return;}
- if(a==='friend'){await selectFriend(id);await poll(true);return;}
+ if(a==='friend'){$('#dialog').close();await selectFriend(id);await poll(true);return;}
  if(a==='server'){await selectServer(id);return;}
  if(a==='channel'){await enterChannel(id);return;}
  if(a==='watch'){
   const b=snapshot.broadcasts.find(b=>b.id===id);if(!b)throw new Error('방송이 종료되었습니다.');
-  autoWatchDisabled.delete(id);await media.watch(b);video({id});uiKey='';render();return;
+  autoWatchDisabled.delete(id);document.getElementById('video-'+id)?.classList.contains('video-failed')&&document.getElementById('video-'+id).remove();try{await media.watch(b);video({id});}catch(e){autoWatchDisabled.add(id);renderVideoFailure(id,e);throw e;}uiKey='';render();return;
  }
  if(a==='unwatch'){autoWatchDisabled.add(id);await media.unwatch(id);uiKey='';render();return;}
  if(a==='focus'){document.getElementById('video-'+id)?.classList.toggle('focused');return;}
  if(a==='fullscreen'){await fullscreen(id);return;}
- if(a==='share'){const s=selectedScope();if(s.kind==='friend')throw new Error('친구의 화면공유 요청 수락을 기다리세요.');await media.start(s);return;}
+ if(a==='share'){const s=selectedScope();if(s.kind==='friend'){await action('session-request',friend.uid);return;}await media.start(s);return;}
+ if(a==='dm-retry'){const item=dm.list(friend.uid).find(m=>m.client_id===id);if(item)await dm.send(friend.uid,item.text,id);return;}
+ if(a==='dm-latest'){dm.latest(id);await dm.history(id);$('.stage-scroll').scrollTop=$('.stage-scroll').scrollHeight;return;}
+ if(a==='dm-history'){const before=dm.view(id).find(m=>m.seq)?.seq,scroll=$('.stage-scroll'),height=scroll.scrollHeight;await dm.history(id,before);scroll.scrollTop+=scroll.scrollHeight-height;return;}
  if(a==='stop'){await media.stop();return;}
  if(a==='session-request'){
   await selectFriend(id);const current=sessionFor(id);
@@ -756,7 +1431,7 @@ async function action(a,id){
   for(const [bid,w]of media.watching)if(w.broadcast.scope_id===selected.id)await media.unwatch(bid);
   scope=null;if(selected.kind==='channel'){page='friends';server=null;friend=null;}await poll(true);uiKey='';render();persistNavigation();return;
  }
- if(a==='friend-file'){await selectFriend(id);await sendFile(id,{kind:'friend',id});return;}
+ if(a==='friend-file'){$('#dialog').close();await selectFriend(id);await sendFile(id,{kind:'friend',id});return;}
  if(a==='send-file'){
   const s=selectedScope();
   if(s.kind==='channel'){
@@ -785,13 +1460,13 @@ async function action(a,id){
   const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','친구 관계 관리'));
   if(f.status==='accepted')danger.append(button('친구 삭제','friend-remove',id));danger.append(button('사용자 차단','block',id));body.append(danger);modal('친구 메뉴',body);return;
  }
- if(a==='friend-profile'){modal('친구 프로필',identity(friendRecord(id)?.profile));return;}
- if(a==='server-create'){formModal('서버 만들기','server-create-form',[{label:'서버 이름',name:'name',attrs:{maxlength:'100',required:'true',placeholder:'친구들과 함께할 공간'}}],'서버 만들기');return;}
+ if(a==='friend-profile'||a==='user-profile'){const p=friendRecord(id)?.profile??snapshot.members.find(m=>m.profile.uid===id)?.profile??(id===loadedUID?snapshot.me:null);if(!p)return;const card=profileCard(p,friendRecord(id)?.online);if(friendRecord(id)?.status==='accepted')card.querySelector('.profile-card-content').append(button('메시지 보내기','friend',id,{class:'primary'}));modal('사용자 프로필',card);return;}
+ if(a==='server-create'){formModal('서버 만들기','server-create-form',[{label:'서버 이름',name:'name',attrs:{maxlength:'64',required:'true',placeholder:'친구들과 함께할 공간'}}],'서버 만들기');return;}
  if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{label:'초대코드',name:'invite',attrs:{required:'true',placeholder:'서버 소유자에게 받은 초대코드'}}],'서버 참여');return;}
  if(a==='channel-create'){formModal('채널 만들기','channel-create-form',[{label:'채널 이름',name:'name',attrs:{maxlength:'64',required:'true',placeholder:'화면공유 채널 이름'}}],'채널 만들기',{server:id});return;}
  if(a==='server-settings'){serverSettings(id);return;}
  if(a==='copy-invite'){await navigator.clipboard.writeText(snapshot.servers.find(s=>s.id===id).invite);message('초대코드를 복사했습니다.');return;}
- if(a==='server-rename'){formModal('서버 이름 변경','server-rename-form',[{label:'서버 이름',name:'name',attrs:{value:snapshot.servers.find(s=>s.id===id).name,maxlength:'100',required:'true'}}],'저장',{server:id});return;}
+ if(a==='server-rename'){formModal('서버 이름 변경','server-rename-form',[{label:'서버 이름',name:'name',attrs:{value:snapshot.servers.find(s=>s.id===id).name,maxlength:'64',required:'true'}}],'저장',{server:id});return;}
  if(a==='channel-rename'){const c=snapshot.channels.find(c=>c.id===id);formModal('채널 이름 변경','channel-rename-form',[{label:'채널 이름',name:'name',attrs:{value:c.name,maxlength:'64',required:'true'}}],'저장',{server:c.server_id,channel:id});return;}
  if(a==='channel-files'){const c=snapshot.channels.find(c=>c.id===id);await api.rpc('channel_update',{server_id:c.server_id,id,files_enabled:!c.files_enabled});await poll(true);serverSettings(c.server_id);return;}
  if(a==='server-invite'){if(!await confirmAction('초대코드 갱신','기존 초대코드는 사용할 수 없게 됩니다. 새 초대코드를 만들까요?'))return;await api.rpc('server_invite',{server_id:id});await poll(true);serverSettings(id);return;}
@@ -810,17 +1485,23 @@ async function action(a,id){
  if(a==='profile'){await profileModal();return;}
  if(a==='avatar-delete'){const path=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:null});if(path)await api.avatar(path);await poll(true);$('#dialog').close();return;}
  if(a==='logout'){
-  const user=await api.account();if(!user.email_confirmed_at)throw new Error('이메일을 인증한 뒤 로그아웃하세요. 기기 계정을 잃지 않도록 보호합니다.');
+  const user=await api.account();if(!user.email_confirmed_at&&!user.identities?.some(i=>i.provider==='google'))throw new Error('이메일이나 Google을 연결한 뒤 로그아웃하세요.');
   if(!await confirmAction('로그아웃','이 기기에서 로그아웃할까요? 다시 로그인하면 친구와 서버가 복원됩니다.'))return;
   if(scope?.kind==='channel')await leaveChannel();await media.stop();for(const [id]of media.watching)await media.unwatch(id);
-  await files.suspend();files.close();media.close();files=null;media=null;clearInterval(timer);await log.flush();await chatSave;try{await api.logout();}catch(e){await boot();throw e;}
+  await files.suspend();files.close();media.close();files=null;media=null;clearInterval(timer);exitViewingFullscreen();await dm?.close();clearTimeout(message.saveTimer);await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log.flush();await chatSave;try{await api.logout();}catch(e){await boot();throw e;}
   snapshot=emptySnapshot();loadedUID=null;conversations={};scope=null;server=null;friend=null;$('#videos').replaceChildren();closeNav();showAuth();return;
  }
- if(a==='settings'){const body=el('div'),f=el('form',null,{id:'settings-edit'});f.append(el('input',null,{name:'maxReceive',type:'number',min:'1',max:'5',value:settings.maxReceive??4}),el('input',null,{name:'turnURL',placeholder:'TURN URL (선택)',value:settings.iceServers?.find(s=>s.username)?.urls??''}),el('input',null,{name:'turnUser',placeholder:'TURN 사용자',autocomplete:'off'}),el('input',null,{name:'turnCredential',type:'password',placeholder:'TURN 인증 (선택)',autocomplete:'off'}),el('button','설정 저장'));const duplicate=el('label','동일한 파일의 중복 전송 방지');const checkbox=el('input',null,{type:'checkbox',name:'preventDuplicates'});checkbox.checked=settings.preventDuplicates??true;duplicate.append(checkbox);f.prepend(duplicate);const channel=el('select',null,{name:'updateChannel'});for(const [value,label]of [['stable','안정 버전'],['test','테스트 버전 포함']]){const option=el('option',label,{value});option.selected=settings.updateChannel===value;channel.append(option);}f.append(channel);body.append(el('p','동시 시청 수 · TURN 설정'),f,button('업데이트 확인','update'),button('진단 내보내기','diagnostics'),el('p','화면공유는 고화질·60fps를 기본으로 요청하며 실제 출력은 기기와 네트워크 성능에 따릅니다. 직접 연결이 어려운 네트워크에서는 별도 TURN이 필요할 수 있습니다.',{class:'muted'}));modal('설정',body);return;}
- if(a==='diagnostics'){await log.flush();const value=sanitizeDiagnostics({history:log.snapshot(),version:VERSION,reconnects:media.reconnects,platform:navigator.userAgent,media:diagnostics,files:[...files.records.values()].map(r=>({state:r.state,bytes:r.offset,size:r.size,error:r.error})),native:bridge.native?await bridge.call('diagnostics'):null});const body=el('div');body.append(el('pre',JSON.stringify(value,null,2)));modal('민감정보를 제외한 진단',body);if(bridge.native)await bridge.call('exportLog',{text:JSON.stringify(value,null,2)});return;}
- if(a==='update'){const r=await fetch('https://api.github.com/repos/'+config.repository+'/releases',{redirect:'error'});if(!r.ok)throw new Error('업데이트 정보를 읽지 못했습니다.');const list=await r.json(),release=list.find(r=>!r.draft&&(settings.updateChannel==='test'||!r.prerelease));const body=el('div');if(!release)body.append(el('p','공식 배포된 버전이 없습니다. 현재 '+VERSION));else{body.append(el('h2',release.tag_name),el('p',release.body??''));for(const a of release.assets){if(a.browser_download_url.startsWith('https://github.com/'+config.repository+'/releases/download/'))body.append(button(a.name,'update-download',a.browser_download_url));}body.append(el('p','설치된 플랫폼의 파일을 선택하세요. iOS는 AltStore 재서명이 필요합니다. 계정 데이터는 앱을 삭제하지 않고 업데이트하면 유지됩니다.',{class:'muted'}));}modal('업데이트',body);return;}if(a==='update-download'){if(!id.startsWith('https://github.com/'+config.repository+'/releases/download/'))throw new Error('잘못된 업데이트 주소');await bridge.call('openExternal',{url:id});return;}
+ if(a==='settings'){
+  const body=el('div'),f=el('form',null,{id:'settings-edit',class:'stack-form'}),saved=settings.iceServers?.find(s=>s.username);
+  f.append(field('동시에 볼 화면 수','maxReceive',{type:'number',min:'1',max:'5',value:settings.maxReceive??4}));
+  const duplicate=el('label','동일한 파일의 중복 전송 방지'),checkbox=el('input',null,{type:'checkbox',name:'preventDuplicates'});checkbox.checked=settings.preventDuplicates??true;duplicate.prepend(checkbox);f.append(duplicate);
+  const channel=el('select',null,{name:'updateChannel'});for(const[value,label]of[['stable','안정 버전'],['test','테스트 버전 포함']]){const option=el('option',label,{value});option.selected=settings.updateChannel===value;channel.append(option);}const channelLabel=el('label','업데이트 채널');channelLabel.append(channel);f.append(channelLabel);
+  const advanced=el('details',null,{class:'advanced-settings'});advanced.append(el('summary','고급 연결 설정 · TURN'),el('p','직접 연결이 어려운 네트워크에서 중계 서버를 사용할 수 있어요. 중계 비용은 제공자 정책에 따릅니다.',{class:'form-help'}),field('TURN 주소','turnURL',{placeholder:'turn:relay.example.com:3478',value:saved?.urls??''}),field('TURN 사용자','turnUser',{value:saved?.username??'',autocomplete:'off'}),field('TURN 인증','turnCredential',{type:'password',placeholder:saved?'비워두면 저장된 인증 유지':'인증 비밀 입력',autocomplete:'off'}));f.append(advanced,el('button','설정 저장',{class:'primary'}));
+  body.append(f,button('업데이트 확인','update'),button('진단 내보내기','diagnostics'),el('p','화면공유는 고화질·60fps를 기본으로 요청하며 실제 출력은 기기와 네트워크 성능에 따릅니다.',{class:'muted'}));modal('설정',body);return;
+ }
 }
 
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.getAttribute('role')==='button'&&e.target.dataset.action){e.preventDefault();run(()=>action(e.target.dataset.action,e.target.dataset.id),e.target);}});
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-action]');if(b&&!b.disabled)run(()=>action(b.dataset.action,b.dataset.id),b);
 });
@@ -833,17 +1514,17 @@ document.addEventListener('submit',e=>{
    case 'login':await api.login(data.email,data.password);form.querySelector('[name=password]').value='';await boot();break;
    case 'email-register':{
     const value=await api.registerEmail(data.email,data.password,data);form.querySelector('[name=password]').value='';
-    if(value.confirmationRequired){verification={type:'signup',reset:false};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
+    if(value.confirmationRequired){verification={type:'signup',reset:false,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
     else{try{await api.rpc('profile',{user_id:data.user_id,nickname:data.nickname});}catch(e){showAuth('claim','가입한 계정은 유지되어 있습니다. 사용할 고유 ID를 다시 설정하세요.');$('#register [name=nickname]').value=data.nickname;throw e;}await boot();}
     break;
    }
    case 'register':if(!api.session)await api.signup();await api.rpc('profile',data);await boot();break;
    case 'recover':{
     const reset=$('#onboarding').dataset.mode==='reset';if(reset)await api.passwordReset(data.email);else await api.emailOTP(data.email);
-    verification={type:reset?'recovery':'email',reset};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','이메일의 인증 코드를 입력하세요.');break;
+    verification={type:reset?'recovery':'email',reset,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','인증 메일을 요청했어요. 메일의 링크를 열거나 인증 코드를 입력하세요.');break;
    }
    case 'verify':{
-    await api.verifyAccount(data.email,data.token,verification.type);localStorage.removeItem('solaris-verification');await boot();
+    await api.verifyAccount(data.email,data.token,verification.type);await api.authFlow.cancel();$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');await boot();
     if(verification.reset)formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호','name':'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');break;
    }
    case 'friend-search':{
@@ -851,11 +1532,11 @@ document.addEventListener('submit',e=>{
     if(p.uid===loadedUID)throw new Error('내 ID입니다. 친구의 고유 ID를 입력하세요.');
     const row=identity(p);row.append(button('친구 요청 보내기','friend-request-send',p.uid,{class:'primary'}));modal('검색 결과',row);break;
    }
-   case 'profile-edit':await api.rpc('profile',data);$('#dialog').close();await poll(true);break;
+   case 'profile-edit':{const saved=await api.rpc('profile',data);if(saved.bio===undefined)throw new Error('프로필 소개 업데이트가 필요합니다. backend/004_build61_accounts_broadcast.sql을 적용하세요.');await poll(true);await profileModal();break;}
    case 'recovery-link':
     await api.recoverEmail(data.email);$('#link-verify [name=email]').value=data.email;
-    message('이메일로 보낸 인증 코드를 입력해 계정 연결을 완료하세요.');form.append(el('p','이메일로 인증을 보냈습니다. 아래에 받은 코드를 입력하세요.',{class:'form-help'}));break;
-   case 'link-verify':await api.verifyEmailLink(data.email,data.token);await api.account();message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal();break;
+    $('#account-auth-status').textContent='인증 메일을 요청했어요. 메일의 링크를 열거나 아래에 받은 코드를 입력하세요.';break;
+   case 'link-verify':await api.verifyEmailLink(data.email,data.token);{const user=await api.account();if(!user.email_confirmed_at||user.email?.toLowerCase()!==data.email.trim().toLowerCase())throw new Error('이메일 인증을 완료한 뒤 다시 확인하세요.');}message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal('account');break;
    case 'password-edit':await api.setPassword(data.password);form.querySelector('[name=password]').value='';$('#dialog').close();message('로그인 비밀번호를 저장했습니다.');break;
    case 'server-create-form':{
     const s=await api.rpc('server_create',{name:data.name.trim()});$('#dialog').close();await poll(true);await selectServer(s.id);break;
@@ -871,31 +1552,62 @@ document.addEventListener('submit',e=>{
     settings.maxReceive=n;settings.preventDuplicates=data.preventDuplicates==='on';settings.updateChannel=data.updateChannel??'stable';
     if(data.turnURL){
      if(!/^turns?:[a-z0-9.-]+(:\d+)?(\?transport=(udp|tcp))?$/i.test(data.turnURL))throw new Error('TURN 주소 형식을 확인하세요.');
-     const turn={urls:data.turnURL,username:data.turnUser,credential:data.turnCredential};settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},turn];await bridge.call('vaultSet',{key:'turn',value:JSON.stringify(turn)});
-    }
+     const saved=settings.iceServers?.find(s=>s.username),credential=data.turnCredential||(saved?.urls===data.turnURL&&saved?.username===data.turnUser?saved.credential:'');if(!data.turnUser||!credential)throw new Error('TURN 사용자와 인증을 입력하세요.');const turn={urls:data.turnURL,username:data.turnUser,credential};settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},turn];if(bridge.native)await bridge.call('vaultSet',{key:'turn',value:JSON.stringify(turn)});else await ledger.set('turn',JSON.stringify(turn));
+    }else{settings.iceServers=[{urls:'stun:stun.l.google.com:19302'}];if(bridge.native)await bridge.call('vaultSet',{key:'turn',value:'null'});else await ledger.set('turn',null);}
     localStorage.setItem('solaris-settings',JSON.stringify({...settings,iceServers:undefined}));media.settings=settings;files.iceServers=media.ice;$('#dialog').close();break;
    }
    case 'chat':{
-    const s=selectedScope(),text=data.message.trim();if(!text)return;
-    const targets=s.kind==='channel'?snapshot.members.filter(m=>m.channel_id===s.id&&m.profile.uid!==loadedUID&&m.online).map(m=>m.profile.uid):[friend.uid];
-    for(const target of targets)await api.signal(s,target,{type:'chat',text});message(text,snapshot.me.nickname);form.reset();break;
+    const text=data.message.trim();if(!text)return;
+    if(page==='direct'&&friend){const peer=friend.uid;form.reset();form.querySelector('textarea').style.height='auto';await dm.send(peer,text);break;}
+    const selected=selectedScope(),targets=snapshot.members.filter(m=>m.channel_id===selected.id&&m.profile.uid!==loadedUID&&m.online).map(m=>m.profile.uid);
+    for(const target of targets)await api.signal(selected,target,{type:'chat',text});message(text,snapshot.me.nickname);form.reset();form.querySelector('textarea').style.height='auto';break;
    }
   }
  },control);
 });
 document.addEventListener('change',e=>{if(e.target.id!=='avatar-file')return;run(async()=>{const f=e.target.files[0];if(!f)return;if(!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>10*1024*1024)throw new Error('10MB 이하 PNG·JPEG·WebP 이미지를 선택하세요.');const url=URL.createObjectURL(f),image=new Image();try{image.src=url;await image.decode();const scale=Math.min(1,512/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.85));if(!blob||blob.size>524288)throw new Error('사진 변환 실패');const path=snapshot.me.uid+'/'+crypto.randomUUID()+'.jpg';await api.avatar(path,blob);const old=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:path});if(old)await api.avatar(old);$('#dialog').close();await poll();}finally{URL.revokeObjectURL(url);}});});
 
-document.addEventListener('fullscreenchange',()=>{if(bridge.native&&!document.fullscreenElement){nativeFullscreen=false;$('#viewing').classList.remove('native-fullscreen');bridge.call('fullscreen',{enabled:false}).catch(()=>{});}});
+document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle('viewing-fullscreen',!!document.fullscreenElement||nativeFullscreen);if(bridge.native&&!document.fullscreenElement){nativeFullscreen=false;$('#viewing').classList.remove('native-fullscreen');bridge.call('fullscreen',{enabled:false}).catch(()=>{});}});
 globalThis.addEventListener('online',()=>poll());
 api.addEventListener('auth',()=>{
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
- if(api.session&&media)media.refreshAuth().catch(error);
+ if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
 globalThis.addEventListener('pagehide',()=>{log?.flush().catch(()=>{});files?.close();media?.close();});
+function receiveAuthReturn(url){
+ const task=authReturnQueue.then(async()=>{
+  await authReady;if(authReturns.has(url))return true;
+  const value=await api.authReturn(url);authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
+  googleBusy=false;$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');$('#dialog').close();
+  if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
+  else{await boot();if(value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
+  return true;
+ });authReturnQueue=task.catch(()=>{});return task;
+}
+bridge.addEventListener('event',e=>{if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
 await run(async()=>{
  try{const saved=JSON.parse(localStorage.getItem('solaris-verification')??'null');if(saved&&['email','signup','recovery'].includes(saved.type))verification=saved;}catch{}
- if(bridge.native){const t=await bridge.call('vaultGet',{key:'turn'});if(t)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},JSON.parse(t)];}
- lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:poll,onRestore:boot,onError:error});await lifecycle.start();await boot();
+ {const t=bridge.native?await bridge.call('vaultGet',{key:'turn'}):await ledger.get('turn');if(t){try{const saved=JSON.parse(t);if(saved?.urls&&saved.username&&saved.credential)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},saved];}catch{}}}
+ for(const n of document.querySelectorAll('[data-icon]')){const text=n.textContent.trim();n.replaceChildren(icon(n.dataset.icon,20));if(!n.hasAttribute('aria-label')||n.closest('#mobile-tabs'))n.append(el('span',text,{class:'button-label'}));n.title=n.getAttribute('aria-label')??text;}
+ const navIcons={friends:'friends',transfers:'files'};for(const n of $('.side-navigation').children)n.firstElementChild?.replaceChildren(icon(navIcons[n.dataset.action],22));
+ const chatInput=$('#chat textarea');chatInput.addEventListener('input',()=>{drafts[$('#chat').dataset.conversation]=chatInput.value;});
+ lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:poll,onRestore:boot,onError:error});await lifecycle.start();
+ try{await api.init();}catch(e){showAuth('login','네트워크를 확인하거나 기존 계정으로 로그인하세요.');error(e);}finally{authReadyResolve();}
+ let returned;if(bridge.native)returned=await bridge.call('authTake');else if(new URL(location.href).searchParams.has('code')||new URL(location.href).searchParams.has('error')){returned=location.href;history.replaceState({},'',location.pathname);}
+ if(returned)await receiveAuthReturn(returned).catch(async e=>{await boot();error(e);});else await boot();
+ api.authSettings().then(value=>{providers=value;$('#google-login').disabled=googleBusy||value?.external?.google===false;}).catch(()=>{});
 });
+
+$('#chat textarea').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(128,e.target.scrollHeight)+'px';});
+$('#chat textarea').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(!matchMedia('(pointer: coarse)').matches||e.ctrlKey||e.metaKey)){e.preventDefault();if(!$('#chat button').disabled)$('#chat').requestSubmit();}});
+
+// Use the visible viewport so the keyboard cannot cover the composer or dialogs.
+let mobileViewportWidth=innerWidth,mobileViewportHeight=globalThis.visualViewport?.height??innerHeight;
+function mobileViewport(){
+ const height=globalThis.visualViewport?.height??innerHeight;if(innerWidth!==mobileViewportWidth){mobileViewportWidth=innerWidth;mobileViewportHeight=height;}
+ const editable=document.activeElement?.matches('input,textarea,[contenteditable=true]');if(!editable)mobileViewportHeight=Math.max(height,mobileViewportHeight);
+ document.documentElement.style.setProperty('--app-height',height+'px');document.body.classList.toggle('keyboard-open',innerWidth<=760&&!!editable&&height<mobileViewportHeight*.82);layoutNativeScreens();
+}
+globalThis.visualViewport?.addEventListener('resize',mobileViewport);window.addEventListener('resize',mobileViewport);document.addEventListener('focusin',mobileViewport);document.addEventListener('focusout',()=>requestAnimationFrame(mobileViewport));mobileViewport();
 
 })();</script></body></html>

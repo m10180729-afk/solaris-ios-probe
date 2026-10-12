@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 UPLOADER = ROOT / "UPLOAD_GIT_BASH.sh"
-BASE_BRANCH = "codex/solaris-build57-20261011-192259-1809"
+BASE_BRANCH = "codex/solaris-build58-20261011-210109-1852"
 SOURCE_DIRS = (".github", "ios", "receiver", "scripts", "tests", "docs",
                "windows-native", "android", "shared", "backend")
 
@@ -39,8 +39,8 @@ class UploadIntegrationTests(unittest.TestCase):
         self.git("push", "origin", "main", cwd=self.seed)
         self.git("checkout", "-b", BASE_BRANCH, cwd=self.seed)
         (self.seed / "shared").mkdir()
-        (self.seed / "shared" / "obsolete.mjs").write_text("build57 obsolete\n")
-        self.commit_seed("build57 fixture")
+        (self.seed / "shared" / "obsolete.mjs").write_text("build58 obsolete\n")
+        self.commit_seed("build58 fixture")
         self.base_sha = self.git("rev-parse", "HEAD", cwd=self.seed).strip()
         self.git("push", "origin", BASE_BRANCH, cwd=self.seed)
 
@@ -63,15 +63,15 @@ class UploadIntegrationTests(unittest.TestCase):
             directory = self.source / name
             directory.mkdir()
             (directory / ".keep").write_text("source fixture\n")
-        (self.source / "README.md").write_text("build58\n")
+        (self.source / "README.md").write_text("build61\n")
         (self.source / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
         (self.source / "UPLOAD_GIT_BASH.sh").write_text(script, encoding="utf-8")
         (self.source / "package.json").write_text('{}\n')
         (self.source / "package-lock.json").write_text('{}\n')
-        (self.source / "shared" / "index.html").write_text("build58 media\n")
-        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '58'\n")
+        (self.source / "shared" / "index.html").write_text("build61 media\n")
+        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '61'\n")
         (self.source / "android" / "app").mkdir()
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 58\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 61\n")
 
     def git(self, *args, cwd=None):
         result = subprocess.run(["git", *args], cwd=cwd or self.folder, env=self.env,
@@ -109,7 +109,7 @@ class UploadIntegrationTests(unittest.TestCase):
         heads = self.heads()
         self.assertEqual(heads["main"], self.main_sha)
         self.assertEqual(heads[BASE_BRANCH], self.base_sha)
-        branches = [name for name in heads if name.startswith("codex/solaris-build58-")]
+        branches = [name for name in heads if name.startswith("codex/solaris-build61-")]
         self.assertEqual(len(branches), 1)
         branch = branches[0]
         self.assertEqual(self.git("--git-dir", str(self.remote), "rev-parse", f"{branch}^").strip(),
@@ -138,14 +138,14 @@ class UploadIntegrationTests(unittest.TestCase):
         self.assertIn("main에 새 작업", result.stderr)
         self.assertEqual(self.heads(), before)
 
-    def test_changed_build57_stops_before_upload(self):
+    def test_changed_build58_stops_before_upload(self):
         (self.seed / "new-work.txt").write_text("new owner work\n")
-        self.commit_seed("later build57")
+        self.commit_seed("later build58")
         self.git("push", "origin", BASE_BRANCH, cwd=self.seed)
         before = self.heads()
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("build57 기준 브랜치가 변경", result.stderr)
+        self.assertIn("build58 기준 브랜치가 변경", result.stderr)
         self.assertEqual(self.heads(), before)
 
     def test_missing_source_explains_which_folder_to_select(self):
@@ -161,11 +161,11 @@ class UploadIntegrationTests(unittest.TestCase):
         (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '56'\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("build58 소스용", result.stderr)
+        self.assertIn("build61 소스용", result.stderr)
         self.assertEqual(len(self.heads()), 2)
 
     def test_wrong_android_build_is_rejected(self):
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 580\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 610\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Android 소스 버전", result.stderr)

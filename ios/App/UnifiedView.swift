@@ -6,11 +6,14 @@ import CryptoKit
 import UserNotifications
 import ReplayKit
 import Darwin
+import WebRTC
+import AuthenticationServices
 
 struct UnifiedView: View {
     @State private var picker = false
     var body: some View {
         UnifiedWebView(showPicker: $picker).ignoresSafeArea(edges: .bottom)
+            .onOpenURL { AuthReturnRouter.shared.receive($0) }
             .sheet(isPresented: $picker) {
                 VStack(spacing: 20) {
                     Text("화면공유 시작").font(.title2.bold())
@@ -33,7 +36,7 @@ struct UnifiedWebView: UIViewRepresentable {
         let w = WKWebView(frame: .zero, configuration: c)
         w.navigationDelegate = context.coordinator
         w.uiDelegate = context.coordinator
-        w.isOpaque = false; w.backgroundColor = .black
+        w.clipsToBounds = true; w.isOpaque = false; w.backgroundColor = .black
         context.coordinator.web = w
         if let url = Bundle.main.url(forResource: "unified", withExtension: "html", subdirectory: "Unified") {
             context.coordinator.appURL = url
@@ -44,24 +47,45 @@ struct UnifiedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
 
-final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate {
+final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
     weak var web: WKWebView?
     var appURL: URL?
     private let showPicker: Binding<Bool>
     private let io = DispatchQueue(label: "org.solaris.unified.disk")
     private let disk = UnifiedDisk()
     private var pendingPicker: (id: String, command: String)?
+    private var receivers: [String: DesktopScreenReceiver] = [:]
+    private weak var receiverFullscreen: UIViewController?
+    private var receiverConnections: [String: String] = [:]
+    private var surfaces: [String: UIHostingController<Build54ScreenSurface>] = [:]
     private var observers: [NSObjectProtocol] = []
+    private var authBrowser: ASWebAuthenticationSession?
+    private var authEpoch = UUID()
     init(showPicker: Binding<Bool>) {
         self.showPicker = showPicker; super.init()
+        observers.append(NotificationCenter.default.addObserver(forName: AuthReturnRouter.notification, object: nil, queue: .main) { [weak self] note in
+            if let url = note.userInfo?["url"] as? String { self?.emit(["type": "auth-callback", "url": url]) }
+        })
         for (name, state) in [(UIApplication.didEnterBackgroundNotification, "background"), (UIApplication.didBecomeActiveNotification, "foreground")] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.emit(["type": "lifecycle", "state": state])
             })
         }
     }
-    deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    deinit { for receiver in receivers.values { receiver.stop() }; for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    private func dismissReceiverFullscreen() {
+        receiverFullscreen?.dismiss(animated: false); receiverFullscreen = nil
+    }
+    private func removeReceiver(_ id: String) {
+        // The presented viewer retains its receiver snapshot; dismiss it before
+        // stopping any receiver so a stale black surface cannot cover the app.
+        if receivers[id] != nil { dismissReceiverFullscreen() }
+        receiverConnections.removeValue(forKey: id)
+        receivers.removeValue(forKey: id)?.stop()
+        if let controller = surfaces.removeValue(forKey: id) { controller.willMove(toParent: nil); controller.view.removeFromSuperview(); controller.removeFromParent() }
+    }
     private var host: UIViewController? { web?.window?.rootViewController }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { web?.window ?? ASPresentationAnchor() }
     private func present(_ controller: UIViewController) {
         var root = host
         while let p = root?.presentedViewController { root = p }
@@ -82,7 +106,70 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
               let args = m["args"] as? [String: Any] else { return }
         do {
             switch command {
-            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion])
+            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true])
+            case "authListen": reply(id, true)
+            case "authTake": reply(id, AuthReturnRouter.shared.take())
+            case "authCancel": authEpoch = UUID(); authBrowser?.cancel(); authBrowser = nil; _ = AuthReturnRouter.shared.take(); reply(id, true)
+            case "authOpen":
+                guard let text = args["url"] as? String, let url = URL(string: text), url.scheme == "https", url.user == nil, url.password == nil, url.port == nil,
+                      (url.host == "lfwjkaipghctigswxoxq.supabase.co" && url.path == "/auth/v1/authorize") || (url.host == "accounts.google.com" && url.path.hasPrefix("/o/oauth2/")) else { throw UnifiedError("Invalid authentication URL") }
+                authEpoch = UUID(); let epoch = authEpoch
+                authBrowser?.cancel()
+                let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "solaris") { [weak self] returned, failure in
+                    DispatchQueue.main.async {
+                        guard let self = self, self.authEpoch == epoch else { return }
+                        if let returned = returned { AuthReturnRouter.shared.receive(returned) }
+                        else { self.emit(["type": "auth-cancelled"]) }
+                        self.authBrowser = nil
+                    }
+                }
+                session.presentationContextProvider = self; authBrowser = session
+                guard session.start() else { authBrowser = nil; throw UnifiedError("로그인 브라우저를 열지 못했습니다.") }; reply(id, true)
+            case "mediaReceiveStart":
+                guard let bid = args["id"] as? String, UUID(uuidString: bid) != nil,
+                      let viewer = args["viewerID"] as? String, UUID(uuidString: viewer) != nil,
+                      let cid = args["connectionID"] as? String, UUID(uuidString: cid) != nil else { throw UnifiedError("Invalid receiver identity") }
+                removeReceiver(bid)
+                let receiver = DesktopScreenReceiver(config: P2PBroadcastConfig(projectURL: "", publishableKey: "", roomID: ""))
+                receivers[bid] = receiver; receiverConnections[bid] = cid
+                let controller = UIHostingController(rootView: Build54ScreenSurface(receiver: receiver))
+                surfaces[bid] = controller; host?.addChild(controller)
+                controller.view.backgroundColor = .black; controller.view.isUserInteractionEnabled = false
+                controller.view.isHidden = true; web?.addSubview(controller.view); controller.didMove(toParent: host)
+                receiver.startUnified(id: bid, viewer: viewer, connection: cid, replayKit: args["replayKit"] as? Bool == true,
+                    iceServers: args["iceServers"] as? [[String: Any]] ?? [],
+                    signal: { [weak self] kind, payload in self?.emit(["type": "media-receiver-signal", "id": bid, "connectionID": cid, "kind": kind, "payload": payload]) },
+                    stats: { [weak self] stats in self?.emit(["type": "media-receiver-stats", "id": bid, "connectionID": cid, "stats": stats]) })
+                reply(id, true)
+            case "mediaReceiveSignal":
+                if let bid = args["id"] as? String, let payload = args["payload"] as? [String: Any] { receivers[bid]?.receiveUnified(payload) }
+                reply(id, true)
+            case "mediaReceiveStop":
+                let bid = args["id"] as? String ?? ""
+                if let cid = args["connectionID"] as? String, receiverConnections[bid] != cid { reply(id, true); break }
+                removeReceiver(bid); reply(id, true)
+            case "mediaReceiveLayout":
+                guard let web else { reply(id, false); return }
+                let viewport = max(1, (args["viewportWidth"] as? NSNumber)?.doubleValue ?? Double(web.bounds.width))
+                let scale = web.bounds.width / CGFloat(viewport)
+                let items = args["items"] as? [[String: Any]] ?? []
+                for view in surfaces.values { view.view.isHidden = true }
+                for item in items {
+                    guard let bid = item["id"] as? String, let surface = surfaces[bid] else { continue }
+                    func n(_ key: String) -> CGFloat { CGFloat((item[key] as? NSNumber)?.doubleValue ?? 0) * scale }
+                    surface.view.frame = CGRect(x: n("x"), y: n("y"), width: max(0, n("width")), height: max(0, n("height")))
+                    let mask = CAShapeLayer()
+                    mask.path = UIBezierPath(rect: CGRect(x: n("clipX"), y: n("clipY"), width: max(0, n("clipWidth")), height: max(0, n("clipHeight")))).cgPath
+                    surface.view.layer.mask = mask
+                    surface.view.isHidden = item["visible"] as? Bool != true
+                }
+                reply(id, true)
+            case "mediaReceiveFullscreen":
+                let bid = args["id"] as? String ?? ""
+                guard receivers[bid] != nil else { throw UnifiedError("방송이 종료되었습니다.") }
+                let controller = UIHostingController(rootView: Build54Fullscreen(receivers: receivers, selected: bid))
+                dismissReceiverFullscreen(); receiverFullscreen = controller
+                controller.modalPresentationStyle = .fullScreen; present(controller); reply(id, true)
             case "pickFile":
                 guard pendingPicker == nil else { throw UnifiedError("파일 선택이 진행 중입니다.") }
                 pendingPicker = (id, command)
@@ -107,7 +194,9 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                     if allowed { center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)) }
                 }
                 reply(id, true)
-            case "fullscreen": reply(id, true) // WK's video fullscreen retains its peer and srcObject.
+            case "fullscreen":
+                if args["enabled"] as? Bool != true { dismissReceiverFullscreen() }
+                reply(id, true)
             case "openExternal":
                 guard let text = args["url"] as? String,
                       text.hasPrefix("https://github.com/m10180729-afk/solaris-ios-probe/releases/"), let url = URL(string: text) else { throw UnifiedError("Invalid update URL") }
@@ -122,6 +211,7 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 if command == "broadcastPrepare" { showPicker.wrappedValue = true }
                 reply(id, true)
             case "mediaStop":
+                showPicker.wrappedValue = false
                 if let group = ProbeShared.group() { try? FileManager.default.removeItem(at: group.url.appendingPathComponent("unified-broadcast.json")) }
                 reply(id, true)
             default:
@@ -145,6 +235,7 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
         decisionHandler(navigationAction.request.url == appURL ? .allow : .cancel)
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        for id in Array(receivers.keys) { removeReceiver(id) }
         if let url = appURL { webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent()) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
@@ -158,6 +249,29 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
         let a = UIAlertController(title: "Solaris", message: prompt, preferredStyle: .alert); a.addTextField { $0.text = defaultText }
         a.addAction(UIAlertAction(title: "취소", style: .cancel) { _ in completionHandler(nil) }); a.addAction(UIAlertAction(title: "확인", style: .default) { _ in completionHandler(a.textFields?.first?.text) }); present(a)
+    }
+}
+
+struct Build54ScreenSurface: View {
+    @ObservedObject var receiver: DesktopScreenReceiver
+    var body: some View { DesktopVideoSurface(track: receiver.videoTrack).background(Color.black) }
+}
+
+struct Build54Fullscreen: View {
+    let receivers: [String: DesktopScreenReceiver]
+    @State var selected: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let receiver = receivers[selected] { Build54ScreenSurface(receiver: receiver).ignoresSafeArea() }
+            HStack {
+                if receivers.count > 1 {
+                    Menu("방송 전환") { ForEach(receivers.keys.sorted(), id: \.self) { id in Button(String(id.prefix(8))) { selected = id } } }
+                }
+                Button("전체화면 종료") { dismiss() }
+            }.padding().background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 12)).padding()
+        }
     }
 }
 
@@ -190,7 +304,7 @@ final class UnifiedDisk {
     func exportURL(_ id: String) throws -> URL { try url(entry(id)) }
     func command(_ command: String, _ a: [String: Any]) throws -> Any? {
         if command == "vaultGet" || command == "vaultSet" {
-            let key = a["key"] as? String ?? ""; guard ["session", "turn"].contains(key) else { throw UnifiedError("Invalid vault key") }
+            let key = a["key"] as? String ?? ""; guard ["session", "turn", "auth-flow"].contains(key) else { throw UnifiedError("Invalid vault key") }
             let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Bundle.main.bundleIdentifier ?? "Solaris", kSecAttrAccount as String: key]
             if command == "vaultGet" {
                 var q = query; q[kSecReturnData as String] = true; var item: CFTypeRef?; let status = SecItemCopyMatching(q as CFDictionary, &item)
@@ -225,7 +339,7 @@ final class UnifiedDisk {
         }
         let id = (a["id"] as? String ?? "").lowercased()
         if command == "createReceiver" {
-            guard UUID(uuidString: id) != nil, let size = a["size"] as? NSNumber, size.doubleValue >= 0, size.doubleValue <= Double(16 * 1024 * 1024 * 1024 * 1024) else { throw UnifiedError("Invalid transfer") }
+            guard UUID(uuidString: id) != nil, let size = a["size"] as? NSNumber, size.doubleValue >= 0, size.doubleValue <= Double(100 * 1024 * 1024) else { throw UnifiedError("Invalid transfer") }
             let name = (a["name"] as? String ?? "download").replacingOccurrences(of: "[/\\\\:\u{0}-\u{1f}]", with: "_", options: .regularExpression)
             let path = root.appendingPathComponent(id + ".part")
             guard FileManager.default.createFile(atPath: path.path, contents: nil, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]) else { throw UnifiedError("저장 파일 생성 실패") }

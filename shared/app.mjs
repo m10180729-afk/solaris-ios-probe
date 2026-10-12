@@ -3,16 +3,21 @@ import {API} from './api.mjs';
 import {Bridge,Ledger,DiskFiles,VERSION,readSettings} from './platform.mjs';
 import {Media,qualityGrade} from './media.mjs';
 import {Transfers} from './files.mjs';
+import {DirectMessages} from './chat.mjs';
+import {clipVideoBounds,resetVideoFullscreen} from './viewing.mjs';
 import {AppLifecycle} from './lifecycle.mjs';
 import {DiagnosticLog,sanitizeDiagnostics} from './diagnostics.mjs';
+import {icon} from './icons.mjs';
 
 const $=s=>document.querySelector(s), bridge=new Bridge(), ledger=new Ledger();
 const api=new API(config,bridge,ledger), disk=new DiskFiles(bridge);
 const emptySnapshot=()=>({friends:[],servers:[],channels:[],members:[],sessions:[],broadcasts:[],blocks:[],signals:[]});
-let media,files,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
+let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
-let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},uiKey='',searchDraft='';
-let verification={type:'email',reset:false},nativeFullscreen=false,chatSave=Promise.resolve();
+let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
+let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
+let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve();const authReturns=new Set();
+let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
 const avatarCache=new Map(),autoWatchDisabled=new Set(),autoWatchAttempt=new Map();
 
 function el(tag,text=null,attrs={}){
@@ -22,17 +27,27 @@ function el(tag,text=null,attrs={}){
 }
 function button(text,action,id,attrs={}){
  const danger=['server-leave','server-delete','channel-delete','friend-remove','block','file-cancel','file-reject'].includes(action);
- return el('button',text,{type:'button','data-action':action,...(id?{'data-id':id}:{}),...attrs,class:[attrs.class??'',danger?'danger':''].filter(Boolean).join(' ')});
+ const n=el('button',null,{type:'button','data-action':action,...(id?{'data-id':id}:{}),...attrs,class:[attrs.class??'',danger?'danger':''].filter(Boolean).join(' ')});
+ const glyph={'friend':'message','friend-menu':'more','server-settings':'chevron','session-request':'screen','friend-file':'files','watch':'screen','unwatch':'stop','fullscreen':'full','profile':'user','end-session':'leave'}[action];
+ if(text!==null){if(glyph)n.append(icon(glyph,18));if(!['friend-menu','server-settings'].includes(action))n.append(el('span',text,{class:'button-label'}));}return n;
 }
+function setButtonLabel(n,text,glyph){n.replaceChildren(...(glyph?[icon(glyph,18)]:[]),el('span',text,{class:'button-label'}));}
 function error(e){
  let text=e.message??String(e);
+ if(e.name==='AbortError'&&/화면공유/.test(text))return;
+ if(e.code==='email_address_not_authorized'||/Email address not authorized/i.test(text))text='이메일 발송이 제한되어 있어요. 프로젝트 소유자가 Supabase의 SMTP 설정을 확인해야 합니다.';
+ if(e.status===429||/rate limit|over_email_send_rate_limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 인증 메일을 다시 요청하세요.';
+ if(/manual linking|manual_linking_disabled/i.test(text))text='기존 계정에 Google을 연결하려면 Supabase에서 Manual Linking을 활성화해야 합니다.';
+ if(/provider.*(disabled|not enabled)|Unsupported provider/i.test(text))text='Google 로그인이 아직 설정되지 않았어요. Supabase의 Google 제공자 설정을 확인하세요.';
+ if(e.code==='otp_expired'||/Token has expired|invalid.*otp/i.test(text))text='인증 코드가 만료되었거나 일치하지 않아요. 메일을 다시 요청하세요.';
  if(/Anonymous sign-ins are disabled/i.test(text))text='ID로 시작하려면 익명 인증을 활성화해야 합니다. 이메일 계정 만들기는 익명 인증 없이 사용할 수 있어요.';
- if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 소스에 포함된 backend/001_solaris.sql을 Supabase SQL Editor에서 실행하세요.';
- log?.record('error',{message:text});$('#error').textContent=text;$('#error').hidden=false;
+ if(/Unknown action.*dm_|Unknown Solaris action|Unknown action/i.test(text))text='개인 메시지 업데이트가 필요합니다. Supabase SQL Editor에서 backend/003_build60_dm.sql을 실행하세요.';
+ if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 처음 설정하는 프로젝트는 backend/001_solaris.sql을 실행하세요. 이미 사용 중인 DB는 테이블을 삭제하거나 001을 재실행하지 말고 빌드61 안내의 업데이트 SQL과 스키마 새로고침을 확인하세요.';
+ text=String(text).replace(/https?:\/\/\S+/g,'[주소 숨김]');log?.record('error',{message:text});$('#error').replaceChildren(el('span',text),button('닫기','dismiss-error',null,{'aria-label':'오류 안내 닫기'}));$('#error').hidden=false;
 }
 async function run(fn,control){
- try{$('#error').hidden=true;if(control)control.disabled=true;await fn();}
- catch(e){error(e);}finally{if(control?.isConnected)control.disabled=false;}
+ try{$('#error').hidden=true;if(control){control.disabled=true;control.setAttribute('aria-busy','true');}await fn();}
+ catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');}}
 }
 function identity(p={},online){
  const wrap=el('div',null,{class:'row'}),avatar=el('span',null,{class:'avatar-wrap'});
@@ -41,11 +56,12 @@ function identity(p={},online){
  info.append(el('strong',p.nickname??'참여자'),el('div','@'+(p.user_id??''),{class:'muted'}));wrap.append(avatar,info);
  if(p.avatar_path){
   const path=p.avatar_path,load=avatarCache.get(path)??api.avatarURL(path).catch(()=>null);avatarCache.set(path,load);
-  Promise.resolve(load).then(url=>{if(url&&wrap.isConnected)av.replaceWith(el('img',null,{src:url,class:'avatar',alt:(p.nickname??'사용자')+' 프로필'}));});
+  Promise.resolve(load).then(url=>{if(url&&av.isConnected)av.replaceWith(el('img',null,{src:url,class:'avatar',alt:(p.nickname??'사용자')+' 프로필'}));});
  }
  return wrap;
 }
 function modal(title,body){
+ $('#dialog').classList.toggle('profile-dialog',body.classList.contains('profile-settings')||body.classList.contains('profile-card'));
  $('#dialog-content').replaceChildren(el('h1',title),body);if(!$('#dialog').open)$('#dialog').showModal();
 }
 function confirmAction(title,text){
@@ -68,22 +84,53 @@ function formModal(title,id,fields,submitText,data={}){
  form.querySelector('input')?.focus();
 }
 function showAuth(mode='login',status=''){
- $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#onboarding-status').textContent=status;
+ $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#mobile-tabs').hidden=true;$('#onboarding-status').textContent=status;
  const active=mode==='signup'?'email-register':mode==='quick'||mode==='claim'?'register':mode==='recover'||mode==='reset'?'recover':mode==='verify'?'verify':'login';
  for(const f of $('#onboarding').querySelectorAll('form'))f.hidden=f.id!==active;
  for(const b of $('.auth-tabs').children)b.classList.toggle('active',b.dataset.action==='auth-'+mode);
  $('#onboarding').dataset.mode=mode;
+ $('#google-panel').hidden=['claim','verify'].includes(mode);$('#google-login').disabled=googleBusy||providers?.external?.google===false;
+ $('#verify-title').textContent=verification.type==='recovery'?'비밀번호 복구 인증':'이메일 인증';
  $('#quick-help').textContent=mode==='claim'?'로그인이 완료되었습니다. 사용할 고유 ID와 닉네임을 설정하세요.':'이 기기에 계정이 저장됩니다. 내 프로필에서 이메일과 비밀번호를 연결하면 다른 기기에서도 로그인할 수 있어요.';
 }
 function conversationKey(s=scope,f=friend){return s?.kind==='channel'?'channel:'+s.id:f?'friend:'+f.uid:'activity';}
 function renderMessages(){
- const host=$('#messages'),items=conversations[conversationKey()]??[];host.replaceChildren();
- for(const item of items){const row=el('div',null,{class:'message'+(item.author?'':' system-message')});if(item.author)row.append(el('strong',item.author));row.append(document.createTextNode(item.text));host.append(row);}
+ const host=$('#messages'),key=conversationKey(),isDM=page==='direct'&&!!friend;
+ const items=isDM?[...(conversations[key]??[]).filter(m=>m.author).map(m=>({...m,legacy:true,created_at:new Date(m.time).toISOString()})),...(dm?.view(friend.uid)??[])]:conversations[key]??[];
+ const token=JSON.stringify([key,isDM,items,friend?.nickname,friend?.avatar_path,snapshot.me?.nickname,snapshot.me?.avatar_path]);if(token===messageKey)return;
+ const scroll=$('.stage-scroll'),atBottom=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<90,switching=host.dataset.conversation!==key;
+ messageKey=token;host.dataset.conversation=key;host.replaceChildren();
+ if(isDM&&dm?.views[friend.uid])host.append(button('최근 대화로 이동','dm-latest',friend.uid,{class:'history-button'}));if(isDM&&items.length&&!dm?.historyEnd[friend.uid])host.append(button('이전 메시지 보기','dm-history',friend.uid,{class:'history-button'}));
+ let date='',previous;
+ for(const item of items){
+  const stamp=new Date(item.created_at??item.time),day=stamp.toLocaleDateString('ko-KR');
+  if(day!==date){host.append(el('div',day,{class:'message-date',role:'separator'}));date=day;previous=null;}
+  const system=item.legacy?!item.author:!isDM&&!item.author;
+  if(system){host.append(el('div',item.text,{class:'system-message'}));previous=null;continue;}
+  const sender=item.sender,p=sender===loadedUID?snapshot.me:sender===friend?.uid?friend:friendRecord(sender)?.profile;
+  const grouped=sender&&previous?.sender===sender&&stamp-new Date(previous.created_at)<300000;
+  const row=el('div',null,{class:'message-row'+(grouped?' grouped':'')+(item.status==='sending'?' sending':''),...(item.id?{'data-message-id':item.id}:{})});
+  if(!grouped){const avatar=identity(p??{nickname:item.author??'참여자'}).querySelector('.avatar-wrap');row.append(avatar);}
+  const content=el('div',null,{class:'message-content'});
+  if(!grouped){const header=el('div',null,{class:'message-author'});header.append(el('strong',p?.nickname??item.author??'참여자'),el('time',stamp.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),{datetime:stamp.toISOString(),title:stamp.toLocaleString('ko-KR')}));content.append(header);}
+  content.append(el('div',item.text,{class:'message-text'}));
+  if(item.status==='failed')content.append(el('span','보내지 못했습니다.',{class:'send-failed'}),button('다시 보내기','dm-retry',item.client_id,{class:'retry-message'}));
+  else if(item.status==='sending')content.append(el('span','보내는 중…',{class:'send-status'}));
+  row.append(content);host.append(row);previous=item;
+ }
+ if(!items.length&&isDM)host.append(el('p','@'+friend.nickname+'님과의 대화가 시작되는 곳이에요.',{class:'conversation-start'}));
+ if(switching||atBottom)requestAnimationFrame(()=>{scroll.scrollTop=scroll.scrollHeight;layoutNativeScreens();});
+}
+function updateDMNavigation(){
+ for(const row of $('#channels').querySelectorAll('.dm')){
+  const peer=row.dataset.id,latest=dm?.list(peer).at(-1),preview=row.querySelector('.dm-preview'),badge=row.querySelector('.dm-unread');
+  if(preview)preview.textContent=latest?.text??'대화를 시작해 보세요.';
+  if(badge){const n=dm?.unread[peer]??0;badge.hidden=!n;badge.textContent=n>99?'99+':n;}
+ }
 }
 function message(text,author=null,key=conversationKey()){
- const list=conversations[key]??[];list.push({text:String(text).slice(0,2000),author,time:Date.now()});conversations[key]=list.slice(-100);
- const uid=loadedUID,data=structuredClone(conversations);
- if(uid)chatSave=chatSave.then(()=>ledger.set('messages:'+uid,data)).catch(error);
+ if(!author&&key.startsWith('friend:'))key='activity';const list=conversations[key]??[];list.push({text:String(text).slice(0,2000),author,time:Date.now()});conversations[key]=list.slice(-100);
+ const uid=loadedUID;clearTimeout(message.saveTimer);message.saveTimer=setTimeout(()=>{const data=structuredClone(conversations);if(uid)chatSave=chatSave.then(()=>ledger.set('messages:'+uid,data)).catch(error);},150);
  if(key===conversationKey())renderMessages();
 }
 function closeNav(){
@@ -106,8 +153,7 @@ async function leaveChannel(){
 async function selectFriend(uid){
  const f=friendRecord(uid);if(!f||f.status!=='accepted')throw new Error('수락된 친구 관계가 필요합니다.');
  await leaveChannel();
- if(media.broadcast?.scope.kind==='direct'&&media.broadcast.scope.id!==sessionFor(uid)?.id)await media.stop();
- friend=f.profile;server=null;page='direct';
+ friend=f.profile;server=null;page='direct';messageKey='';$('#messages').dataset.conversation='';dm?.select(uid);dm?.history(uid).catch(error);
  const s=sessionFor(uid);scope=s?.state==='accepted'?{kind:'direct',id:s.id}:null;
  closeNav();uiKey='';render();persistNavigation();
 }
@@ -126,7 +172,7 @@ async function selectServer(id){
 async function pollOnce(){
  if(polling||!api.session||!media)return;polling=true;
  try{
-  const next=await api.rpc('sync',{cursor});if(api.session?.user?.id!==loadedUID)return;snapshot=next;
+  const next=await api.rpc('sync',{cursor,dm_cursor:dm?.cursor??0});if(api.session?.user?.id!==loadedUID)return;snapshot=next;dm?.merge(next.messages);delete snapshot.messages;
   if(friend){const f=friendRecord(friend.uid);if(f?.status==='accepted')friend=f.profile;else{friend=null;scope=null;page='friends';}}
   if(server&&!snapshot.servers.some(s=>s.id===server)){server=null;scope=null;page='friends';}
   if(scope?.kind==='channel'&&!snapshot.channels.some(c=>c.id===scope.id)){await media.stop();scope=null;page=server?'channel':'friends';}
@@ -134,10 +180,11 @@ async function pollOnce(){
   for(const signal of next.signals??[]){try{await handle(signal);}catch(e){error(e);}cursor=Math.max(cursor,signal.id);}
   lastPoll=Date.now();$('#connection').textContent='온라인 · '+VERSION;showSelf(true);
   await media.update(snapshot);await files.reconcile(snapshot);
+  const liveIDs=new Set(snapshot.broadcasts.map(b=>b.id));for(const id of autoWatchDisabled)if(!liveIDs.has(id))autoWatchDisabled.delete(id);for(const id of autoWatchAttempt.keys())if(!liveIDs.has(id))autoWatchAttempt.delete(id);
   if(Date.now()-(files.lastRecovery??0)>5000){files.lastRecovery=Date.now();await files.reconnect();}
   if(scope?.kind==='direct')for(const b of snapshot.broadcasts.filter(b=>b.scope_kind==='direct'&&b.scope_id===scope.id&&b.publisher!==loadedUID)){
    if(!media.watching.has(b.id)&&!autoWatchDisabled.has(b.id)&&Date.now()-(autoWatchAttempt.get(b.id)??0)>5000){
-    autoWatchAttempt.set(b.id,Date.now());try{await media.watch(b);video({id:b.id});}catch(e){error(e);}
+    autoWatchAttempt.set(b.id,Date.now());try{await media.watch(b);video({id:b.id});}catch(e){autoWatchDisabled.add(b.id);renderVideoFailure(b.id,e);error(e);}
    }
   }
   render();
@@ -154,22 +201,27 @@ async function boot(){
    if(m.solaris_user_id&&m.solaris_nickname){try{me=await api.rpc('profile',{user_id:m.solaris_user_id,nickname:m.solaris_nickname});}catch(e){if(/duplicate|unique/i.test(e.message)){showAuth('claim','이미 사용 중인 ID입니다. 새 고유 ID를 선택하세요.');$('#register [name=nickname]').value=m.solaris_nickname;return;}throw e;}}
    if(!me){showAuth('claim');return;}
   }
-  clearInterval(timer);media?.close();files?.close();await log?.flush();await chatSave;
+  clearInterval(timer);exitViewingFullscreen();nativeScreens.clear();if(media&&media.ownerUID!==me.uid)await media.stop();media?.close();files?.close();await dm?.close();clearTimeout(message.saveTimer);if(loadedUID)await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log?.flush();await chatSave;
+  if(loadedUID!==me.uid){for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();}
   loadedUID=me.uid;snapshot=emptySnapshot();snapshot.me=me;scope=null;server=null;friend=null;cursor=0;page='friends';uiKey='';
-  conversations=await ledger.get('messages:'+me.uid)??{};diagnostics={};autoWatchDisabled.clear();autoWatchAttempt.clear();$('#videos').replaceChildren();
+  conversations=await ledger.get('messages:'+me.uid)??{};messageKey='';drafts={};$('#chat').dataset.conversation='';$('#chat textarea').value='';dm=new DirectMessages(api,ledger,me.uid);await dm.init();dm.addEventListener('change',()=>{updateDMNavigation();renderMessages();});dm.addEventListener('error',e=>error(e.detail));diagnostics={};autoWatchDisabled.clear();autoWatchAttempt.clear();$('#videos').replaceChildren();
   log=new DiagnosticLog(ledger,me.uid);await log.load();log.record('app-start',{version:VERSION});
   media=new Media(api,bridge,settings);files=new Transfers(api,disk,ledger,media.ice,()=>!!media.broadcast||media.watching.size>0);await files.init();
   media.addEventListener('error',e=>error(e.detail));
+  media.addEventListener('starting',()=>{uiKey='';render();});
   media.addEventListener('broadcast',e=>{
    const b=e.detail;log.record(b?.pending?'broadcast-preparing':b?'broadcast-start':'broadcast-stop',{transport:b?.transport});
    if(b){scope=b.scope;page=scope.kind==='channel'?'channel':'direct';if(scope.kind==='channel'){server=snapshot.channels.find(c=>c.id===scope.id)?.server_id??server;friend=null;}else{const s=activeSession(scope);if(s)friend=friendRecord(s.a===loadedUID?s.b:s.a)?.profile??friend;server=null;}}
    message(b?.pending?'시스템 화면공유 시작을 기다리고 있습니다.':b?'화면공유를 시작했습니다.':'화면공유를 종료했습니다.');uiKey='';render();
   });
   media.addEventListener('track',e=>video(e.detail));
-  media.addEventListener('removed',e=>{document.getElementById('video-'+e.detail)?.remove();uiKey='';render();});
+  media.addEventListener('state',e=>{if(['failed','disconnected','connecting','reconnecting'].includes(e.detail.state)){const card=document.getElementById('video-'+e.detail.id);if(card&&!card.classList.contains('video-failed')&&!card.querySelector('.video-waiting'))card.append(el('div','화면을 다시 연결하고 있습니다…',{class:'video-waiting'}));layoutNativeScreens();}});
+  media.addEventListener('removed',e=>{nativeScreens.delete(e.detail);videoResize?.unobserve(document.querySelector('#video-'+e.detail+' video')??$('#viewing'));if(fullscreenID===e.detail||!media.watching.size)exitViewingFullscreen();document.getElementById('video-'+e.detail)?.remove();layoutNativeScreens();delete diagnostics[e.detail];uiKey='';render();});
+  media.addEventListener('view-failed',e=>{autoWatchDisabled.add(e.detail.id);renderVideoFailure(e.detail.id,e.detail.error);});
   media.addEventListener('quality',e=>{
    const q=document.getElementById('quality-'+e.detail.id);
-   if(q){q.replaceChildren(el('span',null,{class:'quality-dot '+e.detail.grade.color}),document.createTextNode(e.detail.grade.text+' · '+e.detail.stats.width+'×'+e.detail.stats.height+' · '+e.detail.stats.fps.toFixed(1)+'fps'));q.title=(e.detail.stats.codec??'')+' · RTT '+Math.round(e.detail.stats.rtt)+'ms';}
+   if(q){q.replaceChildren(el('span',null,{class:'quality-dot '+e.detail.grade.color}),document.createTextNode(e.detail.grade.text+' · '+(e.detail.stats.width??0)+'×'+(e.detail.stats.height??0)+' · '+(e.detail.stats.fps??0).toFixed(1)+'fps'));q.title=(e.detail.stats.codec??'')+' · RTT '+(Number.isFinite(e.detail.stats.rtt)?Math.round(e.detail.stats.rtt)+'ms':'측정 불가');}
+   const v=document.querySelector('#video-'+e.detail.id+' video');if(e.detail.stats.frames>0&&!['failed','disconnected'].includes(e.detail.stats.state)){document.querySelector('#video-'+e.detail.id+' .video-waiting')?.remove();if(v&&e.detail.stats.width&&e.detail.stats.height)v.style.aspectRatio=e.detail.stats.width+'/'+e.detail.stats.height;layoutNativeScreens();}
    diagnostics[e.detail.id]=e.detail.stats;
   });
   media.addEventListener('diagnostics',e=>diagnostics.native=e.detail);
@@ -181,7 +233,7 @@ async function boot(){
   files.addEventListener('offer',e=>{message(e.detail.name+' 파일 전송 요청이 도착했습니다.');page='transfers';uiKey='';renderTransfers();render();notify('파일 수신 요청',e.detail.name);});
   files.addEventListener('complete',e=>{log.record('file-complete',{direction:e.detail.direction,size:e.detail.size});message(e.detail.name+' 전송 완료 · SHA-256 확인');notify('파일 전송 완료',e.detail.name);});
   files.addEventListener('error',e=>error(e.detail));
-  $('#onboarding').hidden=true;$('#workspace').hidden=false;await poll();
+  $('#onboarding').hidden=true;$('#workspace').hidden=false;$('#mobile-tabs').hidden=false;await poll();
   const saved=await ledger.get('navigation:'+me.uid);
   if(!media.broadcast&&saved?.friend&&friendRecord(saved.friend)?.status==='accepted')await selectFriend(saved.friend);
   else if(!media.broadcast&&saved?.channel&&snapshot.channels.some(c=>c.id===saved.channel))await enterChannel(saved.channel);
@@ -202,7 +254,7 @@ async function handle(s){
  if(v.type.startsWith('file-')||v.type==='rtc'&&v.peer?.startsWith('files:'))await files.handle(s);else await media.handle(s);
 }
 function displayKey(){
- return JSON.stringify({snapshot,page,friend:friend?.uid,server,scope,friendFilter,watching:[...media.watching.keys()],broadcast:media.broadcast?.id,preparing:media.broadcast?.pending},(key,value)=>['last_seen','updated_at','created_at','signals','rate_limits'].includes(key)?undefined:value);
+ return JSON.stringify({snapshot,page,friend:friend?.uid,server,scope,friendFilter,watching:[...media.watching.keys()],broadcast:media.broadcast?.id,preparing:media.broadcast?.pending},(key,value)=>['last_seen','updated_at','created_at','signals','rate_limits','messages'].includes(key)?undefined:value);
 }
 function updateBadges(){
  if(!files)return;const n=[...files.records.values()].filter(r=>['offered','accepted','transferring','paused'].includes(r.state)).length;
@@ -224,7 +276,8 @@ function render(){
   const row=button(null,'channel',c.id,{class:selected?'active':'','aria-current':selected?'page':'false',title:c.name});
   row.append(el('span','#',{class:'channel-symbol'}),el('span',c.name,{class:'channel-name'}));
   if(live.length)row.append(el('span','LIVE '+live.length,{class:'live-label'}));cc.append(row);
- }else for(const f of accepted){const row=button(null,'friend',f.profile.uid,{class:'dm '+(friend?.uid===f.profile.uid?'active':''),'aria-label':f.profile.nickname+' 개인 메시지'});row.append(identity(f.profile,f.online));cc.append(row);}
+ }else for(const f of accepted){const row=button(null,'friend',f.profile.uid,{class:'dm '+(friend?.uid===f.profile.uid?'active':''),'aria-label':f.profile.nickname+' 개인 메시지'});row.append(identity(f.profile,f.online));row.querySelector('.identity .muted').classList.add('dm-preview');row.append(el('span',null,{class:'dm-unread count-badge',hidden:'true'}));cc.append(row);}
+ updateDMNavigation();
  if(!cc.childElementCount)cc.append(el('p',current?'아직 채널이 없습니다.':'친구를 추가하면 여기에 표시됩니다.',{class:'muted'}));
  for(const b of $('.side-navigation').querySelectorAll('button'))b.classList.toggle('active',b.dataset.action===page);
  const liveList=$('#broadcast-list');liveList.replaceChildren();
@@ -239,44 +292,57 @@ function render(){
  for(const m of members){
   const row=identity(m.profile,m.online),b=snapshot.broadcasts.find(b=>b.publisher===m.profile.uid&&media.watching.has(b.id)),stat=b?diagnostics[b.id]:null;
   if(stat){const grade=qualityGrade(stat);row.append(el('span',null,{class:'quality-dot '+grade.color,title:grade.text,'aria-label':grade.text}));}
-  people.append(row);
+  row.dataset.action='user-profile';row.dataset.id=m.profile.uid;row.setAttribute('role','button');row.tabIndex=0;people.append(row);
  }
  if(!people.childElementCount)people.append(el('p','온라인 사용자가 없습니다.',{class:'muted'}));
+ if(page==='direct'&&friend){people.replaceChildren(profileCard(friend,friendRecord(friend.uid)?.online));$('#participants-title').textContent='사용자 프로필';}
  const requests=snapshot.sessions.filter(s=>s.state==='requested'&&s.requester!==loadedUID),req=$('#requests');req.replaceChildren();
  for(const s of requests){const f=friendRecord(s.requester),row=identity(f?.profile,f?.online);row.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));req.append(row);}
  if(!requests.length)req.append(el('p','새로운 요청이 없습니다.',{class:'muted'}));$('#request-count').hidden=!requests.length;$('#request-count').textContent=requests.length;
  $('#scope-title').textContent=page==='transfers'?'파일 전송':page==='channel'?(snapshot.channels.find(c=>c.id===scope?.id)?.name??current?.name??'채널'):page==='direct'?friend?.nickname??'개인 메시지':'친구';
- $('#scope-symbol').textContent=page==='channel'?'#':page==='transfers'?'⇄':page==='direct'?'@':'♧';
- $('#scope-status').textContent=page==='direct'?(scope?'화면공유 연결됨 · 서로 동시에 공유할 수 있어요.':friendRecord(friend?.uid)?.online?'온라인 · 화면공유를 요청해 보세요.':'오프라인 · 화면공유와 파일 전송은 상대방이 접속하면 사용할 수 있어요.'):page==='channel'?'이 채널에서 화면과 파일을 공유하세요.':page==='transfers'?'원본 파일 · 전송 수락 · 이어받기 · SHA-256 확인':'친구와 간편하게 화면과 파일을 공유하세요.';
+ $('#scope-symbol').replaceChildren(icon(page==='channel'?'hash':page==='transfers'?'files':page==='direct'?'message':'friends',24));
+ $('#scope-symbol').hidden=page==='direct'&&!!friend;$('#scope-avatar').hidden=page!=='direct'||!friend;
+ if(page==='direct'&&friend){const key=JSON.stringify([friend.uid,friend.avatar_path,friend.nickname,friendRecord(friend.uid)?.online]);if($('#scope-avatar').dataset.identity!==key){$('#scope-avatar').replaceChildren(identity(friend,friendRecord(friend.uid)?.online).querySelector('.avatar-wrap'));$('#scope-avatar').dataset.identity=key;}}
+ $('#scope-title').dataset.action=page==='direct'?'friend-profile':'';$('#scope-title').dataset.id=friend?.uid??'';
+ $('#scope-status').textContent=page==='direct'?(scope?'화면공유 연결됨 · 서로 동시에 공유할 수 있어요.':friendRecord(friend?.uid)?.online?'온라인':'오프라인 · 메시지를 남겨보세요.'):page==='channel'?'이 채널에서 화면과 파일을 공유하세요.':page==='transfers'?'원본 파일 · 전송 수락 · 이어받기 · SHA-256 확인':'친구와 간편하게 화면과 파일을 공유하세요.';
+ for(const card of $('#videos').querySelectorAll('.video-failed'))if(!snapshot.broadcasts.some(b=>'video-'+b.id===card.id))card.remove();
+ $('#stage').dataset.page=page;$('.messages').hidden=!['direct','channel'].includes(page);$('#chat').hidden=!['direct','channel'].includes(page);if(page!=='direct')dm?.select(null);
  $('#friend-tabs').hidden=page!=='friends';
  const tabs=$('#friend-tabs');tabs.replaceChildren();for(const [id,text]of [['online','온라인'],['all','모두'],['pending','대기 중'],['blocked','차단 목록'],['add','친구 추가']])tabs.append(button(text,'friend-filter',id,{class:(friendFilter===id?'active ':'')+(id==='add'?'add-friend':'')}));
- $('#session-controls').hidden=!scope&&!friend&&!media.broadcast;
- $('#share').hidden=!!media.broadcast;$('#stop').hidden=!media.broadcast;$('#share').disabled=!scope;
+ $('#session-controls').hidden=!scope&&!friend&&!media.broadcast&&!media.starting;
+ $('#share').hidden=!!media.broadcast||!!media.starting;$('#stop').hidden=!media.broadcast&&!media.starting;$('#share').disabled=(!scope&&!friend)||!!media.starting;setButtonLabel($('#share'),scope?'화면공유':'화면공유 요청','screen');setButtonLabel($('#stop'),media.starting?'시작 취소':'화면공유 중지','stop');
  document.querySelector('[data-action="send-file"]').disabled=!scope&&!friend;
  document.querySelector('[data-action="end-session"]').disabled=!scope;
- $('#chat input').disabled=!scope&&!friend;$('#chat button').disabled=!scope&&!friend;
- $('#chat input').placeholder=friend?'@'+friend.nickname+'에게 메시지 보내기':scope?.kind==='channel'?'#'+$('#scope-title').textContent+'에 메시지 보내기':'친구나 채널을 선택하세요.';
- $('#messages-title').textContent=friend?'개인 메시지':'연결 및 전송 메시지';
- const connection=$('#sidebar-connection');connection.hidden=!scope;connection.replaceChildren();if(scope)connection.append(el('span','● '+(scope.kind==='direct'?'개인 연결':'# '+$('#scope-title').textContent)),button('✕','end-session',null,{'aria-label':'현재 연결 종료'}));
+ const compose=conversationKey(),prior=$('#chat').dataset.conversation;if(prior!==compose){if(prior)drafts[prior]=$('#chat textarea').value;$('#chat textarea').value=drafts[compose]??'';$('#chat textarea').style.height='auto';$('#chat').dataset.conversation=compose;}
+ $('#chat textarea').disabled=!scope&&!friend;$('#chat button').disabled=!scope&&!friend;
+ $('#chat textarea').placeholder=friend?'@'+friend.nickname+'에게 메시지 보내기':scope?.kind==='channel'?'#'+$('#scope-title').textContent+'에 메시지 보내기':'친구나 채널을 선택하세요.';
+ $('#messages-title').textContent=friend?'개인 메시지':'채널 메시지';$('#composer-help').textContent=matchMedia('(pointer: coarse)').matches?'줄바꿈 · 보내기 버튼으로 전송':'Enter로 보내기 · Shift+Enter로 줄바꿈';
+ const connection=$('#sidebar-connection');connection.hidden=!scope;connection.replaceChildren();if(scope)connection.append(el('span','● '+(scope.kind==='direct'?'개인 연결':'# '+(snapshot.channels.find(c=>c.id===scope.id)?.name??'채널'))),button('✕','end-session',null,{'aria-label':'현재 연결 종료'}));
  if(page==='friends')renderFriends();else if(page==='direct')renderDirect();else if(page==='channel')renderChannel();
+ const toolbar=$('#session-controls'),header=$('.stage-header');if(['direct','channel'].includes(page)){if(toolbar.parentElement!==header)header.insertBefore(toolbar,header.querySelector('[data-action=toggle-people]'));}else if(toolbar.parentElement===header)$('#stage').insertBefore(toolbar,$('#chat'));
+ for(const b of $('#mobile-tabs').children){const active=b.dataset.action==='mobile-friends'?page==='friends':b.dataset.action==='mobile-files'?page==='transfers':b.dataset.action==='mobile-menu'?['direct','channel'].includes(page):false;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');}
  refreshVideoIdentities();renderMessages();
 }
 function emptyState(title,text){
  const n=el('div',null,{class:'empty-state'});n.append(el('div','◉',{class:'empty-mark'}),el('h2',title),el('p',text));return n;
 }
 function renderFriends(){
- const prior=$('#friend-search input'),draft=prior?.value??searchDraft,focused=prior===document.activeElement,start=prior?.selectionStart,end=prior?.selectionEnd;
- const panel=$('#panel');panel.dataset.page='friends';panel.replaceChildren();
- const form=el('form',null,{id:'friend-search'});form.append(el('input',null,{name:'user_id',placeholder:'친구의 고유 ID로 추가하기',required:'true','aria-label':'친구 고유 ID'}),el('button','검색',{class:'primary'}));panel.append(form);
- const input=form.querySelector('input');input.value=draft;input.oninput=()=>searchDraft=input.value;
- if(focused){input.focus({preventScroll:true});input.setSelectionRange(start??draft.length,end??draft.length);}
+ const panel=$('#panel');panel.dataset.page='friends';const adding=friendFilter==='add';
+ let form=panel.querySelector('#friend-search');
+ if(!form||form.dataset.mode!==(adding?'add':'filter')){
+  form=el('form',null,{id:'friend-search','data-mode':adding?'add':'filter'});
+  const input=el('input',null,{name:adding?'user_id':'filter',placeholder:adding?'친구의 고유 ID로 추가하기':'친구 이름 또는 ID 검색','aria-label':adding?'친구 고유 ID':'친구 목록 검색'});input.value=adding?searchDraft:friendListQuery;
+  input.addEventListener('input',()=>{if(adding)searchDraft=input.value;else{friendListQuery=input.value;renderFriends();}});form.append(input);
+  if(adding){input.required=true;form.append(el('button','검색',{class:'primary'}));}else form.addEventListener('submit',e=>{e.preventDefault();e.stopPropagation();});
+ }
+ for(const child of [...panel.children])if(child!==form)child.remove();if(form.parentElement!==panel)panel.prepend(form);
  if(friendFilter==='add'){panel.append(emptyState('친구 추가','중복될 수 있는 닉네임 대신 고유 ID로 친구를 찾아보세요.'));return;}
  if(friendFilter==='blocked'){
   panel.append(el('h2','차단한 사용자 — '+snapshot.blocks.length));
   for(const p of snapshot.blocks){const row=identity(p);row.append(button('차단 해제','unblock',p.uid));panel.append(row);}
   if(!snapshot.blocks.length)panel.append(emptyState('차단한 사용자가 없습니다.','친구 메뉴에서 사용자 차단을 관리할 수 있어요.'));return;
  }
- const friends=snapshot.friends.filter(f=>friendFilter==='pending'?f.status!=='accepted':friendFilter==='online'?f.status==='accepted'&&f.online:true);
+ const friends=snapshot.friends.filter(f=>!friendListQuery||[f.profile.nickname,f.profile.user_id].some(v=>v?.toLocaleLowerCase().includes(friendListQuery.toLocaleLowerCase()))).filter(f=>friendFilter==='pending'?f.status==='pending':f.status==='accepted'&&(friendFilter!=='online'||f.online));
  panel.append(el('h2',(friendFilter==='pending'?'대기 중':friendFilter==='online'?'온라인':'친구')+' — '+friends.length));
  for(const f of friends){
   const row=identity(f.profile,f.status==='accepted'?f.online:undefined),actions=el('div',null,{class:'row-actions'});
@@ -285,19 +351,18 @@ function renderFriends(){
   else actions.append(button('수락','friend-accept',f.profile.uid,{class:'primary'}),button('거절','friend-reject',f.profile.uid));
   row.append(actions,button('⋯','friend-menu',f.profile.uid,{class:'row-menu','aria-label':f.profile.nickname+' 친구 메뉴'}));panel.append(row);
  }
- if(!friends.length)panel.append(emptyState('함께할 친구를 찾아보세요.','위의 검색창에서 고유 ID로 친구 요청을 보낼 수 있어요.'));
+ if(!friends.length)panel.append(emptyState('함께할 친구를 찾아보세요.','친구 추가에서 고유 ID로 친구 요청을 보낼 수 있어요.'));
 }
 function renderDirect(){
  const panel=$('#panel');panel.dataset.page='direct';panel.replaceChildren();if(!friend)return;
- const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online));panel.append(profile);
- const s=sessionFor(friend.uid),banner=el('div',null,{class:'session-banner'});
- if(s?.state==='accepted')banner.append(el('div','화면공유 연결됨',{class:'banner-title'}),el('p','아래 화면공유 버튼을 누르면 내 화면을 공유할 수 있어요. 상대방이 공유하면 자동으로 연결합니다.',{class:'muted'}));
- else if(s?.state==='requested'){
-  banner.append(el('div',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.',{class:'banner-title'}));
-  if(s.requester===loadedUID)banner.append(el('p','상대방이 수락하면 연결됩니다.',{class:'muted'}),button('요청 취소','session-cancel',s.id));
+ const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online),el('p',friend.bio||'@'+friend.nickname+'님과의 개인 메시지입니다.',{class:'profile-bio muted'}));panel.append(profile);
+ const s=sessionFor(friend.uid);if(!s||s.state==='ended')return;
+ const banner=el('div',null,{class:'session-banner compact-session'});
+ if(s.state==='accepted')banner.append(el('span','화면공유 연결됨'),button('연결 종료','end-session',null,{class:'danger'}));
+ else{banner.append(el('span',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.'));
+  if(s.requester===loadedUID)banner.append(button('요청 취소','session-cancel',s.id));
   else banner.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));
- }else banner.append(el('div','친구와 화면을 공유해 보세요.',{class:'banner-title'}),el('p','화면공유는 상대방이 수락한 뒤 시작됩니다. 메시지와 파일 전송은 친구 관계에서 사용할 수 있어요.',{class:'muted'}),button('화면공유 요청','session-request',friend.uid,{class:'primary'}));
- panel.append(banner);
+ }panel.append(banner);
 }
 function renderChannel(){
  const panel=$('#panel');panel.dataset.page='channel';panel.replaceChildren();
@@ -322,7 +387,32 @@ function refreshVideoIdentities(){
   const who=identity(b.profile,true);who.classList.add('broadcast-identity');head.querySelector('.broadcast-identity')?.replaceWith(who);head.dataset.identity=key;
  }
 }
-function video({id,stream}){
+const nativeScreens=new Set();let nativeLayoutTimer,nativeLayoutHadItems=false;
+const videoResize=globalThis.ResizeObserver?new ResizeObserver(()=>layoutNativeScreens()):null;
+function layoutNativeScreens(){
+ if(!bridge.native)return;clearTimeout(nativeLayoutTimer);
+ nativeLayoutTimer=setTimeout(()=>{
+  const workspace=$('#workspace'),blocked=!!document.querySelector('dialog[open]')||workspace.hidden||workspace.classList.contains('nav-open')||workspace.classList.contains('people-open');
+  const items=[...nativeScreens].map(id=>{
+   const video=document.querySelector('#video-'+id+' video'),r=video?.getBoundingClientRect();if(!r)return{id,visible:false};
+   const bounds=[{left:0,top:0,right:innerWidth,bottom:innerHeight}];
+   for(let parent=video.parentElement;parent;parent=parent.parentElement){const style=getComputedStyle(parent);if(/auto|scroll|hidden|clip/.test(style.overflow+style.overflowX+style.overflowY))bounds.push(parent.getBoundingClientRect());}
+   const clip=clipVideoBounds(r,bounds),ready=!video.closest('.video-card').querySelector('.video-waiting');
+   return{id,x:r.x,y:r.y,width:r.width,height:r.height,...clip,visible:!blocked&&ready&&video.getClientRects().length>0&&clip.clipWidth>0&&clip.clipHeight>0};
+  });
+  if(items.length||nativeLayoutHadItems)bridge.call('mediaReceiveLayout',{viewportWidth:innerWidth,items}).catch(()=>{});nativeLayoutHadItems=items.length>0;
+ },40);
+}
+new MutationObserver(layoutNativeScreens).observe($('#stage'),{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','style']});
+new MutationObserver(layoutNativeScreens).observe($('#workspace'),{attributes:true,attributeFilter:['class','hidden']});
+new MutationObserver(layoutNativeScreens).observe($('#dialog'),{attributes:true,attributeFilter:['open']});
+window.addEventListener('resize',layoutNativeScreens);document.addEventListener('scroll',layoutNativeScreens,true);
+function exitViewingFullscreen(){document.body.classList.remove('viewing-fullscreen');nativeFullscreen=false;fullscreenID=null;resetVideoFullscreen(document,bridge);layoutNativeScreens();}
+function renderVideoFailure(id,e){
+ nativeScreens.delete(id);exitViewingFullscreen();document.getElementById('video-'+id)?.remove();
+ const card=el('article',null,{id:'video-'+id,class:'video-card video-failed',role:'status'});card.append(el('strong','화면공유에 연결하지 못했어요.'),el('p',e?.message??'연결 상태를 확인한 뒤 다시 시도하세요.',{class:'muted'}),button('다시 시청','watch',id,{class:'primary'}));$('#videos').append(card);layoutNativeScreens();
+}
+function video({id,stream,native=false}){
  let card=document.getElementById('video-'+id);
  if(!card){
   const b=snapshot.broadcasts.find(b=>b.id===id),head=el('div',null,{class:'video-head'});
@@ -331,13 +421,15 @@ function video({id,stream}){
   head.append(who,el('span','연결 중',{id:'quality-'+id,class:'quality'}),button('확대','focus',id),button('전체화면','fullscreen',id),button('시청 중지','unwatch',id));
   card.append(head,el('div','화면을 연결하는 중입니다…',{class:'video-waiting'}),el('video',null,{autoplay:'true',playsinline:'true',controls:'true'}));$('#videos').append(card);
  }
+ if(native){nativeScreens.add(id);const v=card.querySelector('video');v.dataset.native='true';videoResize?.observe(v);layoutNativeScreens();}
  if(stream){
-  card.querySelector('.video-waiting')?.remove();const v=card.querySelector('video');
+  const v=card.querySelector('video');v.onloadeddata=()=>{card.querySelector('.video-waiting')?.remove();layoutNativeScreens();};if(v.readyState>=2)card.querySelector('.video-waiting')?.remove();
   if(v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>message('영상의 재생 버튼을 눌러주세요.'));}
  }
 }
 async function fullscreen(id){
- const viewing=$('#viewing');document.getElementById('video-'+id)?.classList.add('focused');
+ fullscreenID=id;if(nativeScreens.has(id)){try{await bridge.call('mediaReceiveFullscreen',{id});}catch(e){exitViewingFullscreen();throw e;}return;}
+ document.body.classList.add('viewing-fullscreen');const viewing=$('#viewing');document.getElementById('video-'+id)?.classList.add('focused');
  if(document.fullscreenElement){await document.exitFullscreen();return;}
  if(nativeFullscreen){nativeFullscreen=false;viewing.classList.remove('native-fullscreen');await bridge.call('fullscreen',{enabled:false});return;}
  try{if(viewing.requestFullscreen){await viewing.requestFullscreen();return;}}catch{}
@@ -361,41 +453,69 @@ function serverSettings(id){
  const danger=el('section',null,{class:'danger-zone'});
  danger.append(el('h2',srv.owner===loadedUID?'서버 삭제':'서버 탈퇴'),el('p',srv.owner===loadedUID?'서버와 모든 채널이 삭제됩니다.':'탈퇴 후 다시 참여하려면 초대코드가 필요합니다.',{class:'muted'}),srv.owner===loadedUID?button('서버 삭제','server-delete',id):button('서버 탈퇴','server-leave',id));body.append(danger);modal(srv.name+' · 서버 메뉴',body);
 }
-async function profileModal(){
- const user=await api.account(),body=el('div');body.append(identity(snapshot.me));
- const edit=el('form',null,{id:'profile-edit',class:'stack-form'});edit.append(field('닉네임','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}),el('button','닉네임 저장',{class:'primary'}));
- body.append(edit,el('h2','프로필 사진'),el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file'}),button('사진 삭제','avatar-delete'),el('h2','로그인 및 계정 복구'));
- body.append(el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일을 연결하면 다른 기기에서 같은 계정으로 로그인할 수 있어요.',{class:'muted'}));
+function profileCard(p,online){
+ const card=el('section',null,{class:'profile-card'}),banner=el('div',null,{class:'profile-banner'}),content=el('div',null,{class:'profile-card-content'});
+ banner.append(el('span',p?.nickname?.[0]??'S',{class:'profile-banner-letter','aria-hidden':'true'}));card.append(banner);
+ content.append(identity(p,online),el('div',null,{class:'profile-divider'}),el('h2','내 소개'),el('p',p?.bio||'아직 소개가 없어요.',{class:'profile-bio'+(p?.bio?'':' muted')}));
+ card.append(content);return card;
+}
+async function profileModal(tab='profile'){
+ const user=await api.account(),body=el('div',null,{class:'profile-settings'}),nav=el('nav',null,{class:'settings-navigation','aria-label':'사용자 설정'}),content=el('div',null,{class:'settings-content'});
+ nav.append(el('h2','사용자 설정'),button('프로필','profile-tab','profile',{class:tab==='profile'?'active':''}),button('내 계정','profile-tab','account',{class:tab==='account'?'active':''}));body.append(nav,content);
+ const profile=el('section',null,{'data-profile-pane':'profile'});profile.hidden=tab!=='profile';
+ const edit=el('form',null,{id:'profile-edit',class:'stack-form'}),preview=profileCard(snapshot.me,true);
+ edit.append(field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
+ const label=el('label','내 소개'),bio=el('textarea',null,{name:'bio',rows:'4',maxlength:'380',placeholder:'좋아하는 것, 지금 하고 있는 일… 나를 소개해 보세요.'}),count=el('span',null,{class:'field-counter'});bio.value=snapshot.me.bio??'';label.append(bio,count);edit.append(label);
+ const updatePreview=()=>{if(Array.from(bio.value).length>190)bio.value=Array.from(bio.value).slice(0,190).join('');count.textContent=Array.from(bio.value).length+' / 190';preview.querySelector('.profile-bio').textContent=bio.value||'아직 소개가 없어요.';preview.querySelector('.profile-card-content strong').textContent=edit.elements.nickname.value||snapshot.me.nickname;};bio.addEventListener('input',updatePreview);edit.elements.nickname.addEventListener('input',updatePreview);updatePreview();
+ edit.append(el('button','변경사항 저장',{class:'primary'}));profile.append(preview,el('h2','프로필 편집'),el('p','고유 ID: @'+snapshot.me.user_id,{class:'form-help'}),edit,el('h2','프로필 사진'));
+ const photos=el('div',null,{class:'profile-photo-actions'}),upload=el('label','프로필 사진 변경',{class:'upload-photo-button'});upload.append(el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file','aria-label':'프로필 사진 변경'}));photos.append(upload,button('사진 삭제','avatar-delete'));profile.append(photos);
+ const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';account.append(el('h2','로그인 및 계정 복구'),el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일이나 Google을 연결해 같은 계정으로 다시 로그인할 수 있어요.',{class:'account-summary'}));
+ const google=user.identities?.some(i=>i.provider==='google');account.append(el('h2','연결된 계정'),el('p',google?'Google 계정 연결됨':'Google 계정을 연결하면 기존 친구와 서버가 유지돼요.',{class:'form-help'}));
+ if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('span','Google 연결됨',{class:'linked-account'}));
+ const status=el('p',null,{id:'account-auth-status',role:'status',class:'form-help'});account.append(status);
  if(!user.email_confirmed_at){
-  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));body.append(rec);
-  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',required:'true'}),el('button','이메일 연결 완료'));body.append(verify);
+  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));account.append(rec);
+  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',inputmode:'numeric',pattern:'[0-9]{6,10}',required:'true'}),el('p','메일의 인증 링크를 열거나, 메일에 적힌 코드를 입력하세요.',{class:'form-help'}),el('button','이메일 연결 완료'));account.append(verify);
  }else{
-  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('로그인 비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));
-  body.append(pw,el('p','이메일과 비밀번호로 로그인하면 친구·서버·프로필이 그대로 유지됩니다.',{class:'muted'}),button('로그아웃','logout',null,{class:'danger'}));
+  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));account.append(pw);
  }
- modal('내 프로필',body);
+ const recoverable=user.email_confirmed_at||google;account.append(el('p','다른 기기에서도 로그인하면 친구·서버·프로필이 그대로 유지됩니다.',{class:'form-help'}));if(recoverable)account.append(el('section',null,{class:'danger-zone'}));if(recoverable)account.lastElementChild.append(button('로그아웃','logout',null,{class:'danger'}));content.append(profile,account);modal('사용자 설정',body);
 }
 async function action(a,id){
+ if(a==='mobile-menu'){await action('toggle-nav');return;}
+ if(a==='mobile-friends'){await action('friends');return;}
+ if(a==='mobile-files'){await action('transfers');return;}
+ if(a==='mobile-profile'){closeNav();await profileModal();return;}
+ if(a==='dismiss-error'){$('#error').hidden=true;return;}
+ if(a==='profile-tab'){for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]'))b.classList.toggle('active',b.dataset.id===id);return;}
+ if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;return;}
+ if(a==='auth-resend'){const email=$('#verify [name=email]').value.trim();if(!email)throw new Error('이메일을 입력하세요.');if(Date.now()-(verification.requestedAt??0)<60000)throw new Error('인증 메일은 1분 뒤 다시 요청할 수 있어요.');await api.resendVerification(email,verification.type);verification.requestedAt=Date.now();localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#onboarding-status').textContent='인증 메일을 다시 요청했어요. 받은 편지함과 스팸함을 확인하세요.';return;}
+ if(a==='google-login'||a==='google-link'){
+  if(googleBusy)return;googleBusy=true;try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
+ }
  if(a.startsWith('auth-')){showAuth(a.slice(5));return;}
  if(a==='toggle-nav'){const on=$('#workspace').classList.toggle('nav-open');$('#nav-toggle').setAttribute('aria-expanded',String(on));$('#nav-scrim').hidden=!on;return;}
  if(a==='close-nav'){closeNav();return;}
  if(a==='toggle-people'){const on=$('#workspace').classList.toggle('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded',String(on));return;}
  if(a==='friends'){
-  await leaveChannel();if(media.broadcast)await media.stop();server=null;friend=null;scope=null;page='friends';uiKey='';closeNav();render();persistNavigation();return;
+  server=null;friend=null;page='friends';uiKey='';closeNav();render();persistNavigation();return;
  }
  if(a==='friend-filter'){friendFilter=id;uiKey='';render();return;}
  if(a==='transfers'){page='transfers';renderTransfers();uiKey='';closeNav();render();persistNavigation();return;}
- if(a==='friend'){await selectFriend(id);await poll(true);return;}
+ if(a==='friend'){$('#dialog').close();await selectFriend(id);await poll(true);return;}
  if(a==='server'){await selectServer(id);return;}
  if(a==='channel'){await enterChannel(id);return;}
  if(a==='watch'){
   const b=snapshot.broadcasts.find(b=>b.id===id);if(!b)throw new Error('방송이 종료되었습니다.');
-  autoWatchDisabled.delete(id);await media.watch(b);video({id});uiKey='';render();return;
+  autoWatchDisabled.delete(id);document.getElementById('video-'+id)?.classList.contains('video-failed')&&document.getElementById('video-'+id).remove();try{await media.watch(b);video({id});}catch(e){autoWatchDisabled.add(id);renderVideoFailure(id,e);throw e;}uiKey='';render();return;
  }
  if(a==='unwatch'){autoWatchDisabled.add(id);await media.unwatch(id);uiKey='';render();return;}
  if(a==='focus'){document.getElementById('video-'+id)?.classList.toggle('focused');return;}
  if(a==='fullscreen'){await fullscreen(id);return;}
- if(a==='share'){const s=selectedScope();if(s.kind==='friend')throw new Error('친구의 화면공유 요청 수락을 기다리세요.');await media.start(s);return;}
+ if(a==='share'){const s=selectedScope();if(s.kind==='friend'){await action('session-request',friend.uid);return;}await media.start(s);return;}
+ if(a==='dm-retry'){const item=dm.list(friend.uid).find(m=>m.client_id===id);if(item)await dm.send(friend.uid,item.text,id);return;}
+ if(a==='dm-latest'){dm.latest(id);await dm.history(id);$('.stage-scroll').scrollTop=$('.stage-scroll').scrollHeight;return;}
+ if(a==='dm-history'){const before=dm.view(id).find(m=>m.seq)?.seq,scroll=$('.stage-scroll'),height=scroll.scrollHeight;await dm.history(id,before);scroll.scrollTop+=scroll.scrollHeight-height;return;}
  if(a==='stop'){await media.stop();return;}
  if(a==='session-request'){
   await selectFriend(id);const current=sessionFor(id);
@@ -416,7 +536,7 @@ async function action(a,id){
   for(const [bid,w]of media.watching)if(w.broadcast.scope_id===selected.id)await media.unwatch(bid);
   scope=null;if(selected.kind==='channel'){page='friends';server=null;friend=null;}await poll(true);uiKey='';render();persistNavigation();return;
  }
- if(a==='friend-file'){await selectFriend(id);await sendFile(id,{kind:'friend',id});return;}
+ if(a==='friend-file'){$('#dialog').close();await selectFriend(id);await sendFile(id,{kind:'friend',id});return;}
  if(a==='send-file'){
   const s=selectedScope();
   if(s.kind==='channel'){
@@ -445,13 +565,13 @@ async function action(a,id){
   const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','친구 관계 관리'));
   if(f.status==='accepted')danger.append(button('친구 삭제','friend-remove',id));danger.append(button('사용자 차단','block',id));body.append(danger);modal('친구 메뉴',body);return;
  }
- if(a==='friend-profile'){modal('친구 프로필',identity(friendRecord(id)?.profile));return;}
- if(a==='server-create'){formModal('서버 만들기','server-create-form',[{label:'서버 이름',name:'name',attrs:{maxlength:'100',required:'true',placeholder:'친구들과 함께할 공간'}}],'서버 만들기');return;}
+ if(a==='friend-profile'||a==='user-profile'){const p=friendRecord(id)?.profile??snapshot.members.find(m=>m.profile.uid===id)?.profile??(id===loadedUID?snapshot.me:null);if(!p)return;const card=profileCard(p,friendRecord(id)?.online);if(friendRecord(id)?.status==='accepted')card.querySelector('.profile-card-content').append(button('메시지 보내기','friend',id,{class:'primary'}));modal('사용자 프로필',card);return;}
+ if(a==='server-create'){formModal('서버 만들기','server-create-form',[{label:'서버 이름',name:'name',attrs:{maxlength:'64',required:'true',placeholder:'친구들과 함께할 공간'}}],'서버 만들기');return;}
  if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{label:'초대코드',name:'invite',attrs:{required:'true',placeholder:'서버 소유자에게 받은 초대코드'}}],'서버 참여');return;}
  if(a==='channel-create'){formModal('채널 만들기','channel-create-form',[{label:'채널 이름',name:'name',attrs:{maxlength:'64',required:'true',placeholder:'화면공유 채널 이름'}}],'채널 만들기',{server:id});return;}
  if(a==='server-settings'){serverSettings(id);return;}
  if(a==='copy-invite'){await navigator.clipboard.writeText(snapshot.servers.find(s=>s.id===id).invite);message('초대코드를 복사했습니다.');return;}
- if(a==='server-rename'){formModal('서버 이름 변경','server-rename-form',[{label:'서버 이름',name:'name',attrs:{value:snapshot.servers.find(s=>s.id===id).name,maxlength:'100',required:'true'}}],'저장',{server:id});return;}
+ if(a==='server-rename'){formModal('서버 이름 변경','server-rename-form',[{label:'서버 이름',name:'name',attrs:{value:snapshot.servers.find(s=>s.id===id).name,maxlength:'64',required:'true'}}],'저장',{server:id});return;}
  if(a==='channel-rename'){const c=snapshot.channels.find(c=>c.id===id);formModal('채널 이름 변경','channel-rename-form',[{label:'채널 이름',name:'name',attrs:{value:c.name,maxlength:'64',required:'true'}}],'저장',{server:c.server_id,channel:id});return;}
  if(a==='channel-files'){const c=snapshot.channels.find(c=>c.id===id);await api.rpc('channel_update',{server_id:c.server_id,id,files_enabled:!c.files_enabled});await poll(true);serverSettings(c.server_id);return;}
  if(a==='server-invite'){if(!await confirmAction('초대코드 갱신','기존 초대코드는 사용할 수 없게 됩니다. 새 초대코드를 만들까요?'))return;await api.rpc('server_invite',{server_id:id});await poll(true);serverSettings(id);return;}
@@ -470,17 +590,23 @@ async function action(a,id){
  if(a==='profile'){await profileModal();return;}
  if(a==='avatar-delete'){const path=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:null});if(path)await api.avatar(path);await poll(true);$('#dialog').close();return;}
  if(a==='logout'){
-  const user=await api.account();if(!user.email_confirmed_at)throw new Error('이메일을 인증한 뒤 로그아웃하세요. 기기 계정을 잃지 않도록 보호합니다.');
+  const user=await api.account();if(!user.email_confirmed_at&&!user.identities?.some(i=>i.provider==='google'))throw new Error('이메일이나 Google을 연결한 뒤 로그아웃하세요.');
   if(!await confirmAction('로그아웃','이 기기에서 로그아웃할까요? 다시 로그인하면 친구와 서버가 복원됩니다.'))return;
   if(scope?.kind==='channel')await leaveChannel();await media.stop();for(const [id]of media.watching)await media.unwatch(id);
-  await files.suspend();files.close();media.close();files=null;media=null;clearInterval(timer);await log.flush();await chatSave;try{await api.logout();}catch(e){await boot();throw e;}
+  await files.suspend();files.close();media.close();files=null;media=null;clearInterval(timer);exitViewingFullscreen();await dm?.close();clearTimeout(message.saveTimer);await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log.flush();await chatSave;try{await api.logout();}catch(e){await boot();throw e;}
   snapshot=emptySnapshot();loadedUID=null;conversations={};scope=null;server=null;friend=null;$('#videos').replaceChildren();closeNav();showAuth();return;
  }
- if(a==='settings'){const body=el('div'),f=el('form',null,{id:'settings-edit'});f.append(el('input',null,{name:'maxReceive',type:'number',min:'1',max:'5',value:settings.maxReceive??4}),el('input',null,{name:'turnURL',placeholder:'TURN URL (선택)',value:settings.iceServers?.find(s=>s.username)?.urls??''}),el('input',null,{name:'turnUser',placeholder:'TURN 사용자',autocomplete:'off'}),el('input',null,{name:'turnCredential',type:'password',placeholder:'TURN 인증 (선택)',autocomplete:'off'}),el('button','설정 저장'));const duplicate=el('label','동일한 파일의 중복 전송 방지');const checkbox=el('input',null,{type:'checkbox',name:'preventDuplicates'});checkbox.checked=settings.preventDuplicates??true;duplicate.append(checkbox);f.prepend(duplicate);const channel=el('select',null,{name:'updateChannel'});for(const [value,label]of [['stable','안정 버전'],['test','테스트 버전 포함']]){const option=el('option',label,{value});option.selected=settings.updateChannel===value;channel.append(option);}f.append(channel);body.append(el('p','동시 시청 수 · TURN 설정'),f,button('업데이트 확인','update'),button('진단 내보내기','diagnostics'),el('p','화면공유는 고화질·60fps를 기본으로 요청하며 실제 출력은 기기와 네트워크 성능에 따릅니다. 직접 연결이 어려운 네트워크에서는 별도 TURN이 필요할 수 있습니다.',{class:'muted'}));modal('설정',body);return;}
- if(a==='diagnostics'){await log.flush();const value=sanitizeDiagnostics({history:log.snapshot(),version:VERSION,reconnects:media.reconnects,platform:navigator.userAgent,media:diagnostics,files:[...files.records.values()].map(r=>({state:r.state,bytes:r.offset,size:r.size,error:r.error})),native:bridge.native?await bridge.call('diagnostics'):null});const body=el('div');body.append(el('pre',JSON.stringify(value,null,2)));modal('민감정보를 제외한 진단',body);if(bridge.native)await bridge.call('exportLog',{text:JSON.stringify(value,null,2)});return;}
- if(a==='update'){const r=await fetch('https://api.github.com/repos/'+config.repository+'/releases',{redirect:'error'});if(!r.ok)throw new Error('업데이트 정보를 읽지 못했습니다.');const list=await r.json(),release=list.find(r=>!r.draft&&(settings.updateChannel==='test'||!r.prerelease));const body=el('div');if(!release)body.append(el('p','공식 배포된 버전이 없습니다. 현재 '+VERSION));else{body.append(el('h2',release.tag_name),el('p',release.body??''));for(const a of release.assets){if(a.browser_download_url.startsWith('https://github.com/'+config.repository+'/releases/download/'))body.append(button(a.name,'update-download',a.browser_download_url));}body.append(el('p','설치된 플랫폼의 파일을 선택하세요. iOS는 AltStore 재서명이 필요합니다. 계정 데이터는 앱을 삭제하지 않고 업데이트하면 유지됩니다.',{class:'muted'}));}modal('업데이트',body);return;}if(a==='update-download'){if(!id.startsWith('https://github.com/'+config.repository+'/releases/download/'))throw new Error('잘못된 업데이트 주소');await bridge.call('openExternal',{url:id});return;}
+ if(a==='settings'){
+  const body=el('div'),f=el('form',null,{id:'settings-edit',class:'stack-form'}),saved=settings.iceServers?.find(s=>s.username);
+  f.append(field('동시에 볼 화면 수','maxReceive',{type:'number',min:'1',max:'5',value:settings.maxReceive??4}));
+  const duplicate=el('label','동일한 파일의 중복 전송 방지'),checkbox=el('input',null,{type:'checkbox',name:'preventDuplicates'});checkbox.checked=settings.preventDuplicates??true;duplicate.prepend(checkbox);f.append(duplicate);
+  const channel=el('select',null,{name:'updateChannel'});for(const[value,label]of[['stable','안정 버전'],['test','테스트 버전 포함']]){const option=el('option',label,{value});option.selected=settings.updateChannel===value;channel.append(option);}const channelLabel=el('label','업데이트 채널');channelLabel.append(channel);f.append(channelLabel);
+  const advanced=el('details',null,{class:'advanced-settings'});advanced.append(el('summary','고급 연결 설정 · TURN'),el('p','직접 연결이 어려운 네트워크에서 중계 서버를 사용할 수 있어요. 중계 비용은 제공자 정책에 따릅니다.',{class:'form-help'}),field('TURN 주소','turnURL',{placeholder:'turn:relay.example.com:3478',value:saved?.urls??''}),field('TURN 사용자','turnUser',{value:saved?.username??'',autocomplete:'off'}),field('TURN 인증','turnCredential',{type:'password',placeholder:saved?'비워두면 저장된 인증 유지':'인증 비밀 입력',autocomplete:'off'}));f.append(advanced,el('button','설정 저장',{class:'primary'}));
+  body.append(f,button('업데이트 확인','update'),button('진단 내보내기','diagnostics'),el('p','화면공유는 고화질·60fps를 기본으로 요청하며 실제 출력은 기기와 네트워크 성능에 따릅니다.',{class:'muted'}));modal('설정',body);return;
+ }
 }
 
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.getAttribute('role')==='button'&&e.target.dataset.action){e.preventDefault();run(()=>action(e.target.dataset.action,e.target.dataset.id),e.target);}});
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-action]');if(b&&!b.disabled)run(()=>action(b.dataset.action,b.dataset.id),b);
 });
@@ -493,17 +619,17 @@ document.addEventListener('submit',e=>{
    case 'login':await api.login(data.email,data.password);form.querySelector('[name=password]').value='';await boot();break;
    case 'email-register':{
     const value=await api.registerEmail(data.email,data.password,data);form.querySelector('[name=password]').value='';
-    if(value.confirmationRequired){verification={type:'signup',reset:false};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
+    if(value.confirmationRequired){verification={type:'signup',reset:false,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
     else{try{await api.rpc('profile',{user_id:data.user_id,nickname:data.nickname});}catch(e){showAuth('claim','가입한 계정은 유지되어 있습니다. 사용할 고유 ID를 다시 설정하세요.');$('#register [name=nickname]').value=data.nickname;throw e;}await boot();}
     break;
    }
    case 'register':if(!api.session)await api.signup();await api.rpc('profile',data);await boot();break;
    case 'recover':{
     const reset=$('#onboarding').dataset.mode==='reset';if(reset)await api.passwordReset(data.email);else await api.emailOTP(data.email);
-    verification={type:reset?'recovery':'email',reset};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','이메일의 인증 코드를 입력하세요.');break;
+    verification={type:reset?'recovery':'email',reset,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','인증 메일을 요청했어요. 메일의 링크를 열거나 인증 코드를 입력하세요.');break;
    }
    case 'verify':{
-    await api.verifyAccount(data.email,data.token,verification.type);localStorage.removeItem('solaris-verification');await boot();
+    await api.verifyAccount(data.email,data.token,verification.type);await api.authFlow.cancel();$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');await boot();
     if(verification.reset)formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호','name':'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');break;
    }
    case 'friend-search':{
@@ -511,11 +637,11 @@ document.addEventListener('submit',e=>{
     if(p.uid===loadedUID)throw new Error('내 ID입니다. 친구의 고유 ID를 입력하세요.');
     const row=identity(p);row.append(button('친구 요청 보내기','friend-request-send',p.uid,{class:'primary'}));modal('검색 결과',row);break;
    }
-   case 'profile-edit':await api.rpc('profile',data);$('#dialog').close();await poll(true);break;
+   case 'profile-edit':{const saved=await api.rpc('profile',data);if(saved.bio===undefined)throw new Error('프로필 소개 업데이트가 필요합니다. backend/004_build61_accounts_broadcast.sql을 적용하세요.');await poll(true);await profileModal();break;}
    case 'recovery-link':
     await api.recoverEmail(data.email);$('#link-verify [name=email]').value=data.email;
-    message('이메일로 보낸 인증 코드를 입력해 계정 연결을 완료하세요.');form.append(el('p','이메일로 인증을 보냈습니다. 아래에 받은 코드를 입력하세요.',{class:'form-help'}));break;
-   case 'link-verify':await api.verifyEmailLink(data.email,data.token);await api.account();message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal();break;
+    $('#account-auth-status').textContent='인증 메일을 요청했어요. 메일의 링크를 열거나 아래에 받은 코드를 입력하세요.';break;
+   case 'link-verify':await api.verifyEmailLink(data.email,data.token);{const user=await api.account();if(!user.email_confirmed_at||user.email?.toLowerCase()!==data.email.trim().toLowerCase())throw new Error('이메일 인증을 완료한 뒤 다시 확인하세요.');}message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal('account');break;
    case 'password-edit':await api.setPassword(data.password);form.querySelector('[name=password]').value='';$('#dialog').close();message('로그인 비밀번호를 저장했습니다.');break;
    case 'server-create-form':{
     const s=await api.rpc('server_create',{name:data.name.trim()});$('#dialog').close();await poll(true);await selectServer(s.id);break;
@@ -531,29 +657,60 @@ document.addEventListener('submit',e=>{
     settings.maxReceive=n;settings.preventDuplicates=data.preventDuplicates==='on';settings.updateChannel=data.updateChannel??'stable';
     if(data.turnURL){
      if(!/^turns?:[a-z0-9.-]+(:\d+)?(\?transport=(udp|tcp))?$/i.test(data.turnURL))throw new Error('TURN 주소 형식을 확인하세요.');
-     const turn={urls:data.turnURL,username:data.turnUser,credential:data.turnCredential};settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},turn];await bridge.call('vaultSet',{key:'turn',value:JSON.stringify(turn)});
-    }
+     const saved=settings.iceServers?.find(s=>s.username),credential=data.turnCredential||(saved?.urls===data.turnURL&&saved?.username===data.turnUser?saved.credential:'');if(!data.turnUser||!credential)throw new Error('TURN 사용자와 인증을 입력하세요.');const turn={urls:data.turnURL,username:data.turnUser,credential};settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},turn];if(bridge.native)await bridge.call('vaultSet',{key:'turn',value:JSON.stringify(turn)});else await ledger.set('turn',JSON.stringify(turn));
+    }else{settings.iceServers=[{urls:'stun:stun.l.google.com:19302'}];if(bridge.native)await bridge.call('vaultSet',{key:'turn',value:'null'});else await ledger.set('turn',null);}
     localStorage.setItem('solaris-settings',JSON.stringify({...settings,iceServers:undefined}));media.settings=settings;files.iceServers=media.ice;$('#dialog').close();break;
    }
    case 'chat':{
-    const s=selectedScope(),text=data.message.trim();if(!text)return;
-    const targets=s.kind==='channel'?snapshot.members.filter(m=>m.channel_id===s.id&&m.profile.uid!==loadedUID&&m.online).map(m=>m.profile.uid):[friend.uid];
-    for(const target of targets)await api.signal(s,target,{type:'chat',text});message(text,snapshot.me.nickname);form.reset();break;
+    const text=data.message.trim();if(!text)return;
+    if(page==='direct'&&friend){const peer=friend.uid;form.reset();form.querySelector('textarea').style.height='auto';await dm.send(peer,text);break;}
+    const selected=selectedScope(),targets=snapshot.members.filter(m=>m.channel_id===selected.id&&m.profile.uid!==loadedUID&&m.online).map(m=>m.profile.uid);
+    for(const target of targets)await api.signal(selected,target,{type:'chat',text});message(text,snapshot.me.nickname);form.reset();form.querySelector('textarea').style.height='auto';break;
    }
   }
  },control);
 });
 document.addEventListener('change',e=>{if(e.target.id!=='avatar-file')return;run(async()=>{const f=e.target.files[0];if(!f)return;if(!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>10*1024*1024)throw new Error('10MB 이하 PNG·JPEG·WebP 이미지를 선택하세요.');const url=URL.createObjectURL(f),image=new Image();try{image.src=url;await image.decode();const scale=Math.min(1,512/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.85));if(!blob||blob.size>524288)throw new Error('사진 변환 실패');const path=snapshot.me.uid+'/'+crypto.randomUUID()+'.jpg';await api.avatar(path,blob);const old=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:path});if(old)await api.avatar(old);$('#dialog').close();await poll();}finally{URL.revokeObjectURL(url);}});});
 
-document.addEventListener('fullscreenchange',()=>{if(bridge.native&&!document.fullscreenElement){nativeFullscreen=false;$('#viewing').classList.remove('native-fullscreen');bridge.call('fullscreen',{enabled:false}).catch(()=>{});}});
+document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle('viewing-fullscreen',!!document.fullscreenElement||nativeFullscreen);if(bridge.native&&!document.fullscreenElement){nativeFullscreen=false;$('#viewing').classList.remove('native-fullscreen');bridge.call('fullscreen',{enabled:false}).catch(()=>{});}});
 globalThis.addEventListener('online',()=>poll());
 api.addEventListener('auth',()=>{
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
- if(api.session&&media)media.refreshAuth().catch(error);
+ if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
 globalThis.addEventListener('pagehide',()=>{log?.flush().catch(()=>{});files?.close();media?.close();});
+function receiveAuthReturn(url){
+ const task=authReturnQueue.then(async()=>{
+  await authReady;if(authReturns.has(url))return true;
+  const value=await api.authReturn(url);authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
+  googleBusy=false;$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');$('#dialog').close();
+  if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
+  else{await boot();if(value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
+  return true;
+ });authReturnQueue=task.catch(()=>{});return task;
+}
+bridge.addEventListener('event',e=>{if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
 await run(async()=>{
  try{const saved=JSON.parse(localStorage.getItem('solaris-verification')??'null');if(saved&&['email','signup','recovery'].includes(saved.type))verification=saved;}catch{}
- if(bridge.native){const t=await bridge.call('vaultGet',{key:'turn'});if(t)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},JSON.parse(t)];}
- lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:poll,onRestore:boot,onError:error});await lifecycle.start();await boot();
+ {const t=bridge.native?await bridge.call('vaultGet',{key:'turn'}):await ledger.get('turn');if(t){try{const saved=JSON.parse(t);if(saved?.urls&&saved.username&&saved.credential)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},saved];}catch{}}}
+ for(const n of document.querySelectorAll('[data-icon]')){const text=n.textContent.trim();n.replaceChildren(icon(n.dataset.icon,20));if(!n.hasAttribute('aria-label')||n.closest('#mobile-tabs'))n.append(el('span',text,{class:'button-label'}));n.title=n.getAttribute('aria-label')??text;}
+ const navIcons={friends:'friends',transfers:'files'};for(const n of $('.side-navigation').children)n.firstElementChild?.replaceChildren(icon(navIcons[n.dataset.action],22));
+ const chatInput=$('#chat textarea');chatInput.addEventListener('input',()=>{drafts[$('#chat').dataset.conversation]=chatInput.value;});
+ lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:poll,onRestore:boot,onError:error});await lifecycle.start();
+ try{await api.init();}catch(e){showAuth('login','네트워크를 확인하거나 기존 계정으로 로그인하세요.');error(e);}finally{authReadyResolve();}
+ let returned;if(bridge.native)returned=await bridge.call('authTake');else if(new URL(location.href).searchParams.has('code')||new URL(location.href).searchParams.has('error')){returned=location.href;history.replaceState({},'',location.pathname);}
+ if(returned)await receiveAuthReturn(returned).catch(async e=>{await boot();error(e);});else await boot();
+ api.authSettings().then(value=>{providers=value;$('#google-login').disabled=googleBusy||value?.external?.google===false;}).catch(()=>{});
 });
+
+$('#chat textarea').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(128,e.target.scrollHeight)+'px';});
+$('#chat textarea').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(!matchMedia('(pointer: coarse)').matches||e.ctrlKey||e.metaKey)){e.preventDefault();if(!$('#chat button').disabled)$('#chat').requestSubmit();}});
+
+// Use the visible viewport so the keyboard cannot cover the composer or dialogs.
+let mobileViewportWidth=innerWidth,mobileViewportHeight=globalThis.visualViewport?.height??innerHeight;
+function mobileViewport(){
+ const height=globalThis.visualViewport?.height??innerHeight;if(innerWidth!==mobileViewportWidth){mobileViewportWidth=innerWidth;mobileViewportHeight=height;}
+ const editable=document.activeElement?.matches('input,textarea,[contenteditable=true]');if(!editable)mobileViewportHeight=Math.max(height,mobileViewportHeight);
+ document.documentElement.style.setProperty('--app-height',height+'px');document.body.classList.toggle('keyboard-open',innerWidth<=760&&!!editable&&height<mobileViewportHeight*.82);layoutNativeScreens();
+}
+globalThis.visualViewport?.addEventListener('resize',mobileViewport);window.addEventListener('resize',mobileViewport);document.addEventListener('focusin',mobileViewport);document.addEventListener('focusout',()=>requestAnimationFrame(mobileViewport));mobileViewport();

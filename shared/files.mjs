@@ -1,8 +1,8 @@
 import{Peer}from'./media.mjs';
-import{uuid,safeName,sleep}from'./platform.mjs';
+import{uuid,safeName,sleep,MAX_FILE_BYTES}from'./platform.mjs';
 import{SHA256}from'./sha256.mjs';
 export const CHUNK=16*1024-8,WINDOW=8*CHUNK,MAX_BUFFER=512*1024;
-export const validOffer=v=>/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v?.id??'')&&typeof v.name==='string'&&v.name.length<=256&&Number.isSafeInteger(v.size)&&v.size>=0&&v.size<=16*1024**4&&(v.sha256===undefined||/^[0-9a-f]{64}$/.test(v.sha256));
+export const validOffer=v=>/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v?.id??'')&&typeof v.name==='string'&&v.name.length<=256&&Number.isSafeInteger(v.size)&&v.size>=0&&v.size<=MAX_FILE_BYTES&&(v.sha256===undefined||/^[0-9a-f]{64}$/.test(v.sha256));
 export const validCheckpoint=(s,offset)=>s?.bytes===offset&&Array.isArray(s.h)&&s.h.length===8&&s.h.every(n=>Number.isInteger(n)&&n>=0&&n<=0xffffffff)&&Array.isArray(s.tail)&&s.tail.length===offset%64&&s.tail.every(n=>Number.isInteger(n)&&n>=0&&n<=255);
 const terminal=r=>['complete','cancelled','rejected'].includes(r.state);
 const integrityError=message=>Object.assign(new Error(message),{code:'integrity'});
@@ -11,8 +11,9 @@ export class Transfers extends EventTarget {
  get uid(){return this.api.session.user.id;}
  emit(r){const dt=Math.max(.001,(Date.now()-(r.speedAt??Date.now()))/1000),speed=Math.max(0,r.offset-(r.speedOffset??r.offset))/dt;this.dispatchEvent(new CustomEvent('change',{detail:{...r,speed,eta:speed?(r.size-r.offset)/speed:null}}));}
  async save(r){r.updated=Date.now();const{onAck,...durable}=r;await this.ledger.set('transfer:'+r.id,durable);this.emit(r);}
- async init(){for(const r of await this.ledger.all())if(r?.id&&r?.direction&&r.owner===this.uid){if(['transferring','verifying','accepted'].includes(r.state)){r.state='paused';r.pauseReason='network';}this.records.set(r.id,r);}}
+ async init(){for(const r of await this.ledger.all())if(r?.id&&r?.direction&&r.owner===this.uid){if(['transferring','verifying','accepted'].includes(r.state)){r.state='paused';r.pauseReason='network';}if(r.size>MAX_FILE_BYTES&&!terminal(r)){r.state='failed';r.retryable=false;r.error='대용량 전송은 더 이상 지원하지 않습니다. 최대 100MiB 파일을 선택하세요.';}this.records.set(r.id,r);}}
  async offer(peer,scope,source,options={}){
+  if(!Number.isSafeInteger(source?.size)||source.size<0||source.size>MAX_FILE_BYTES)throw new Error('파일은 최대 100MiB까지 보낼 수 있습니다.');
   if(options.deduplicate??true){const prior=[...this.records.values()].filter(r=>r.direction==='send'&&r.peer===peer&&r.state==='complete'&&r.size===source.size&&r.name===safeName(source.name)&&r.hash);if(prior.length){const hash=await this.disk.hash(source.id),same=prior.find(r=>r.hash===hash);if(same)return{...same,duplicate:true};}}
   const sourceHash=await this.disk.hash(source.id);const r={id:uuid(),owner:this.uid,sourceHash,peer,scope,sourceId:source.id,name:safeName(source.name),size:source.size,modified:source.modified??0,direction:'send',state:'offered',offset:0,hashState:new SHA256().snapshot(),deduplicate:options.deduplicate??true,attempt:uuid()};this.records.set(r.id,r);await this.save(r);await this.announce(r);return r;
  }

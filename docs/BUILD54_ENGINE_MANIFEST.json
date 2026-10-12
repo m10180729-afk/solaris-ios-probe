@@ -1,0 +1,19 @@
+{
+  "commit": "4c50dbe33721b5d10db714bd79da74267a8863b4",
+  "files": {
+    "windows-native/Solaris.Transport/VideoScheduling.cs": "2892e103d68af3bab989eed84890148323106a92ad47be628c1342fc08bfd509",
+    "windows-native/Solaris.Transport/RtpViewer.cs": "1bb10ab7fe6a9ee8e2117081aee2b6929fc47657e3c97448aa049565fce6803d",
+    "windows-native/Solaris.Transport/H264Packets.cs": "fc1a02ba9e6fbfbabb111d7e6c7c8d2088322826c4739efc328eb1d055bda896",
+    "windows-native/SolarisNativeHost/NativeH264Capture.cs": "97064d6aa5405f741c4c1fa595d0de810f300d12a2c2c94d468705f15a69b397",
+    "windows-native/SolarisNativeHost/NativeRtpBroadcast.cs": "388aa52638b1a217059bb47d43d383e5d32cdb3ea2c085156cef6831fb257ca5",
+    "windows-native/SolarisNativeHost/SystemAudioCapture.cs": "81ae353cc561f5c1bddf3ee1e8421263f97bf602081c7d2e410a887231690439"
+  },
+  "javascript_functions": {
+    "mediaCodecs": "ba857edb6153567d9187e7874060378193295702fb303613001f9512d1a3a6ac",
+    "tuneDesktopSDP": "a6384e3a4930b28a3114377d84b0db01bcd0ce60f4d2f3f229e47c85a0896eed",
+    "applySenderPolicy": "c4a49f3500b29ca5fd924dd5a644134500f1dbb99109f632c67ff477fc6e7752",
+    "tuneScreenOfferSDP": "863c173b5b09a3e839416c49391253dc21b463d031ac5f98a2f44e9ec4289ca0",
+    "selectCodecs": "5ff2c1286864f8c8eee3286b879a8d69a80d1efde033c404de749947779dfdc1",
+    "selectAudioCodecs": "fb240026a502dcd7f9c0dc61032e2480a71d3fa4e46d6ed68cacc020a685ab97"
+  }
+}

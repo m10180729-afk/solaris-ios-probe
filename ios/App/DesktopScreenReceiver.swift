@@ -16,6 +16,9 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
 
     let nativeDisplayView = SolarisH264DisplayView(frame: .zero)
 
+    private var unifiedSend: ((String, [String: Any]) -> Void)?
+    private var unifiedStats: (([String: Any]) -> Void)?
+    private var unifiedConfiguration: RTCConfiguration?
     private let config: P2PBroadcastConfig
     private let queue = DispatchQueue(label: "org.solaris.probe.desktop-receiver")
     private let factory: RTCPeerConnectionFactory
@@ -174,7 +177,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     func stop() {
         queue.async {
             guard !self.stopped else { return }
-            if self.nativeRtp, let session = self.sessionID, let cid = self.rtpConnectionID {
+            if self.unifiedSend == nil, self.nativeRtp, let session = self.sessionID, let cid = self.rtpConnectionID {
                 var leave = self.request(self.endpoint(), method: "POST")
                 leave.httpBody = try? JSONSerialization.data(withJSONObject: [
                     "room_id":self.config.desktopSignalingRoom,"sender":"callee","kind":"answer",
@@ -373,7 +376,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
         let rtc = RTCConfiguration()
         rtc.sdpSemantics = .unifiedPlan
         rtc.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])]
-        return factory.peerConnection(with: rtc, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
+        return factory.peerConnection(with: unifiedConfiguration ?? rtc, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
     }
 
     private func handleRtp(_ kind: String, _ payload: [String: Any], _ incomingSession: String) {
@@ -452,7 +455,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
     }
 
     private func maintainRtpConnection(_ now: Double) {
-        guard nativeRtp else { return }
+        guard unifiedSend == nil, nativeRtp else { return }
         if rtpConnectionID == nil {
             if now - rtpLastJoin > 5 { rtpLastJoin = now; send("answer", ["action":"join", "videoTransport":"native-rtp"]) }
             return
@@ -539,6 +542,7 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
 
     private func send(_ kind: String, _ payload: [String: Any], completion: ((Bool) -> Void)? = nil) {
         guard !stopped, let sessionID else { return }
+        if let unifiedSend { unifiedSend(kind, payload); completion?(true); return }
         var envelope = payload
         envelope["protocol"] = desktopProtocolVersion
         envelope["source"] = "ios-desktop-receiver"
@@ -647,6 +651,138 @@ final class DesktopScreenReceiver: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    // Only signaling/lifecycle is adapted; the build54 factory, decoder, stats
+    // collector and RTCMTLVideoView renderer below remain unchanged.
+    func startUnified(id: String, viewer: String, connection: String, replayKit: Bool,
+                      iceServers: [[String: Any]], signal: @escaping (String, [String: Any]) -> Void,
+                      stats: @escaping ([String: Any]) -> Void) {
+        queue.async {
+            self.unifiedSend = signal; self.unifiedStats = stats
+            self.stopped = false; self.sessionID = id; self.viewerID = viewer
+            self.nativeRtp = true; self.rtpConnectionID = connection; self.rtpGeneration = 0
+            self.rtpOfferAt = ProcessInfo.processInfo.systemUptime; self.rtpLastFrameAt = self.rtpOfferAt
+            let rtc = RTCConfiguration(); rtc.sdpSemantics = .unifiedPlan
+            rtc.iceServers = iceServers.compactMap { entry in
+                let urls = entry["urls"] as? [String] ?? (entry["urls"] as? String).map { [$0] } ?? []
+                return urls.isEmpty ? nil : RTCIceServer(urlStrings: urls, username: entry["username"] as? String, credential: entry["credential"] as? String)
+            }
+            self.unifiedConfiguration = rtc
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now(), repeating: 1)
+            timer.setEventHandler { [weak self] in
+                guard let self, !self.stopped else { return }; self.collectStats(); self.unifiedStats?(self.unifiedSnapshot())
+            }
+            self.timer = timer; timer.resume()
+            if replayKit { self.createUnifiedViewerOffer() }
+        }
+    }
+
+    private func createUnifiedViewerOffer() {
+        peer = makeRtpPeer(); guard let current = peer else { return }
+        let receive = RTCRtpTransceiverInit(); receive.direction = .recvOnly
+        current.addTransceiver(of: .video, init: receive)
+        current.addTransceiver(of: .audio, init: receive)
+        current.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] offer, error in
+            guard let self else { return }
+            self.queue.async {
+                guard !self.stopped, self.peer === current, let offer, error == nil else { return }
+                let tuned = RTCSessionDescription(type: .offer, sdp: self.build54ViewerSDP(offer.sdp))
+                current.setLocalDescription(tuned) { error in self.queue.async {
+                    guard !self.stopped, self.peer === current, error == nil else { return }
+                    self.unifiedSend?("viewer-offer", ["sdp": tuned.sdp])
+                    self.localAnswerPublished = true
+                    let candidates = self.pendingLocalCandidates; self.pendingLocalCandidates.removeAll()
+                    for c in candidates { self.send("ice", c) }
+                } }
+            }
+        }
+    }
+
+    // Native equivalent of build54's H264-only viewer offer: level5.1,
+    // 60Mbps receive budget and 48kHz stereo Opus at256kbps.
+    private func build54ViewerSDP(_ sdp: String) -> String {
+        let sections = desktopAnswerSDP(sdp).components(separatedBy: "\r\nm=")
+        return sections.enumerated().map { index, section -> String in
+            guard index > 0 else { return section }
+            var lines = section.components(separatedBy: "\r\n")
+            let video = section.hasPrefix("video "), audio = section.hasPrefix("audio ")
+            guard video || audio else { return section }
+            var allowed = Set<String>(), h264 = Set<String>(), opus = Set<String>()
+            for line in lines where line.hasPrefix("a=rtpmap:") {
+                let parts = line.dropFirst(9).split(separator: " ", maxSplits: 1)
+                guard parts.count == 2 else { continue }
+                let pt = String(parts[0]), codec = parts[1].lowercased()
+                if video && codec.hasPrefix("h264/") { allowed.insert(pt); h264.insert(pt) }
+                if video && (codec.hasPrefix("red/") || codec.hasPrefix("ulpfec/") || codec.hasPrefix("flexfec-03/")) { allowed.insert(pt) }
+                if audio && codec.hasPrefix("opus/") { allowed.insert(pt); opus.insert(pt) }
+            }
+            for line in lines where video && line.hasPrefix("a=fmtp:") {
+                let parts = line.dropFirst(7).split(separator: " ", maxSplits: 1)
+                guard parts.count == 2 else { continue }
+                for parameter in parts[1].split(separator: ";") {
+                    let parameter = parameter.trimmingCharacters(in: .whitespaces)
+                    if parameter.hasPrefix("apt="), allowed.contains(String(parameter.dropFirst(4))) { allowed.insert(String(parts[0])) }
+                }
+            }
+            let first = lines.removeFirst().split(separator: " ").map(String.init)
+            let payloads = first.dropFirst(3).filter { allowed.contains($0) }
+            var out = [(Array(first.prefix(3)) + payloads).joined(separator: " ")]
+            for line in lines {
+                if line.hasPrefix("b=AS:") || line.hasPrefix("b=TIAS:") { continue }
+                if line.hasPrefix("a=rtpmap:") || line.hasPrefix("a=fmtp:") || line.hasPrefix("a=rtcp-fb:") {
+                    let field = line.components(separatedBy: ":").dropFirst().joined(separator: ":")
+                    let pt = field.components(separatedBy: " ")[0]
+                    if pt != "*" && !allowed.contains(pt) { continue }
+                    if line.hasPrefix("a=fmtp:"), opus.contains(pt) { continue }
+                }
+                out.append(line)
+                if line.hasPrefix("c=") { out += video ? ["b=AS:60000", "b=TIAS:60000000"] : ["b=AS:256", "b=TIAS:256000"] }
+                if line.hasPrefix("a=rtpmap:"), audio {
+                    let pt = String(line.dropFirst(9).split(separator: " ")[0])
+                    if opus.contains(pt) { out.append("a=fmtp:\(pt) stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;useinbandfec=1") }
+                }
+            }
+            return out.joined(separator: "\r\n")
+        }.joined(separator: "\r\nm=")
+    }
+
+    func receiveUnified(_ message: [String: Any]) {
+        queue.async {
+            guard !self.stopped, let session = self.sessionID,
+                  message["connectionID"] as? String == self.rtpConnectionID else { return }
+            let type = message["type"] as? String
+            if type == "native-offer" {
+                var payload = message; payload["viewerID"] = self.viewerID; payload["generation"] = 1
+                self.handleRtp("offer", payload, session)
+            } else if type == "native-ice", var candidate = message["candidate"] as? [String: Any] {
+                candidate["viewerID"] = self.viewerID; candidate["connectionID"] = self.rtpConnectionID; candidate["generation"] = 1
+                self.handleRtp("ice", candidate, session)
+            } else if type == "native-receive-answer", let sdp = message["sdp"] as? String, let current = self.peer, !self.remoteReady {
+                current.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { error in self.queue.async {
+                    guard !self.stopped, self.peer === current, error == nil else { return }
+                    self.remoteReady = true
+                    for c in self.rtpEarlyIce[self.rtpConnectionID ?? ""] ?? [] { current.add(c) }
+                    self.rtpEarlyIce.removeAll()
+                } }
+            }
+        }
+    }
+
+    private func unifiedSnapshot() -> [String: Any] {
+        let state: String
+        switch peer?.iceConnectionState {
+        case .connected?, .completed?: state = "connected"
+        case .failed?: state = "failed"
+        case .disconnected?, .closed?: state = "disconnected"
+        default: state = "connecting"
+        }
+        return ["state": state, "active": !stopped, "frames": rtpFramesDecoded,
+                "qualityMeasured": false, "fps": rtpRecentFPS, "mbps": rtpRecentMbps, "width": rtpWidth, "height": rtpHeight,
+                "framesDropped": rtpFramesDropped, "decoder": rtpDecoder, "packetsLost": rtpPacketsLost,
+                "jitterBufferMilliseconds": rtpJitterBufferMilliseconds,
+                "stalled": ProcessInfo.processInfo.systemUptime - rtpLastFrameAt > 6]
     }
 
     private func receiveNativePacket(_ data: Data) {
@@ -773,7 +909,7 @@ extension DesktopScreenReceiver: RTCDataChannelDelegate {
     }
 }
 
-private struct DesktopVideoSurface: UIViewRepresentable {
+struct DesktopVideoSurface: UIViewRepresentable {
     let track: RTCVideoTrack?
 
     final class Coordinator {

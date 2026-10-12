@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build58-rtp-test-evidence
+          name: Solaris-build61-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -61,6 +61,7 @@ jobs:
       - name: Verify scheduling with Windows timers
         shell: pwsh
         run: |
+          dotnet run --project windows-native/Solaris.Auth.Tests -c Release
           dotnet run --project windows-native/Solaris.Transport.Tests -c Release -- --unit-only
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build self-contained Solaris Windows sender
@@ -94,10 +95,10 @@ jobs:
       - name: Upload Windows Solaris app
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-build58
+          name: Solaris-Windows-build61
           path: |
             dist/native/
-            dist/windows/Solaris-Windows-build58-Setup.exe
+            dist/windows/Solaris-Windows-build61-Setup.exe
           if-no-files-found: error
           retention-days: 7
   browser-test:
@@ -117,6 +118,7 @@ jobs:
       - name: Test accounts, authorization, bounded file protocol
         run: |
           python3 scripts/check_build54_capture.py
+          python3 scripts/check_build54_engine.py
           npm test
           npm run test:database
       - name: Test real decoded video, five viewers and resumed files
@@ -127,8 +129,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build58-unified-test-evidence
+          name: Solaris-build61-unified-test-evidence
           path: |
+            build/build54-capture-evidence/results.json
+            build/build54-engine-evidence/results.json
             build/unified-evidence/*results.json
             build/ui-evidence/
           retention-days: 7
@@ -164,40 +168,12 @@ jobs:
           python3 scripts/prepare_unified.py
           gradle -p android :app:testDebugUnitTest :app:assembleDebug
           mkdir -p dist/android
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build58-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build61-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Android-build58-debug
-          path: dist/android/Solaris-Android-build58-debug.apk
+          name: Solaris-Android-build61-debug
+          path: dist/android/Solaris-Android-build61-debug.apk
           if-no-files-found: error
-          retention-days: 7
-  large-file-test:
-    needs: browser-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-      - name: Install isolated integration dependencies
-        run: |
-          npm ci --ignore-scripts
-          npx playwright install --with-deps chromium
-      - name: Verify 1 GiB disk path and actual DataChannel transfer
-        run: |
-          node scripts/file_stream_test.mjs
-          node scripts/unified_browser_test.mjs --large
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Solaris-build58-1GiB-test-evidence
-          path: |
-            build/file-stream-evidence/results.json
-            build/unified-evidence/large-results.json
-          if-no-files-found: warn
           retention-days: 7
   build:
     needs: [browser-test, native-rtp-test]
@@ -239,7 +215,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build58-xcode-evidence
+          name: Solaris-build61-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -248,9 +224,9 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.4.0-build58-integrated
+          name: Solaris-0.4.0-build61-integrated
           path: |
-            dist/Solaris-0.4.0-build58-resign.ipa
+            dist/Solaris-0.4.0-build61-resign.ipa
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

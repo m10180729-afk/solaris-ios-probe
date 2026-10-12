@@ -8,7 +8,7 @@ namespace SolarisNativeHost;
 internal sealed class MainForm : Form
 {
     private readonly NativeH264Capture capture;
-    private readonly NativeRtpBroadcast rtp;
+    private readonly Build54RtpAdapter rtp;
     private readonly AppBridge app;
     private long captureRequest;
     private int pendingFramePosts;
@@ -26,8 +26,8 @@ internal sealed class MainForm : Form
 
     internal MainForm()
     {
-        rtp = new NativeRtpBroadcast(PostRtpMessage);
-        app = new AppBridge(this, rtp, value => status.Text = value);
+        rtp = new Build54RtpAdapter(PostRtpMessage);
+        app = new AppBridge(this, rtp, value => status.Text = value, PostRtpMessage);
         capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>
         {
             if (state == "metrics")
