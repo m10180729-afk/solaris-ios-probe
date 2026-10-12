@@ -20,7 +20,7 @@ for name, expected in reference['javascript_functions'].items():
     actual = hashlib.sha256(body.encode()).hexdigest()
     assert actual == expected, f'Original build54 policy changed: {name}'
     checked[name] = actual
-report = {'build': 62, 'baseline_commit': reference['commit'],
+report = {'build': 63, 'baseline_commit': reference['commit'],
           'unchanged_windows_engine_files': len(reference['files']),
           'unchanged_javascript_media_policies': len(reference['javascript_functions']),
           'sha256': checked, 'physical_device_performance_verified': False}

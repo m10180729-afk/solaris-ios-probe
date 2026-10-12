@@ -16,7 +16,7 @@ let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,p
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
 let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
 let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
-let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve();const authReturns=new Set();
+let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve(),authReturnSeen=false;const authReturns=new Set();
 let loggingOut=false,accountUIEpoch=0,bootPromise=null,dialogReturnFocus=null,windowState={platform:'browser',state:'normal',fullscreen:false};
 let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
 const avatarCache=new Map(),autoWatchDisabled=new Set(),autoWatchAttempt=new Map();
@@ -242,13 +242,14 @@ async function pollOnce(){
  finally{polling=false;}
 }
 async function boot(){
- if(loggingOut)return;if(bootPromise){await bootPromise;return boot();}const pending=bootOnce();bootPromise=pending;try{await pending;}finally{if(bootPromise===pending)bootPromise=null;}
+ // Only startup reads the session vault; a second init cancels an active PKCE exchange.
+ await authReady;if(loggingOut)return;if(bootPromise){await bootPromise;return boot();}const pending=bootOnce();bootPromise=pending;try{await pending;}finally{if(bootPromise===pending)bootPromise=null;}
 }
 async function bootOnce(){
  if(booting||loggingOut)return;booting=true;const epoch=accountUIEpoch;let uid;
  const current=()=>!loggingOut&&accountUIEpoch===epoch&&(!uid||api.session?.user?.id===uid);
  try{
-  if(!api.session)await api.init();if(!current())return;if(!api.session){showAuth();return;}uid=api.session.user.id;
+  if(!current())return;if(!api.session){showAuth('login',authReturnSeen?$('#onboarding-status').textContent:'');return;}uid=api.session.user.id;
   let me=await api.rpc('profile');if(!current())return;
   if(!me){
    const m=api.session.user?.user_metadata??{};
@@ -520,6 +521,7 @@ function profileCard(p,online){
 }
 async function profileModal(tab='profile'){
  if(loggingOut||!snapshot.me)return;
+ if(tab==='account'){const epoch=accountUIEpoch,uid=loadedUID;await api.account();if(loggingOut||epoch!==accountUIEpoch||api.session?.user?.id!==uid||!snapshot.me)return;}
  const user=api.session?.user??{},body=el('div',null,{class:'profile-settings'}),nav=settingsNavigation(tab),content=el('div',null,{class:'settings-content'});body.append(nav,content);
  const profile=el('section',null,{'data-profile-pane':'profile'});profile.hidden=tab!=='profile';
  const edit=el('form',null,{id:'profile-edit',class:'stack-form'}),preview=profileCard(snapshot.me,true);
@@ -530,7 +532,7 @@ async function profileModal(tab='profile'){
  const photos=el('div',null,{class:'profile-photo-actions'}),upload=el('label','프로필 사진 변경',{class:'upload-photo-button'});upload.append(el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file','aria-label':'프로필 사진 변경'}));photos.append(upload,button('사진 삭제','avatar-delete'));profile.append(photos);
  const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';account.append(el('h2','로그인 및 계정 복구'),el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일이나 Google을 연결해 같은 계정으로 다시 로그인할 수 있어요.',{class:'account-summary'}));
  const google=user.identities?.some(i=>i.provider==='google');account.append(el('h2','연결된 계정'),el('p',google?'Google 계정 연결됨':'Google 계정을 연결하면 기존 친구와 서버가 유지돼요.',{class:'form-help'}));
- if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('span','Google 연결됨',{class:'linked-account'}));
+ if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('button','Google 연결됨',{type:'button',class:'google-button linked-account',disabled:'true','aria-disabled':'true'}));
  const status=el('p',null,{id:'account-auth-status',role:'status',class:'form-help'});account.append(status);
  if(!user.email_confirmed_at){
   const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));account.append(rec);
@@ -553,7 +555,7 @@ async function action(a,id){
  if(a==='mobile-files'){await action('transfers');return;}
  if(a==='mobile-profile'){closeNav();await profileModal();return;}
  if(a==='dismiss-error'){$('#error').hidden=true;return;}
- if(a==='profile-tab'){if(!$('#dialog').querySelector('[data-profile-pane]')){await profileModal(id);return;}for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]'))b.classList.toggle('active',b.dataset.id===id);return;}
+ if(a==='profile-tab'){if(id==='account'||!$('#dialog').querySelector('[data-profile-pane]')){await profileModal(id);return;}for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]'))b.classList.toggle('active',b.dataset.id===id);return;}
  if(a==='account'){await profileModal('account');return;}
  if(a==='incoming-requests'){$('#workspace').classList.add('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded','true');$('#requests').scrollIntoView({block:'nearest'});$('#requests button')?.focus();return;}
  if(a==='close-people'){closePeople();document.querySelector('[data-action=toggle-people]').focus();return;}
@@ -581,7 +583,7 @@ async function action(a,id){
  if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;return;}
  if(a==='auth-resend'){const email=$('#verify [name=email]').value.trim();if(!email)throw new Error('이메일을 입력하세요.');if(Date.now()-(verification.requestedAt??0)<60000)throw new Error('인증 메일은 1분 뒤 다시 요청할 수 있어요.');await api.resendVerification(email,verification.type);verification.requestedAt=Date.now();localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#onboarding-status').textContent='인증 메일을 다시 요청했어요. 받은 편지함과 스팸함을 확인하세요.';return;}
  if(a==='google-login'||a==='google-link'){
-  if(googleBusy)return;googleBusy=true;try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
+  if(googleBusy)return;googleBusy=true;$('#onboarding-status').textContent='';try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
  }
  if(a.startsWith('auth-')){showAuth(a.slice(5));return;}
  if(a==='toggle-nav'){const on=$('#workspace').classList.toggle('nav-open');$('#nav-toggle').setAttribute('aria-expanded',String(on));$('#nav-scrim').hidden=!on;return;}
@@ -781,21 +783,35 @@ document.addEventListener('change',e=>{if(e.target.id!=='avatar-file')return;run
 
 document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle('viewing-fullscreen',!!document.fullscreenElement||nativeFullscreen);if(bridge.native&&!document.fullscreenElement){nativeFullscreen=false;$('#viewing').classList.remove('native-fullscreen');bridge.call('fullscreen',{enabled:false}).catch(()=>{});}});
 globalThis.addEventListener('online',()=>poll());
+globalThis.addEventListener('focus',()=>{if(bridge.native&&lifecycle?.platform==='windows')run(foreground);});
 api.addEventListener('auth',()=>{
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
  if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
 globalThis.addEventListener('pagehide',()=>{log?.flush().catch(()=>{});files?.close();media?.close();});
+async function ackNativeAuthReturn(url){if(bridge.native)await bridge.call('authAck',{url}).catch(()=>{});}
+async function foreground(){
+ await authReady;if(loggingOut)return;const epoch=accountUIEpoch;
+ if(bridge.native){try{const returned=await bridge.call('authTake');if(returned&&!loggingOut&&epoch===accountUIEpoch)await receiveAuthReturn(returned);}catch(e){if(!loggingOut&&epoch===accountUIEpoch)error(e);}}
+ await poll();
+}
+function showAuthReturnFailure(){
+ googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=providers?.external?.google===false;
+ const status='인증을 완료하지 못했어요. 오류 안내를 확인한 뒤 로그인을 다시 시도하세요.';
+ $('#onboarding-status').textContent=status;if($('#account-auth-status'))$('#account-auth-status').textContent=status;
+}
 function receiveAuthReturn(url){
+ authReturnSeen=true;
  const epoch=accountUIEpoch;
  const task=authReturnQueue.then(async()=>{
-  await authReady;if(loggingOut||epoch!==accountUIEpoch)return false;if(authReturns.has(url))return true;
+  await authReady;if(loggingOut||epoch!==accountUIEpoch)return false;if(authReturns.has(url)){await ackNativeAuthReturn(url);return true;}
+  googleBusy=true;$('#auth-pending').hidden=false;$('#google-login').disabled=true;$('#onboarding-status').textContent='';
   const value=await api.authReturn(url);if(loggingOut||epoch!==accountUIEpoch)return false;authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
   googleBusy=false;$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');$('#dialog').close();
   if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);if(loggingOut||epoch!==accountUIEpoch)return false;await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
   else{await boot();if(!loggingOut&&epoch===accountUIEpoch&&value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
-  return true;
- });const guarded=task.catch(e=>{if(loggingOut||epoch!==accountUIEpoch)return false;googleBusy=false;$('#google-login').disabled=providers?.external?.google===false;throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
+  await ackNativeAuthReturn(url);return true;
+ });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
 }
 bridge.addEventListener('event',e=>{if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
 await run(async()=>{
@@ -810,11 +826,14 @@ await run(async()=>{
  $('#people').prepend(button('참여자 목록 닫기','close-people',null,{'aria-label':'참여자 목록 닫기',class:'people-close'}));
  const navIcons={friends:'friends',transfers:'files'};for(const n of $('.side-navigation').children)n.firstElementChild?.replaceChildren(icon(navIcons[n.dataset.action],22));
  const chatInput=$('#chat textarea');chatInput.addEventListener('input',()=>{drafts[$('#chat').dataset.conversation]=chatInput.value;});
- lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:poll,onRestore:boot,onError:error});await lifecycle.start();
+ lifecycle=new AppLifecycle({bridge,getTransfers:()=>files,onForeground:foreground,onRestore:boot,onError:error});await lifecycle.start();
  updateWindowState({platform:lifecycle.platform});if(bridge.native&&lifecycle.platform==='windows'){try{updateWindowState(await bridge.call('windowState'));}catch{}}
  try{await api.init();}catch(e){showAuth('login','네트워크를 확인하거나 기존 계정으로 로그인하세요.');error(e);}finally{authReadyResolve();}
- let returned;if(bridge.native)returned=await bridge.call('authTake');else if(new URL(location.href).searchParams.has('code')||new URL(location.href).searchParams.has('error')){returned=location.href;history.replaceState({},'',location.pathname);}
- if(returned)await receiveAuthReturn(returned).catch(async e=>{await boot();error(e);});else{try{const pending=await api.authFlow.resume?.();googleBusy=!!pending?.kind?.startsWith('google');$('#auth-pending').hidden=!pending;}catch(e){error(e);}await boot();}
+ let returned;if(bridge.native){try{returned=await bridge.call('authTake');}catch(e){error(e);}}else if(new URL(location.href).searchParams.has('code')||new URL(location.href).searchParams.has('error')){returned=location.href;history.replaceState({},'',location.pathname);}
+ if(returned)await receiveAuthReturn(returned).catch(async e=>{await boot();showAuthReturnFailure();error(e);});else{
+  try{if(!authReturnSeen){const pending=await api.authFlow.resume?.();if(!authReturnSeen){googleBusy=!!pending?.kind?.startsWith('google');$('#auth-pending').hidden=!pending;}}}catch(e){error(e);}
+  await boot();
+ }
  api.authSettings().then(value=>{providers=value;$('#google-login').disabled=googleBusy||value?.external?.google===false;}).catch(()=>{});
 });
 

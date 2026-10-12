@@ -65,6 +65,7 @@ internal sealed class AppBridge
         if (command == "authListen") { auth.Listen(S("redirectTo")); return true; }
         if (command == "authOpen") { auth.Open(S("url")); return true; }
         if (command == "authTake") return auth.Take();
+        if (command == "authAck") return auth.Ack(S("url"));
         if (command == "authCancel") { auth.Cancel(); return true; }
         if (command is "vaultGet" or "vaultSet")
         {

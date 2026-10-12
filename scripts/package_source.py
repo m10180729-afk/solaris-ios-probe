@@ -3,7 +3,7 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT.parent / "Solaris-0.4.0-build62-source.zip"
+OUTPUT = ROOT.parent / "Solaris-0.4.0-build63-source.zip"
 SKIP = {".git", "__pycache__", "build", "dist", "bin", "obj", "node_modules", "Vendor", ".gradle"}
 TOP = {".github", "ios", "receiver", "scripts", "tests", "docs", "windows-native", "android",
        "shared", "backend", "package.json", "package-lock.json", "README.md", ".gitignore", "UPLOAD_GIT_BASH.sh"}

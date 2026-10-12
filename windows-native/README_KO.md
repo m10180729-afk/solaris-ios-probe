@@ -1,4 +1,6 @@
-# Solaris Windows 통합 앱 · build62
+# Solaris Windows 통합 앱 · build63
+
+build63은 Google 연결 오류 fragment·인증 복귀·초기화 경쟁을 수정합니다. 현재 인증 처리와 계정 연결 안내는 [build63 인증 수정](../docs/BUILD63_AUTH_KO.md)을 확인하세요. 아래 공유/설치 안내는 build62에서 이어집니다.
 
 Windows 단일 앱에서 친구/서버 채널을 선택해 **화면공유**, **화면공유 보기**, **파일 보내기**를 사용합니다. 기존 하드웨어 H264/다중 RTP 엔진을 재사용하며 마이크·음성통화는 없습니다. 방 코드와 별도 Python 수신기 없이 계정·친구 동의·채널 권한으로 연결합니다.
 

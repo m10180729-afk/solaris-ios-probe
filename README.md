@@ -1,4 +1,6 @@
-# Solaris 0.4.0 build62
+# Solaris 0.4.0 build63
+
+build63은 Google 계정 연결 오류가 복귀 뒤 대기 문구로 남는 문제와 인증 초기화 경쟁을 수정한다. 현재 수정·검증 범위는 [build63 인증 수정](docs/BUILD63_AUTH_KO.md)을 따른다. build62 설명은 아래 이전 기능 기록이다.
 
 Discord와 함께 사용하는 Windows·Android·iOS·iPadOS 화면공유 및 일반 파일 전송 앱이다. build62는 Android 공유 승인·취소·재시작 처리, Google 복귀 처리, 오프라인 로그아웃, Windows 창 조절, PC·모바일 탐색과 진단 화면을 개선했다.
 

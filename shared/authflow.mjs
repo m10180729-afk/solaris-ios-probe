@@ -12,6 +12,18 @@ export function authReturnAllowed(value,base){
  try{const u=new URL(value),b=new URL(base);return !u.username&&!u.password&&u.protocol===b.protocol&&u.host===b.host&&u.pathname===b.pathname&&!u.hash;}
  catch{return false;}
 }
+export function authCallbackFailure(code){
+ const messages={
+  identity_already_exists:'이 Google 계정은 이미 Solaris 계정에 연결되어 있어 다시 연결할 수 없어요. 내 계정의 연결 상태를 확인하세요. 기존 Google 계정으로 로그인하려면 현재 계정의 복구 수단을 확보한 뒤 로그아웃하고 첫 화면의 Google 로그인을 사용하세요. 계정 데이터는 자동으로 합쳐지지 않습니다.',
+  access_denied:'Google 인증이 취소되었거나 승인이 거절되었습니다. 다시 인증을 시작하세요.',
+  user_cancelled:'Google 인증을 취소했습니다. 다시 시작할 수 있어요.',
+  unsupported_implicit_response:'앱에 필요한 인증 코드 대신 다른 형식의 응답이 왔어요. Solaris에서 새 인증 요청을 시작하세요.',
+  callback_code_missing:'복귀한 인증 응답에 코드가 없어요. Solaris에서 새 인증 요청을 시작하세요.'
+ };
+ const safe=Object.hasOwn(messages,code)?code:'oauth_callback_error';
+ const error=new Error('인증이 완료되지 않았습니다. '+(messages[safe]??'Google 인증 반환에 오류가 있습니다. Solaris에서 새 인증 요청을 시작하세요.'));
+ error.code=safe;return error;
+}
 export class AuthFlow {
  constructor(api){this.api=api;this.pending=null;this.serial=Promise.resolve();this.storage=Promise.resolve();this.generation=0;}
  async read(){
@@ -79,7 +91,7 @@ export class AuthFlow {
   const f=await this.read();if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
   if(!authReturnAllowed(value,f.base))throw new Error('잘못된 인증 반환 주소입니다.');
   const u=new URL(value);if(u.searchParams.getAll('solaris_state').length!==1||u.searchParams.get('solaris_state')!==f.state)throw new Error('다른 로그인 요청의 반환입니다. 다시 시작하세요.');
-  if(u.searchParams.has('error'))throw new Error('인증이 완료되지 않았습니다. 취소했거나 인증 링크가 만료되었을 수 있어요.');
+  if(u.searchParams.has('error'))throw authCallbackFailure(u.searchParams.get('error_code'));
   const code=u.searchParams.get('code');if(u.searchParams.getAll('code').length!==1||!code||code.length>4096)throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
   if((this.api.session?.user?.id??null)!==f.uid)throw new Error('계정이 변경되어 이전 인증 요청을 취소했습니다.');
   const revision=++this.api.revision,s=await this.api.auth('token?grant_type=pkce',{auth_code:code,code_verifier:f.verifier});

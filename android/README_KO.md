@@ -1,4 +1,6 @@
-# Solaris Android · build62 수정본
+# Solaris Android · build63 인증 수정본
+
+build63은 기기 복귀 후 인증 오류가 대기로 남는 문제를 수정합니다. 현재 인증 처리와 계정 연결 안내는 [build63 인증 수정](../docs/BUILD63_AUTH_KO.md)을 확인하세요. 아래 공유/설치 안내는 build62에서 이어집니다.
 
 화면공유 송신·수신과 파일 전송을 포함한 ARM 기반 Android 11 이상 휴대폰용 테스트 앱입니다. APK에는 `arm64-v8a`·`armeabi-v7a`를 포함합니다. 친구와의 화면공유 세션 또는 서버 채널에서 사용합니다. 음성 대화는 Discord를 사용하며 Solaris는 마이크를 요청하지 않습니다.
 

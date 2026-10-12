@@ -109,7 +109,9 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
             case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true])
             case "authListen": reply(id, true)
             case "authTake": reply(id, AuthReturnRouter.shared.take())
-            case "authCancel": authEpoch = UUID(); authBrowser?.cancel(); authBrowser = nil; _ = AuthReturnRouter.shared.take(); reply(id, true)
+            case "authAck": reply(id, AuthReturnRouter.shared.acknowledge(args["url"] as? String ?? ""))
+            case "authStatus": reply(id, AuthReturnRouter.shared.metadata)
+            case "authCancel": authEpoch = UUID(); authBrowser?.cancel(); authBrowser = nil; AuthReturnRouter.shared.clear(); reply(id, true)
             case "authOpen":
                 guard let text = args["url"] as? String, let url = URL(string: text), url.scheme == "https", url.user == nil, url.password == nil, url.port == nil,
                       (url.host == "lfwjkaipghctigswxoxq.supabase.co" && url.path == "/auth/v1/authorize") || (url.host == "accounts.google.com" && url.path.hasPrefix("/o/oauth2/")) else { throw UnifiedError("Invalid authentication URL") }

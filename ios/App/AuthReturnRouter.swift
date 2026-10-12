@@ -4,13 +4,13 @@ import Foundation
 final class AuthReturnRouter {
     static let shared = AuthReturnRouter()
     static let notification = Notification.Name("SolarisAuthReturn")
-    private var pending: String?
+    private let pending = AuthCallbackPending()
     func receive(_ url: URL) {
-        guard url.scheme == "solaris", url.host == "auth", url.path == "/callback",
-              url.user == nil, url.password == nil, url.fragment == nil,
-              url.absoluteString.count < 16384 else { return }
-        pending = url.absoluteString
-        NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: ["url": url.absoluteString])
+        guard let sanitized = pending.receive(url) else { return }
+        NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: ["url": sanitized])
     }
-    func take() -> String? { defer { pending = nil }; return pending }
+    func take() -> String? { pending.peek() }
+    func acknowledge(_ url: String) -> Bool { pending.acknowledge(url) }
+    func clear() { pending.clear() }
+    var metadata: [String: Any] { pending.metadata }
 }
