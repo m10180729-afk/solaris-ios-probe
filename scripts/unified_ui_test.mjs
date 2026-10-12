@@ -20,6 +20,24 @@ async function installFixture(ctx,uid){await ctx.route('https://*.supabase.co/**
  await ctx.route('https://accounts.google.com/**',async route=>{const source=new URL(route.request().url()),returned=new URL(source.searchParams.get('solaris_fixture_redirect'));returned.searchParams.set('code','fixture-oauth-code');await route.fulfill({status:302,headers:{Location:returned.href},body:''});});
  await ctx.route('https://api.github.com/repos/**/releases',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
 }
+// Playwright's page-side poller constructs a Function, which the real app CSP
+// correctly rejects. Keep predicates on page.evaluate and waiting in Node.
+async function waitProbe(page,predicate,label,timeout=30000){
+ const deadline=Date.now()+timeout;
+ while(Date.now()<deadline){if(await page.evaluate(predicate))return;await new Promise(resolve=>setTimeout(resolve,100));}
+ assert.fail('Timed out waiting for '+label);
+}
+async function verifyScriptCSP(page,path){
+ const policy=await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+ const script=policy.split(';').find(d=>d.trim().startsWith('script-src '));
+ assert(script?.includes("'self'"));assert(!script.includes("'unsafe-eval'"));
+ if(path.includes('/Unified/'))assert(script.includes("'sha256-"),'Bundled scripts must retain their exact CSP hash');
+ // Evaluate the probe on a later page task, outside DevTools execution.
+ await page.evaluate(()=>{window.scriptCSPProbeResult=null;setTimeout(()=>{try{new Function('return true')();window.scriptCSPProbeResult=false;}catch(e){window.scriptCSPProbeResult=e.name==='EvalError';}},0);});
+ await waitProbe(page,()=>window.scriptCSPProbeResult!==null,'script CSP enforcement');
+ assert.equal(await page.evaluate(()=>window.scriptCSPProbeResult),true,'The actual document must block unsafe eval');
+ (results.scriptCSP??=[]).push({path,unsafeEvalBlocked:true,bundledHashRequired:path.includes('/Unified/')});
+}
 async function installNativeAuthProbe(ctx,{state,verifier,platform='ios',uid=null,providerError=false}){
  await ctx.addInitScript(({state,verifier,platform,uid,providerError})=>{
   const flow={kind:uid?'google-link':'google',base:platform==='windows'?'http://127.0.0.1:43854/auth/callback':'solaris://auth/callback',state,verifier,email:null,uid,expires:Date.now()+600000};
@@ -62,7 +80,7 @@ async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=fa
  await installNativeAuthProbe(ctx,{state,verifier,platform});
  const p=await ctx.newPage();pages.push(p);p.on('pageerror',e=>errors.push(e.message));
  try{
-  await p.goto(base+path);await p.waitForFunction(()=>window.authProbe?.resumeHeld);
+  await p.goto(base+path);await waitProbe(p,()=>window.authProbe?.resumeHeld,'native startup resume');
   // The callback starts exchanging its protected PKCE verifier while startup
   // is still awaiting resume(). Release resume/boot before the token response.
   const requested=p.waitForRequest(r=>r.url().endsWith('/auth/v1/token?grant_type=pkce'));
@@ -83,7 +101,7 @@ async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=fa
    assert.equal(await p.evaluate(()=>window.authProbeSavedFlow()),null);
    await p.evaluate(()=>window.deliverAuthCallback());await p.locator('#workspace').waitFor({state:'visible'});assert.equal(exchangeCalls,1);
   }
-  await p.waitForFunction(()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null);
+  await waitProbe(p,()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null,'processed callback acknowledgement');
   assert.equal(await p.evaluate(()=>window.authProbe.sessionReads),1,'Startup must not reread the vault and invalidate the callback exchange');
   return{path,platform,passed:true,failureThenFreshRetry:failExchange,failureBeforeResume:failBeforeResume,recoveredViaForeground:foregroundReturn,processedReturnAcknowledged:true};
  }finally{releasePKCE();await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(p),1);}
@@ -98,11 +116,11 @@ async function nativeLinkedIdentityFailure(path,platform='ios'){
  let exchangeCalls=0;ctx.on('request',r=>{if(r.url().includes('/auth/v1/token?grant_type=pkce'))exchangeCalls++;});
  const p=await ctx.newPage();pages.push(p);p.on('pageerror',e=>errors.push(e.message));
  try{
-  await p.goto(base+path);await p.waitForFunction(()=>window.authProbe?.resumeHeld);await p.evaluate(()=>window.deliverAuthCallback());
+  await p.goto(base+path);await waitProbe(p,()=>window.authProbe?.resumeHeld,'native startup resume');await p.evaluate(()=>window.deliverAuthCallback());
   await p.locator('#error').filter({hasText:'이미 Solaris 계정에 연결'}).waitFor({state:'visible'});assert(await p.locator('#auth-pending').isHidden());
   assert.match(await p.locator('#error').textContent(),/로그아웃하고 첫 화면의 Google 로그인/);
   await p.evaluate(()=>window.releaseAuthResume());await p.locator('#workspace').waitFor({state:'visible'});
-  await p.waitForFunction(()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null);
+  await waitProbe(p,()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null,'provider error acknowledgement');
   assert.equal(exchangeCalls,0,'Provider errors must never exchange a code or switch accounts');
   assert.equal(await p.evaluate(()=>window.authProbeSavedSession().user.id),uid);assert.equal(await p.evaluate(()=>window.authProbeSavedFlow().state),state);
   assert.equal(await p.evaluate(()=>window.authProbe.calls.includes('authCancel')),false,'Conflict must not cancel or sign out the current account');
@@ -117,7 +135,7 @@ async function nativeLinkedIdentityFailure(path,platform='ios'){
   return{path,platform,passed:true,identityConflictVisible:true,processedReturnAcknowledged:true,originalAccountAndServerPreserved:true,verifiedGoogleIdentityDisablesLink:true};
  }finally{await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(p),1);}
 }
-try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{})});for(let i=0;i<2;i++){const uid=randomUUID();uids.push(uid);authUsers.set(uid,{id:uid,is_anonymous:true});await db.query('insert into auth.users values($1)',[uid]);const ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid);const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));pages.push(p);await p.goto(base+(i?'/ios/App/Resources/Unified/unified.html':'/shared/index.html'));await p.getByRole('button',{name:'계정 만들기',exact:true}).first().click();
+try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{})});for(let i=0;i<2;i++){const uid=randomUUID();uids.push(uid);authUsers.set(uid,{id:uid,is_anonymous:true});await db.query('insert into auth.users values($1)',[uid]);const ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid);const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));pages.push(p);const path=i?'/ios/App/Resources/Unified/unified.html':'/shared/index.html';await p.goto(base+path);await verifyScriptCSP(p,path);await p.getByRole('button',{name:'계정 만들기',exact:true}).first().click();
  if(i){await p.locator('#email-register [name=user_id]').fill('bob');await p.locator('#email-register [name=nickname]').fill('지구');await p.locator('#email-register [name=email]').fill('bob@example.test');await p.locator('#email-register [name=password]').fill('fixture-bob-password');await p.locator('#email-register button.primary').click();results.emailSignupWithoutAnonymous=true;}
  else{await p.getByRole('button',{name:'ID로 빠르게 시작',exact:true}).click();await p.locator('#register input[name=user_id]').fill('alice');await p.locator('#register input[name=nickname]').fill('솔라');await p.locator('#register button').click();}await p.locator('#workspace').waitFor({state:'visible'});}
  const[a,b]=pages;
