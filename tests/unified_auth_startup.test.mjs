@@ -62,7 +62,10 @@ test('failed native callback ends the waiting UI and restores a visible retry st
  await assert.rejects(context.receiveAuthReturn(pending.base+'?solaris_state='+pending.state+'&code=fixture-code'),e=>e===failure);
  assert.equal(nodes.get('#auth-pending').hidden,true);assert.equal(nodes.get('#google-login').disabled,false);assert.equal(context.googleBusy,false);
  assert.match(nodes.get('#onboarding-status').textContent,/다시 시도/);assert.match(nodes.get('#account-auth-status').textContent,/다시 시도/);
- assert.equal(api.session,null);assert.equal(JSON.parse(vault.get('auth-flow')).state,pending.state);
+ assert.equal(api.session,null);assert.equal(JSON.parse(vault.get('auth-flow')),null);
+ assert.equal(await api.authFlow.resume(),null,'A processed failure must not return to waiting after restart');
+ const duplicate=await context.receiveAuthReturn(pending.base+'?solaris_state='+pending.state+'&code=fixture-code');
+ assert.equal(duplicate,true,'An acknowledged failure duplicate must preserve its original guidance');
 });
 
 test('foreground recovers a queued native callback, acknowledges its exact URL and does not retry in a loop',async()=>{

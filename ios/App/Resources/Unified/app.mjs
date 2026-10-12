@@ -811,7 +811,7 @@ function receiveAuthReturn(url){
   if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);if(loggingOut||epoch!==accountUIEpoch)return false;await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
   else{await boot();if(!loggingOut&&epoch===accountUIEpoch&&value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
   await ackNativeAuthReturn(url);return true;
- });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
+ });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;if(e.authReturnHandled){authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);}showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
 }
 bridge.addEventListener('event',e=>{if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
 await run(async()=>{

@@ -91,7 +91,7 @@ async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=fa
    await p.locator('#error').filter({hasText:'fixture authentication failed'}).waitFor({state:'visible'});
    assert(await p.locator('#auth-pending').isHidden());assert.equal(await p.locator('#google-login').isEnabled(),true);
    assert.match(await p.locator('#onboarding-status').textContent(),/다시 시도/);
-   assert.equal(await p.evaluate(()=>window.authProbeSavedSession()),null);
+   assert.equal(await p.evaluate(()=>window.authProbeSavedSession()),null);assert.equal(await p.evaluate(()=>window.authProbeSavedFlow()),null);
    await p.locator('#google-login').click();await p.locator('#auth-pending').waitFor({state:'visible'});
    assert(await p.evaluate(()=>window.authProbe.calls.includes('authOpen')));
    assert.notEqual(await p.evaluate(()=>window.authProbeSavedFlow().state),state);
@@ -122,7 +122,8 @@ async function nativeLinkedIdentityFailure(path,platform='ios'){
   await p.evaluate(()=>window.releaseAuthResume());await p.locator('#workspace').waitFor({state:'visible'});
   await waitProbe(p,()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null,'provider error acknowledgement');
   assert.equal(exchangeCalls,0,'Provider errors must never exchange a code or switch accounts');
-  assert.equal(await p.evaluate(()=>window.authProbeSavedSession().user.id),uid);assert.equal(await p.evaluate(()=>window.authProbeSavedFlow().state),state);
+  assert.equal(await p.evaluate(()=>window.authProbeSavedSession().user.id),uid);assert.equal(await p.evaluate(()=>window.authProbeSavedFlow()),null);
+  await p.evaluate(()=>window.deliverAuthCallback());assert.match(await p.locator('#error').textContent(),/이미 Solaris 계정에 연결/);
   assert.equal(await p.evaluate(()=>window.authProbe.calls.includes('authCancel')),false,'Conflict must not cancel or sign out the current account');
   assert.equal((await rpc(uid,'profile')).user_id,profile.user_id);assert((await rpc(uid,'sync',{cursor:0})).servers.some(s=>s.id===server.id));
   await p.getByRole('button',{name:'내 프로필',exact:true}).click();await p.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();

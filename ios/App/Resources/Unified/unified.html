@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-oEbUoXYygXZpWq+u56zhQXHIwhc/5+BIjd9F+Z/8NM4='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-PTXbqS3/mPxJC68RWugPLr58d2f+vdXljbW7scuuD8I='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Solaris</title><style>:root{color-scheme:dark;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#1e1f22;color:#f2f3f5;--muted:#949ba4;--accent:#5865f2;--line:#3f4147;--top:32px}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid transparent;border-radius:4px;padding:8px 12px;background:#41434b;color:inherit;transition:background .12s}button:hover{background:#50535d}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fa9ff;outline-offset:2px}input,select{border:0;border-radius:4px;padding:10px 12px;background:#1e1f22;color:inherit;max-width:100%;min-width:0}h1{font-size:17px;margin:0}h2{font-size:12px;color:var(--muted);margin:18px 0 8px}p{margin:10px 0}.spacer{flex:1}.muted{color:var(--muted);font-size:12px}.primary{background:var(--accent)}.primary:hover{background:#4752c4}.file-action{background:#3f4659}.danger{color:#ff9fa6;background:#f0717812;border-color:#b95b6355}.danger:hover{background:#a43844;color:#fff}.text-button{color:#aab1ff;background:transparent}.text-button:hover{background:#35373e}.count-badge{border-radius:10px;background:#da373c;color:#fff;font-size:10px;padding:1px 6px}.app-header{display:flex;align-items:center;gap:10px;height:var(--top);padding:0 12px;background:#1e1f22;font-size:12px;user-select:none}.brand-mark{color:#b1b7ff}.version-tag{font-size:10px;color:var(--muted)}[hidden]{display:none!important}#workspace{display:grid;grid-template-columns:72px 240px minmax(0,1fr) 232px;height:calc(100dvh - var(--top));min-height:0}#error{background:#71363e;color:#fff0f0;padding:10px 16px;white-space:pre-wrap;position:fixed;top:var(--top);right:12px;max-width:min(600px,94vw);z-index:30;border-radius:5px;box-shadow:0 6px 20px #0005}
 #server-rail{background:#1e1f22;padding:12px 10px;display:flex;align-items:center;flex-direction:column;gap:8px;overflow:auto}#server-rail button{display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;border-radius:50%;background:#313338;font-size:19px;font-weight:650;position:relative;flex-shrink:0}#server-rail button:hover,#server-rail button.active{background:var(--accent);border-radius:16px}#server-rail button.active:before{content:"";position:absolute;left:-10px;height:30px;width:4px;border-radius:0 4px 4px 0;background:#f2f3f5}#server-rail .home-icon{color:#c5caff}#server-rail .rail-add{color:#3ba55c}#server-rail .rail-add:hover{background:#24805e;color:#fff}#servers{display:flex;flex-direction:column;gap:8px}.rail-divider{width:32px;height:2px;background:#35363c;margin:2px 0;flex-shrink:0}
@@ -369,15 +369,22 @@ class AuthFlow {
   const f=await this.read();if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
   if(!authReturnAllowed(value,f.base))throw new Error('잘못된 인증 반환 주소입니다.');
   const u=new URL(value);if(u.searchParams.getAll('solaris_state').length!==1||u.searchParams.get('solaris_state')!==f.state)throw new Error('다른 로그인 요청의 반환입니다. 다시 시작하세요.');
-  if(u.searchParams.has('error'))throw authCallbackFailure(u.searchParams.get('error_code'));
-  const code=u.searchParams.get('code');if(u.searchParams.getAll('code').length!==1||!code||code.length>4096)throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
   if((this.api.session?.user?.id??null)!==f.uid)throw new Error('계정이 변경되어 이전 인증 요청을 취소했습니다.');
+  const code=u.searchParams.get('code');if(!u.searchParams.has('error')&&(u.searchParams.getAll('code').length!==1||!code||code.length>4096))throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
+  try{
+  if(u.searchParams.has('error'))throw authCallbackFailure(u.searchParams.get('error_code'));
   const revision=++this.api.revision,s=await this.api.auth('token?grant_type=pkce',{auth_code:code,code_verifier:f.verifier});
   if(f.uid&&s.user?.id!==f.uid)throw new Error('계정 연결은 기존 UID를 유지해야 합니다.');
   const user=await this.api.auth('user',undefined,s.access_token);if(user.id!==s.user?.id)throw new Error('인증된 계정을 확인하지 못했습니다.');s.user=user;
   if(revision!==this.api.revision||this.pending?.state!==f.state)throw new Error('로그인 요청이 취소되었습니다.');
   await this.api.acceptSession(s,revision);await this.write(null);
   return{kind:f.kind,session:s};
+  }catch(error){
+   // Retire only this validated return. A failed request cannot be resumed after
+   // restart, and a newer request or changed account must remain untouched.
+   if(this.pending?.state===f.state&&(this.api.session?.user?.id??null)===f.uid)await this.write(null);
+   error.authReturnHandled=true;throw error;
+  }
  }
  async cancel(){
   this.generation++;this.api.revision++;
@@ -1831,7 +1838,7 @@ function receiveAuthReturn(url){
   if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);if(loggingOut||epoch!==accountUIEpoch)return false;await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
   else{await boot();if(!loggingOut&&epoch===accountUIEpoch&&value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
   await ackNativeAuthReturn(url);return true;
- });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
+ });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;if(e.authReturnHandled){authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);}showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
 }
 bridge.addEventListener('event',e=>{if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
 await run(async()=>{

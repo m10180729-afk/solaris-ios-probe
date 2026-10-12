@@ -10,7 +10,27 @@ test('linked identity failure explains the conflict without accepting or moving 
  api.session={user:{id:'current'},access_token:'fixture',expires_at:Date.now()/1000+3600};
  const {pending:f}=await api.authFlow.prepare('google-link');let exchanges=0;api.auth=async()=>{exchanges++;};
  await assert.rejects(api.authReturn(f.base+'?solaris_state='+f.state+'&error=oauth_callback_error&error_code=identity_already_exists'),e=>e.code==='identity_already_exists'&&/자동으로 합쳐지지/.test(e.message));
- assert.equal(exchanges,0);assert.equal(api.session.user.id,'current');assert.equal(api.authFlow.pending.state,f.state);
+ assert.equal(exchanges,0);assert.equal(api.session.user.id,'current');assert.equal(api.authFlow.pending,null);
+ assert.equal(records.get('auth-flow'),'null');assert.equal(await api.authFlow.resume(),null);
+ assert.equal(api.revision,0,'A provider failure must not invalidate the current account');
+});
+
+test('foreign provider failure preserves the current pending request and account',async()=>{
+ const api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},{native:true,async call(command){if(command==='platform')return{platform:'android'};return true;}},{});
+ api.session={user:{id:'current'}};const{pending:f}=await api.authFlow.prepare('google-link');
+ await assert.rejects(api.authReturn(f.base+'?solaris_state='+crypto.randomUUID()+'&error=oauth_callback_error&error_code=identity_already_exists'),/다른 로그인 요청/);
+ assert.equal(api.authFlow.pending.state,f.state);assert.equal(api.session.user.id,'current');
+ api.session={user:{id:'changed'}};
+ await assert.rejects(api.authReturn(f.base+'?solaris_state='+f.state+'&error=oauth_callback_error'),/계정이 변경/);
+ assert.equal(api.authFlow.pending.state,f.state);assert.equal(api.session.user.id,'changed');
+});
+
+test('failed code exchange clears its flow but preserves a concurrent newer request',async()=>{
+ const records=new Map(),api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},{native:true,async call(command,args){if(command==='platform')return{platform:'windows'};if(command==='vaultSet')records.set(args.key,args.value);if(command==='vaultGet')return records.get(args.key);return true;}},{});
+ const{pending:f}=await api.authFlow.prepare('google');let newer;
+ api.auth=async()=>{newer=(await api.authFlow.prepare('google')).pending;throw new Error('fixture exchange failure');};
+ await assert.rejects(api.authReturn(f.base+'?solaris_state='+f.state+'&code=fixture-code'),/fixture exchange failure/);
+ assert.equal(api.authFlow.pending.state,newer.state);assert.equal(JSON.parse(records.get('auth-flow')).state,newer.state);
 });
 test('unknown provider descriptions and error codes are never displayed as credentials',()=>{
  const error=authCallbackFailure('fixture-private-token-or-email');assert.equal(error.code,'oauth_callback_error');assert(!error.message.includes('fixture-private'));
