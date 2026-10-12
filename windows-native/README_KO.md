@@ -1,10 +1,10 @@
-# Solaris Windows 통합 앱 · build57
+# Solaris Windows 통합 앱 · build62
 
 Windows 단일 앱에서 친구/서버 채널을 선택해 **화면공유**, **화면공유 보기**, **파일 보내기**를 사용합니다. 기존 하드웨어 H264/다중 RTP 엔진을 재사용하며 마이크·음성통화는 없습니다. 방 코드와 별도 Python 수신기 없이 계정·친구 동의·채널 권한으로 연결합니다.
 
-Actions는 FFmpeg/WebView2를 포함한 `Solaris-Windows-build57-Setup.exe` 생성을 구성합니다. **현재 설치 EXE는 생성·실행 검증 전**입니다. 전체 C# 컴파일/엔진 18개만 로컬에서 통과했습니다. 실제 GPU 인코딩/수신/최소화 장시간 방송·파일/재실행을 확인해야 합니다.
+포터블 폴더 전체를 압축 해제하고 `SolarisNativeHost.exe`를 실행합니다. `ffmpeg.exe`를 같은 폴더에 둡니다. .NET8 런타임을 포함하며 WebView2가 필요합니다. 기존 앱이나 계정 저장소를 삭제하지 않습니다. 표준 창 테두리의 최소화·최대화·크기 조절, F11 전체화면과 Escape 복원을 사용할 수 있습니다. 하단 계정 영역과 설정의 내 계정에 로그아웃이 있습니다.
 
-진단은 버전/OS·연결/RTT·손실·지터·실제 FPS·비트레이트·파일/오류·제한된 로그를 포함하고 인증 토큰·SDP·ICE를 제거합니다. 설정은 [build57 시작 안내](../docs/START_BUILD57_KO.md), 결과는 [build57 상태](../docs/BUILD57_STATUS_KO.md)를 읽습니다.
+대화 메뉴의 연결 및 화면공유 상태에서 실제 FPS·해상도·RTT·손실·비트레이트와 제한된 로그를 확인하고 저장할 수 있습니다. 인증 토큰·SDP·ICE는 제거합니다. Windows build54 엔진/품질 정책 해시가 일치하며 실제 GPU·인터넷 성능은 별도로 확인해야 합니다. 설정은 [build62 시작 안내](../docs/START_BUILD62_KO.md), 결과는 [build62 상태](../docs/BUILD62_STATUS_KO.md)를 읽습니다.
 
 ---
 

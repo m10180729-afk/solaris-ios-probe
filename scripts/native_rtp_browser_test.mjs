@@ -4,9 +4,10 @@ import {chromium} from 'playwright';
 import {spawn} from 'node:child_process';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url);
-const dll=new URL('windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Solaris.Transport.Tests.dll',root).pathname;
-const fixture=new URL('build/rtp-fixture.h264',root).pathname;
+const dll=fileURLToPath(new URL('windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Solaris.Transport.Tests.dll',root));
+const fixture=fileURLToPath(new URL('build/rtp-fixture.h264',root));
 const html=readFileSync(new URL('ios/App/Resources/solaris-desktop.html',root),'utf8');
 mkdirSync(new URL('build/rtp-diagnostics/',root),{recursive:true});
 const server=spawn(process.env.DOTNET||'dotnet',[dll,'--serve',fixture,'--large-idr'],{cwd:root,stdio:['ignore','pipe','pipe']});
@@ -20,7 +21,7 @@ try{
   await waitUntil(()=>{if(server.exitCode!==null)throw Error(serverLog);return serverLog.includes('RTP_TEST_READY');},'native server startup');
   // Playwright's bundled Chromium on Linux is built without proprietary H.264.
   // Use actual Chrome for the codec interoperability gate.
-  browser=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']});
+  browser=await chromium.launch({...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{channel:'chrome'}),headless:true,args:['--autoplay-policy=no-user-gesture-required']});
   const codecProbe=await browser.newPage();pages.push(codecProbe);
   const h264=await codecProbe.evaluate(()=>RTCRtpReceiver.getCapabilities('video').codecs.filter(c=>c.mimeType.toLowerCase()==='video/h264'));
   if(!h264.length)throw Error('The test browser does not support H.264; install Chrome for Testing before running the RTP gate');

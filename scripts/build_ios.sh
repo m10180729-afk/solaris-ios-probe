@@ -11,7 +11,7 @@ fi
 for executable in xcodegen xcodebuild codesign ditto python3 curl xcrun plutil; do
   command -v "$executable" >/dev/null || { echo "Missing: $executable"; exit 1; }
 done
-SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.4.0-build61-resign.ipa"
+SOLARIS_OUTPUT="$SOLARIS_ROOT/dist/Solaris-0.4.0-build62-resign.ipa"
 if [[ -e "$SOLARIS_OUTPUT" ]]; then
   echo "Output already exists. Move/rename it before rebuilding: $SOLARIS_OUTPUT"
   exit 1

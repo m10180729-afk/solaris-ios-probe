@@ -51,3 +51,70 @@ test('a cold restart restores the verifier from the protected vault',async()=>{
 test('manual email verification cannot switch UID without returning session tokens',async()=>{
  const{api,values}=fixture();api.session=session('owner');api.auth=async()=>({user:{id:'other'}});await assert.rejects(api.verifyEmailLink('a@example.test','123456'),/UID/);assert.equal(api.session.user.id,'owner');assert.equal(values.has('session'),false);
 });
+test('a failed native listener or external browser launch clears the saved PKCE request',async()=>{
+ for(const failure of ['authListen','authOpen']){
+  const{api,values,calls}=fixture(),original=api.bridge.call;
+  api.bridge.call=async(command,args)=>{if(command===failure)throw new Error('fixture launch failure');return original(command,args);};
+  await assert.rejects(api.google(),/fixture launch failure/);
+  assert.equal(api.authFlow.pending,null);assert.equal(values.get('auth-flow'),'null');assert(calls.some(c=>c.command==='authCancel'));
+ }
+});
+test('cold restart resumes the matching loopback listener without changing the PKCE verifier',async()=>{
+ const{api,calls}=fixture(),{pending:f}=await api.authFlow.prepare('google');
+ api.authFlow=new AuthFlow(api);calls.length=0;
+ assert.deepEqual(await api.authFlow.resume(),f);
+ const listen=calls.find(c=>c.command==='authListen');assert.equal(listen.args.redirectTo,f.base+'?solaris_state='+f.state);
+ assert(!calls.some(c=>c.command==='authOpen'));assert.equal(api.authFlow.pending.verifier,f.verifier);
+});
+test('cold restart drops expired or different-account requests without opening a port',async()=>{
+ for(const reason of ['expired','different-account']){
+  const{api,calls}=fixture(),{pending:f}=await api.authFlow.prepare('google');
+  if(reason==='expired')f.expires=0;else api.session=session('someone-else');
+  await api.authFlow.write(f);api.authFlow=new AuthFlow(api);calls.length=0;
+  assert.equal(await api.authFlow.resume(),null);assert(!calls.some(c=>c.command==='authListen'));assert(calls.some(c=>c.command==='authCancel'));
+ }
+});
+test('cancelling while redirect lookup is pending cannot rearm a browser login',async()=>{
+ const{api,calls,values}=fixture(),original=api.bridge.call;let started,release;
+ const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+ api.bridge.call=async(command,args)=>{if(command==='platform'){started();await gate;}return original(command,args);};
+ const preparing=api.authFlow.prepare('google');await ready;await api.authFlow.cancel();release();
+ await assert.rejects(preparing,/취소/);assert.equal(values.get('auth-flow'),'null');assert(!calls.some(c=>c.command==='authListen'));
+});
+test('PKCE vault writes finish in request order when cancellation overlaps disk storage',async()=>{
+ const{api,calls,values}=fixture(),original=api.bridge.call;let started,release;
+ const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+ api.bridge.call=async(command,args)=>{if(command==='vaultSet'&&args.value!=='null'){started();await gate;}return original(command,args);};
+ const preparing=api.authFlow.prepare('google');await ready;const cancelling=api.authFlow.cancel();release();
+ await assert.rejects(preparing,/취소/);await cancelling;
+ assert.equal(values.get('auth-flow'),'null');assert.equal(api.authFlow.pending,null);assert(!calls.some(c=>c.command==='authListen'));
+});
+test('native listener cancellation starts immediately while a protected write is still blocked',async()=>{
+ const{api,calls}=fixture(),original=api.bridge.call;let started,release;
+ const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+ api.bridge.call=async(command,args)=>{if(command==='vaultSet'&&args.value!=='null'){started();await gate;}return original(command,args);};
+ const preparing=api.authFlow.prepare('google');await ready;const cancelling=api.authFlow.cancel();
+ assert(calls.some(c=>c.command==='authCancel'));release();await assert.rejects(preparing,/취소/);await cancelling;
+});
+test('late protected PKCE reads cannot restore a cancelled flow or exchange its callback',async()=>{
+ const{api}=fixture(),{pending:f}=await api.authFlow.prepare('google'),original=api.bridge.call;
+ api.authFlow=new AuthFlow(api);let started,release,exchanges=0;
+ const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+ api.bridge.call=async(command,args)=>{if(command==='vaultGet'&&args.key==='auth-flow'){const previous=await original(command,args);started();await gate;return previous;}return original(command,args);};
+ api.auth=async()=>{exchanges++;return session('owner');};
+ const returning=api.authReturn(callback(f));await ready;await api.authFlow.cancel();release();
+ await assert.rejects(returning,/만료/);assert.equal(api.authFlow.pending,null);assert.equal(api.session,null);assert.equal(exchanges,0);
+});
+test('duplicate callback state or code is rejected consistently on every platform',async()=>{
+ const{api}=fixture(),{pending:f}=await api.authFlow.prepare('google');let exchanges=0;api.auth=async()=>{exchanges++;};
+ await assert.rejects(api.authReturn(callback(f)+'&solaris_state='+f.state),/다른/);
+ await assert.rejects(api.authReturn(callback(f)+'&code=second-code'),/코드/);
+ assert.equal(exchanges,0);assert.equal(api.authFlow.pending.state,f.state);
+});
+test('logout during a refresh cannot start a new Google link for the signed-out account',async()=>{
+ const{api,calls,values}=fixture();api.session=session('owner');let started,release;
+ const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+ api.ensure=async()=>{started();await gate;};
+ const linking=api.google(true);await ready;await api.authFlow.cancel();api.session=null;release();
+ await assert.rejects(linking,/취소/);assert(!calls.some(c=>c.command==='authListen'||c.command==='authOpen'));assert.equal(values.get('auth-flow'),'null');
+});

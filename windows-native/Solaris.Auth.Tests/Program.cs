@@ -35,6 +35,14 @@ Check((await Request("GET /other?solaris_state=" + state + "&code=fake HTTP/1.1"
 results.Add("wrong callback path rejected");
 Check((await Request("POST /auth/callback?solaris_state=" + state + "&code=fake HTTP/1.1")).StartsWith("HTTP/1.1 400"), "POST accepted");
 results.Add("invalid HTTP method rejected");
+Check((await Request("GET /auth/callback?solaris_state=" + state + " HTTP/1.1")).StartsWith("HTTP/1.1 400"), "Nonce-only request consumed login");
+Check(browser.Take() is null, "Missing-code callback persisted"); results.Add("missing code does not consume the listener");
+Check((await Request("GET /auth/callback?solaris_state=" + state + "&solaris_state=foreign&code=fake HTTP/1.1")).StartsWith("HTTP/1.1 400"), "Duplicate nonce accepted");
+results.Add("ambiguous duplicate nonce rejected");
+using (var disconnected = new TcpClient()) { await disconnected.ConnectAsync("127.0.0.1", 43854); }
+using (var stalled = new TcpClient()) { await stalled.ConnectAsync("127.0.0.1", 43854); await Task.Delay(5500); }
+Check((await Request("GET /favicon.ico HTTP/1.1")).StartsWith("HTTP/1.1 400"), "Stalled client stopped listener");
+results.Add("closed and timed-out clients do not cancel authentication");
 var code = "fixture-private-code";
 var response = await Request("GET /auth/callback?solaris_state=" + state + "&code=" + code + " HTTP/1.1");
 Check(response.StartsWith("HTTP/1.1 200"), "Callback failed"); Check(!response.Contains(code), "Code reflected into page");

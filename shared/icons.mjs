@@ -12,7 +12,9 @@ const iconPaths={
  send:['M22 2 9 15','M22 2-7 20-4-9-9-4z'],search:['M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16','M17 17l5 5'],
  leave:['M9 3H4v18h5','M10 12h12','M18 8l4 4-4 4'],hash:['M4 9h16','M3 15h16','M10 3 6 21','M18 3l-4 18'],
  full:['M8 3H3v5','M16 3h5v5','M21 16v5h-5','M8 21H3v-5'],stop:['M6 6h12v12H6z'],
- check:['M20 6 9 17l-5-5']
+ check:['M20 6 9 17l-5-5'],
+ minimize:['M5 17h14'],maximize:['M5 5h14v14H5z'],restore:['M8 3h13v13','M3 8h13v13H3z'],
+ signal:['M4 20v-4','M9 20v-8','M14 20V8','M19 20V4']
 };
 export function icon(name,size=20){
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');

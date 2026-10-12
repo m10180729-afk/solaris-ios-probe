@@ -138,3 +138,57 @@ dialog{max-height:calc(var(--app-height) - 32px);overscroll-behavior:contain}dia
 }
 @media(max-width:360px){.stage-header{gap:4px}.stage-header .toolbar button{width:30px;min-width:30px;padding:5px}.mobile-tabs button{min-width:52px;padding:3px 8px}.auth-card{padding:20px 16px}}
 @media(prefers-reduced-motion:reduce){[aria-busy=true]:after{animation:none}#server-rail button{transition:none}}
+
+/* Build62: clear conversation actions, account access and responsive settings. */
+#window-controls{display:flex;align-items:center;height:100%;margin-right:-12px;gap:0}
+#window-controls button{height:100%;min-width:36px;border-radius:0;padding:4px 9px;background:transparent;color:#b5bac1}
+#window-controls button:hover{background:#45474e;color:#fff}#window-controls [data-action=window-close]:hover{background:#da373c}
+#window-controls [aria-pressed=true]{color:#c7cdff;background:#5865f233}
+.app-header:has(#window-controls:not([hidden])) .version-tag{margin-right:12px}
+.account-quick-actions{width:100%;display:flex;gap:4px;padding-left:38px;border-top:1px solid #35373c;margin-top:4px;padding-top:4px}
+.account-quick-actions button{font-size:11px;padding:5px 8px;background:transparent;color:#b5bac1;min-height:28px}
+.account-quick-actions button:last-child{margin-left:auto;color:#ff9fa6}.account-quick-actions button:hover{background:#383a40}
+.settings-nav-divider{height:1px;background:#45474e;margin:12px 0}.settings-navigation .settings-logout{color:#ff9fa6;margin-top:auto}
+.settings-tools,.diagnostic-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.settings-tools button,.diagnostic-actions button{min-height:38px}
+.account-warning{padding:12px;border:1px solid #a8793544;border-radius:6px;color:#f3cf96;background:#a8793511}
+.settings-content{min-width:0}.settings-content>h2:first-child{margin-top:0}.settings-content .advanced-settings{margin-top:12px}
+.settings-content .stack-form{gap:16px}.settings-content>p{line-height:1.6}
+.stage-header .toolbar .share-actions{gap:6px}.stage-header .toolbar #share .button-label,.stage-header .toolbar #stop .button-label{display:inline}
+.stage-header .toolbar #share,.stage-header .toolbar #stop{width:auto;min-width:unset;min-height:36px;padding:7px 10px}
+.stage-header .toolbar .session-more{width:34px;min-width:34px;padding:7px}.session-more .button-label{display:none}
+.stage-header .toolbar .connection-end{display:none}
+.compose-attach{border-radius:50%;flex:0 0 32px;width:32px;height:32px;color:#b5bac1}
+.compose-attach:hover{background:#45474e!important;color:#fff!important}.compose-attach:disabled{opacity:.4}
+.share-state{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:10px 16px;background:#184f3c;color:#d4f5e4;border-bottom:1px solid #2e7960;font-size:12px}
+.share-state.preparing{background:#31395e;color:#dce0ff;border-color:#525c89}.share-state-label{flex:1;min-width:0;line-height:1.5}
+.share-state button{font-size:11px;padding:5px 8px;flex-shrink:0;background:#ffffff12;color:inherit;min-height:30px}.share-state .danger{color:#ffced0}
+.incoming-request{display:flex;justify-content:flex-start!important;gap:8px;width:100%;border-radius:0;padding:10px 16px;background:#4e3c23;color:#ffe1ad;border-bottom:1px solid #76552e;min-height:40px;flex-shrink:0}
+.incoming-request:hover{background:#664b28}.incoming-request:after{content:'확인하기 →';margin-left:auto;font-size:11px}
+.people-close{display:none;float:right;margin:-6px -2px 4px 8px;background:transparent;font-size:11px;color:#b5bac1;padding:5px}
+.action-menu{display:flex;flex-direction:column;gap:8px;margin-top:16px}.action-menu>button{justify-content:flex-start;min-height:42px;text-align:left;background:#383a40}
+.action-menu>button:hover{background:#45474e}.action-menu>p{line-height:1.5}.action-menu>.danger{color:#ff9fa6}
+#panel>.row .row-actions{margin-left:auto}#panel>.row .row-menu{flex-shrink:0}#panel>.row:hover{background:#35373e}
+.diagnostic-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.diagnostic-card{padding:14px;background:#232428;border:1px solid #44464d;border-radius:8px}
+.diagnostic-card>span,.diagnostic-card>strong{display:block}.diagnostic-card strong{margin-top:6px;font-size:16px}.quality-reading{border-top:1px solid #45474e;margin-top:18px;padding-top:2px}
+.quality-reading h2{font-size:14px;color:#dbdee1}.quality-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:14px 0;font-size:13px}
+.quality-metrics dt{color:#b5bac1}.quality-metrics dd{margin:0;text-align:right;color:#f2f3f5}.quality-dialog pre{background:#232428;border-radius:6px;padding:12px;overflow-wrap:anywhere}
+.quality-dialog .form-help{line-height:1.6}.empty-diagnostics{padding:18px 0}.release-link{display:inline-block;color:#b5bdff;padding:8px 0}
+@media(min-width:761px) and (pointer:fine){dialog{resize:both;overflow:auto;min-width:360px;min-height:160px;max-width:calc(100vw - 32px)}}
+@media(max-width:1180px){#workspace.people-open .people-close{display:block}.stage-header .toolbar .share-actions{gap:4px}}
+@media(max-width:900px) and (min-width:761px){#workspace{grid-template-columns:64px 208px minmax(0,1fr)}#server-rail{padding-left:8px;padding-right:8px}.stage-header{padding-left:12px;padding-right:12px;gap:7px}.friend-tabs{overflow:auto;min-width:0}.friend-tabs button{flex-shrink:0}}
+@media(max-width:760px){
+ .stage-header h1{flex:1;min-width:20px}.stage-header>.spacer{display:none}.stage-header .toolbar #share,.stage-header .toolbar #stop{padding:7px 8px;font-size:12px;min-height:38px;background:#5865f2;color:#fff}
+ .stage-header .toolbar #stop{background:#8c3545}.stage-header .toolbar .session-more{height:38px;width:32px;min-width:32px;padding:6px}.stage-header .toolbar .share-actions{gap:3px}
+ .stage-header .members-toggle{width:32px}.stage-header #scope-avatar{display:none}.stage-header #scope-symbol{width:20px}
+ .share-state{padding:8px 12px;gap:8px;font-size:11px;flex-wrap:wrap}.share-state>.ui-icon{display:none}.share-state-label{flex-basis:calc(100% - 80px)}.share-state>[data-action=quality-details]{display:none}.share-state button{min-height:36px}
+ .incoming-request{font-size:12px;padding:10px 14px}.settings-navigation{flex-wrap:wrap;gap:4px}.settings-navigation button{flex:1 0 calc(50% - 4px);font-size:13px;padding:9px}
+ .settings-navigation .settings-nav-divider{display:none}.settings-navigation .settings-logout{flex-basis:100%;margin-top:4px;border-top:1px solid #45474e;border-radius:0}
+ .settings-navigation button.active{background:#5865f233;color:#d0d5ff}.settings-content .stack-form{gap:14px}
+ #panel>.row .row-actions button{width:36px;height:38px;padding:7px}.row-menu{min-height:38px}.action-menu>button,.diagnostic-actions button{min-height:44px}
+ dialog,dialog.profile-dialog{resize:none;min-width:0;max-width:calc(100vw - 20px)}.diagnostic-actions button{flex:1;font-size:12px;white-space:nowrap;padding:8px}
+ .quality-metrics{font-size:12px;gap:10px}.account-quick-actions button{min-height:36px}.people-close{min-height:36px}
+}
+@media(max-width:360px){.stage-header #scope-symbol{display:none}.stage-header{gap:4px}.stage-header .toolbar #share,.stage-header .toolbar #stop{font-size:11px;padding:7px 6px}}
+/* Icon button layout must not override responsive navigation visibility. */
+@media(min-width:761px){.stage-header .mobile-nav{display:none}}
+@media(min-width:1181px){.stage-header .members-toggle{display:none}}

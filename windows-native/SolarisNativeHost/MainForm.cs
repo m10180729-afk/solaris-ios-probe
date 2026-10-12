@@ -10,10 +10,12 @@ internal sealed class MainForm : Form
     private readonly NativeH264Capture capture;
     private readonly Build54RtpAdapter rtp;
     private readonly AppBridge app;
+    private readonly WindowController window;
     private long captureRequest;
     private int pendingFramePosts;
     private int awaitingKeyFrame = 1;
     private long hostQueueDrops;
+    private bool fullscreenKeyDown;
     private readonly WebView2 browser = new() { Dock = DockStyle.Fill };
     private readonly Label status = new()
     {
@@ -27,7 +29,8 @@ internal sealed class MainForm : Form
     internal MainForm()
     {
         rtp = new Build54RtpAdapter(PostRtpMessage);
-        app = new AppBridge(this, rtp, value => status.Text = value, PostRtpMessage);
+        window = new WindowController(this, PostRtpMessage);
+        app = new AppBridge(this, rtp, value => status.Text = value, PostRtpMessage, window);
         capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>
         {
             if (state == "metrics")
@@ -35,7 +38,12 @@ internal sealed class MainForm : Form
             PostNativeStatus(state, message, detail);
         });
         Text = $"Solaris · {Program.Version}";
-        MinimumSize = new Size(960, 720);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MinimizeBox = true;
+        MaximizeBox = true;
+        MinimumSize = new Size(720, 520);
+        var desktop = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 820);
+        Size = new Size(Math.Min(1280, desktop.Width), Math.Min(820, desktop.Height));
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(16, 20, 27);
         ForeColor = Color.White;
@@ -64,6 +72,29 @@ internal sealed class MainForm : Form
             browser.CoreWebView2.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith("https://solaris.local/", StringComparison.Ordinal)) e.Cancel = true; };
             browser.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
             browser.CoreWebView2.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
+            browser.CoreWebView2.ContainsFullScreenElementChanged += (_, _) =>
+                window.SetFullscreen(browser.CoreWebView2.ContainsFullScreenElement);
+            browser.KeyDown += (_, e) =>
+            {
+                if (e.KeyCode == Keys.F11)
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    if (!fullscreenKeyDown)
+                    {
+                        fullscreenKeyDown = true;
+                        BeginInvoke(new Action(() => window.SetFullscreen(!window.IsFullscreen)));
+                    }
+                }
+                else if (e.KeyCode == Keys.Escape && window.IsFullscreen)
+                {
+                    // Let WebView handle a video's DOM fullscreen exit. Native
+                    // fullscreen is restored afterward on the normal UI loop.
+                    BeginInvoke(new Action(() => window.SetFullscreen(false)));
+                }
+            };
+            browser.KeyUp += (_, e) => { if (e.KeyCode == Keys.F11) fullscreenKeyDown = false; };
+            browser.LostFocus += (_, _) => fullscreenKeyDown = false;
             browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "solaris.local", webRoot, CoreWebView2HostResourceAccessKind.DenyCors);
             browser.CoreWebView2.ProcessFailed += (_, eventArgs) =>

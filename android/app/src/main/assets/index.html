@@ -5,7 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Solaris</title><link rel="stylesheet" href="app.css">
 </head><body>
-<header class="app-header"><strong><span class="brand-mark">◉</span> Solaris</strong><span class="spacer"></span><span class="version-tag">화면공유 · 원본 파일 전송</span></header>
+<header class="app-header"><strong><span class="brand-mark">◉</span> Solaris</strong><span class="spacer"></span><span class="version-tag">화면공유 · 원본 파일 전송</span><nav id="window-controls" aria-label="Windows 창 조절" hidden><button data-action="window-minimize" data-icon="minimize" aria-label="창 최소화" title="창 최소화"></button><button id="window-maximize" data-action="window-maximize" data-icon="maximize" aria-label="창 최대화" title="창 최대화"></button><button id="window-fullscreen" data-action="window-fullscreen" data-icon="full" aria-label="앱 전체화면" title="앱 전체화면 · F11"></button><button data-action="window-close" data-icon="close" aria-label="창 닫기" title="창 닫기"></button></nav></header>
 <div id="error" role="alert" hidden></div>
 <section id="onboarding" class="auth-card" hidden>
 <span class="auth-logo" aria-hidden="true">◉</span><h1>Solaris에 오신 것을 환영해요</h1><p class="muted">친구와 화면을 공유하고 원본 파일을 주고받으세요.</p>
@@ -24,5 +24,5 @@
 <aside id="people" aria-label="참여자와 요청"><h2 id="participants-title">온라인 친구</h2><div id="participants"></div><div class="request-section"><h2>화면공유 요청 <span id="request-count" class="count-badge" hidden></span></h2><div id="requests"></div></div></aside>
 </main>
 <nav id="mobile-tabs" class="mobile-tabs" aria-label="주요 메뉴" hidden><button data-action="mobile-menu" data-icon="message" aria-label="대화와 채널 목록"><span>대화</span></button><button data-action="mobile-friends" data-icon="friends" aria-label="친구 목록"><span>친구</span></button><button data-action="mobile-files" data-icon="files" aria-label="파일 전송 기록"><span>파일</span></button><button data-action="mobile-profile" data-icon="user" aria-label="내 프로필"><span>나</span></button></nav>
-<dialog id="dialog"><button id="dialog-close" class="close" aria-label="대화상자 닫기">✕</button><div id="dialog-content"></div></dialog>
+<dialog id="dialog" aria-labelledby="dialog-title"><button id="dialog-close" class="close" aria-label="대화상자 닫기">✕</button><div id="dialog-content"></div></dialog>
 <script type="module" src="app.mjs"></script></body></html>

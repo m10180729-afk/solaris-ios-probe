@@ -4,9 +4,9 @@ import hashlib
 import json
 
 ROOT = Path(__file__).resolve().parents[1]
-reference = json.loads((ROOT / 'docs/BUILD54_CAPTURE_REFERENCE.json').read_text())
-windows = (ROOT / reference['windows_capture_file']).read_text().encode()
-swift = (ROOT / reference['ios_capture_file']).read_text()
+reference = json.loads((ROOT / 'docs/BUILD54_CAPTURE_REFERENCE.json').read_text(encoding='utf-8'))
+windows = (ROOT / reference['windows_capture_file']).read_text(encoding='utf-8').encode()
+swift = (ROOT / reference['ios_capture_file']).read_text(encoding='utf-8')
 start = swift.index('    func capture(_ sample: CMSampleBuffer) {')
 end = swift.index('    private func applyVideoSenderPolicy() {')
 actual = {
@@ -16,7 +16,7 @@ actual = {
 for key, value in actual.items():
     assert value == reference[key], f'Build54 source mismatch: {key}'
 report = {
-    'build': 60,
+    'build': 62,
     'baseline_commit': reference['commit'],
     'original_windows_capture_identical': True,
     'original_ios_capture_pump_identical': True,
