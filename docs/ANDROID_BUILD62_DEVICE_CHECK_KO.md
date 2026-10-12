@@ -1,6 +1,6 @@
 # Android 실기기 확인 · build62
 
-대상은 Galaxy Quantum2 / Android 14와 사용자가 보유한 최신 Android 기기입니다. 아래 결과는 실제 수정 APK를 설치해 확인한 뒤 기록합니다. 현재 JVM 검사 25개 통과는 캡처·하드웨어 인코더·실제 네트워크 성능을 확인한 결과가 아닙니다.
+대상은 Galaxy Quantum2 / Android 14와 사용자가 보유한 최신 ARM64 Android 휴대폰입니다. 휴대폰 APK는 `arm64-v8a`·`armeabi-v7a`를 포함하며 x86·x86_64 에뮬레이터용 바이너리는 제외합니다. 아래 결과는 실제 수정 APK를 설치해 확인한 뒤 기록합니다. 현재 JVM 검사 25개 통과는 캡처·하드웨어 인코더·실제 네트워크 성능을 확인한 결과가 아닙니다.
 
 설치 전 기존 UID와 계정 연결 상태를 기록하세요. CI debug APK의 서명은 이전 설치본과 다를 수 있습니다. 서명이 달라 업데이트가 거부되면 기존 앱을 삭제하지 말고 같은 서명으로 빌드하거나 계정 복구를 먼저 확인합니다.
 
@@ -22,4 +22,4 @@
 
 Android 권한·토큰·서비스 순서는 [Android 공식 MediaProjection 문서](https://developer.android.com/media/grow/media-projection)에 맞춰 유지합니다. Android 14 이상은 세션별 새 승인이 필요하며 승인 토큰으로 virtual display를 반복 생성할 수 없습니다. 현재 WebRTC capturer의 Android 12 이상 크기 변경은 [WebRTC 구현](https://webrtc.googlesource.com/src/+/refs/heads/main/sdk/android/api/org/webrtc/ScreenCapturerAndroid.java)의 기존 virtual display resize 경로를 사용합니다.
 
-최신 기기의 native library 호환성은 [Android 공식 16 KB 페이지 안내](https://developer.android.com/guide/practices/page-sizes)에 따라 ZIP/ELF 정렬과 실제 실행을 함께 확인합니다. CI는 실제 APK의 `arm64-v8a`·`x86_64` ELF LOAD 정렬과 ZIP 16 KB 정렬을 필수 검사하며, legacy 32비트 `armeabi-v7a`·`x86`의 4 KB LOAD 정렬은 경고로 기록합니다. GNU_RELRO 정렬과 실기기 실행은 이 자동 검사에서 확인하지 않으므로 별도 검증이 필요합니다. compileSdk/targetSdk 값만으로 이를 확인했다고 판단하지 않습니다.
+최신 기기의 native library 호환성은 [Android 공식 16 KB 페이지 안내](https://developer.android.com/guide/practices/page-sizes)에 따라 ZIP/ELF 정렬과 실제 실행을 함께 확인합니다. CI는 휴대폰 APK의 ARM64 포함·x86 제외, 실제 64비트 ELF LOAD·GNU_RELRO 경계와 ZIP 16 KB 정렬을 필수 검사합니다. GNU_RELRO 경계는 `(VirtAddr + MemSiz) % 16384 == 0`으로 확인합니다. legacy 32비트 정렬은 별도 경고로 기록하고, GNU_RELRO가 없는 라이브러리는 정렬 조건을 통과하되 보호 부재를 경고합니다. 실기기 실행은 별도 검증이 필요합니다. compileSdk/targetSdk 값만으로 이를 확인했다고 판단하지 않습니다.

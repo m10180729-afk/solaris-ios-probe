@@ -177,7 +177,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/android/Solaris-Android-build62-debug.apk > dist/android/Solaris-Android-build62-metadata.txt
           python3 -m unittest discover -s tests -p 'test_android_pages.py' -v 2>&1 | tee dist/android/Solaris-Android-build62-16kb-tests.txt
           SOLARIS_ELF_EXIT=0
-          python3 scripts/check_android_pages.py --apk dist/android/Solaris-Android-build62-debug.apk --output dist/android/Solaris-Android-build62-16kb-elf.json || SOLARIS_ELF_EXIT=$?
+          python3 scripts/check_android_pages.py --phone-apk --apk dist/android/Solaris-Android-build62-debug.apk --output dist/android/Solaris-Android-build62-16kb-elf.json || SOLARIS_ELF_EXIT=$?
           SOLARIS_ZIP_EXIT=0
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 dist/android/Solaris-Android-build62-debug.apk > dist/android/Solaris-Android-build62-16kb-zip.txt || SOLARIS_ZIP_EXIT=$?
           if [ "$SOLARIS_ELF_EXIT" -ne 0 ] || [ "$SOLARIS_ZIP_EXIT" -ne 0 ]; then exit 1; fi
