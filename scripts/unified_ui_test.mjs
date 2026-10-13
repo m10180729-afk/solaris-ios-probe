@@ -22,9 +22,9 @@ async function installFixture(ctx,uid){await ctx.route('https://*.supabase.co/**
 }
 // Playwright's page-side poller constructs a Function, which the real app CSP
 // correctly rejects. Keep predicates on page.evaluate and waiting in Node.
-async function waitProbe(page,predicate,label,timeout=30000){
+async function waitProbe(page,predicate,label,timeout=30000,arg){
  const deadline=Date.now()+timeout;
- while(Date.now()<deadline){if(await page.evaluate(predicate))return;await new Promise(resolve=>setTimeout(resolve,100));}
+ while(Date.now()<deadline){if(await page.evaluate(predicate,arg))return;await new Promise(resolve=>setTimeout(resolve,100));}
  assert.fail('Timed out waiting for '+label);
 }
 async function verifyScriptCSP(page,path){
@@ -108,7 +108,7 @@ async function responsiveExistingActions(page){
    await page.locator(phone?'#mobile-tabs [data-action=mobile-friends]':'#server-rail [data-action=friends]').click();
    await page.locator('#friend-tabs [data-action=friend-filter][data-id=all]').click();
   }
-  const menuAction=page.locator('#panel [data-action=friend-menu]').first(),anchor=await menuAction.boundingBox();
+  const menuAction=page.locator('#panel [data-action=friend-menu]').first(),anchor=await menuAction.boundingBox(),menuUID=await menuAction.getAttribute('data-id');
   assert(anchor,'The menu trigger must have a visible target');await menuAction.click();
   await page.locator('#dialog').waitFor({state:'visible'});const menuGeometry=await captureResponsive(page,'friend-menu-'+device,{dialog:true});
   const anchored=await page.locator('#dialog').evaluate(n=>n.classList.contains('anchored-context'));
@@ -120,12 +120,18 @@ async function responsiveExistingActions(page){
    assert(below>=-1&&below<=12||above>=-1&&above<=12,'Desktop menu must open below or flip directly above the trigger');
   }
   await page.keyboard.press('Escape');await page.locator('#dialog').waitFor({state:'hidden'});
+  // Hiding the dialog is synchronous; its close event restores focus on a
+  // later browser task. Observe that completion instead of racing the event.
+  await waitProbe(page,uid=>document.activeElement?.dataset.action==='friend-menu'&&document.activeElement.dataset.id===uid,
+                  'Escape returns focus to the original friend menu',5000,menuUID);
   assert.equal(await menuAction.evaluate(n=>document.activeElement===n),true,'Escape must restore focus to the original menu trigger');
   await menuAction.click();await page.locator('#dialog').waitFor({state:'visible'});
   if(!phone){
    // Desktop menus now close on an outside click. That close must reset the
    // same popup state and restore focus before opening the menu again.
    await page.mouse.click(8,height-8);await page.locator('#dialog').waitFor({state:'hidden'});
+   await waitProbe(page,uid=>document.activeElement?.dataset.action==='friend-menu'&&document.activeElement.dataset.id===uid,
+                   'Outside close returns focus to the original friend menu',5000,menuUID);
    assert.equal(await menuAction.evaluate(n=>document.activeElement===n),true,'Outside close must restore the menu trigger focus');
    await menuAction.click();await page.locator('#dialog').waitFor({state:'visible'});
   }
