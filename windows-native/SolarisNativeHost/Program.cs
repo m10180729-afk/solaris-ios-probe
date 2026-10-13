@@ -4,7 +4,7 @@ namespace SolarisNativeHost;
 
 internal static class Program
 {
-    internal const string Version = "0.4.0 build64";
+    internal const string Version = "0.4.0 build65";
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,7 +27,7 @@ internal static class SolarisContent
     {
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Solaris", "build64", "www");
+            "Solaris", "build65", "www");
         Directory.CreateDirectory(root);
         var assembly = Assembly.GetExecutingAssembly();
         foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("SolarisNativeHost.app.", StringComparison.Ordinal)))
@@ -81,7 +81,7 @@ internal static class SelfTest
                 "Intel Quick Sync").First().Name;
             var resources = Assembly.GetExecutingAssembly().GetManifestResourceNames();
             var completeApp = new[] { "index.html", "app.mjs", "api.mjs", "media.mjs", "files.mjs", "platform.mjs", "sha256.mjs", "config.mjs", "app.css", "lifecycle.mjs", "diagnostics.mjs" }.All(n => resources.Contains("SolarisNativeHost.app." + n));
-            var valid = completeApp && Program.Version.Contains("build64", StringComparison.Ordinal) &&
+            var valid = completeApp && Program.Version.Contains("build65", StringComparison.Ordinal) &&
                         html.Contains("BUILD_NUMBER='54'", StringComparison.Ordinal) &&
                         html.Contains("webcodecs-h264", StringComparison.Ordinal) &&
                         html.Contains("native-start", StringComparison.Ordinal) &&
@@ -96,7 +96,7 @@ internal static class SelfTest
                         !html.Contains("solaris-native://", StringComparison.OrdinalIgnoreCase) &&
                         !html.Contains("ClassicOldSong", StringComparison.OrdinalIgnoreCase);
             Console.WriteLine(valid
-                ? "PASS: Solaris build64 native hardware sender self-test (legacy build54 transport retained)"
+                ? "PASS: Solaris build65 native hardware sender self-test (legacy build54 transport retained)"
                 : "FAIL: embedded sender/version check");
             return valid ? 0 : 1;
         }

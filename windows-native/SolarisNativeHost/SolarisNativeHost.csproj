@@ -8,16 +8,18 @@
     <AssemblyName>SolarisNativeHost</AssemblyName>
     <RootNamespace>SolarisNativeHost</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/Solaris.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.4.0.64</Version>
-    <FileVersion>0.4.0.64</FileVersion>
-    <AssemblyVersion>0.4.0.64</AssemblyVersion>
+    <Version>0.4.0.65</Version>
+    <FileVersion>0.4.0.65</FileVersion>
+    <AssemblyVersion>0.4.0.65</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets/Solaris.ico" LogicalName="SolarisNativeHost.Solaris.ico" />
     <ProjectReference Include="../Solaris.Transport/Solaris.Transport.csproj" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />

@@ -8,6 +8,7 @@ internal sealed class WindowController
     private readonly Form form;
     private readonly Action<object> emit;
     private bool fullscreen;
+    private bool changingChrome;
     private FormWindowState savedState;
     private FormBorderStyle savedBorder;
     private Rectangle savedBounds;
@@ -16,7 +17,7 @@ internal sealed class WindowController
     {
         this.form = form;
         this.emit = emit;
-        form.Resize += (_, _) => Publish();
+        form.Resize += (_, _) => { if (!changingChrome) Publish(); };
     }
 
     internal bool IsFullscreen => fullscreen;
@@ -29,7 +30,8 @@ internal sealed class WindowController
             FormWindowState.Minimized => "minimized",
             _ => "normal"
         },
-        fullscreen
+        fullscreen,
+        systemTitlebar = form.FormBorderStyle != FormBorderStyle.None
     };
 
     private void Publish() => emit(new
@@ -42,12 +44,16 @@ internal sealed class WindowController
             FormWindowState.Minimized => "minimized",
             _ => "normal"
         },
-        fullscreen
+        fullscreen,
+        systemTitlebar = form.FormBorderStyle != FormBorderStyle.None
     });
 
     internal void SetFullscreen(bool enabled)
     {
         if (enabled == fullscreen) return;
+        changingChrome = true;
+        try
+        {
         if (enabled)
         {
             savedState = form.WindowState == FormWindowState.Minimized ? FormWindowState.Normal : form.WindowState;
@@ -67,6 +73,8 @@ internal sealed class WindowController
             if (!savedBounds.IsEmpty) form.Bounds = savedBounds;
             form.WindowState = savedState;
         }
+        }
+        finally { changingChrome = false; }
         Publish();
     }
 

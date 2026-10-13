@@ -7,9 +7,9 @@ test('protected vault writes are serialized across account recovery',async()=>{l
 test('linking recovery email cannot replace the existing internal UID',async()=>{const{api,records}=fixture();api.auth=async()=>session('different');await assert.rejects(api.verifyEmailLink('email','code'),/UID/);assert.equal(api.session.user.id,'old');assert.equal(records.size,0);});
 test('refresh response for a different UID is rejected before persistence',async()=>{const{api,records}=fixture();api.auth=async()=>session('different');await assert.rejects(api.ensure(),/일치/);assert.equal(api.session.user.id,'old');assert.equal(records.size,0);});
 
-test('email password login persists authenticated UID without storing a password',async()=>{
- const{api,records}=fixture();let sent;api.auth=async(path,body)=>{sent={path,body};return session('existing')};
- await api.login(' user@example.test ','password-123');assert.equal(sent.path,'token?grant_type=password');assert.equal(sent.body.email,'user@example.test');
+test('ID password login persists authenticated UID without storing a password',async()=>{
+ const{api,records}=fixture();let sent;api.accountFunction=async body=>{sent=body;return session('existing')};
+ await api.login(' existing_id ','password-123');assert.equal(sent.action,'login_id');assert.equal(sent.user_id,'existing_id');
  assert.equal(records.get('auth').user.id,'existing');assert(!JSON.stringify(records.get('auth')).includes('password-123'));
 });
 test('unconfirmed signup carries ID metadata but persists no password or incomplete session',async()=>{
@@ -18,8 +18,8 @@ test('unconfirmed signup carries ID metadata but persists no password or incompl
  assert.equal(result.confirmationRequired,true);assert.equal(body.data.solaris_user_id,'solar');assert.equal(records.has('auth'),false);assert(records.get('auth-flow')?.verifier);
 });
 test('malformed login session is rejected before overwriting saved identity',async()=>{
- const{api,records}=fixture();api.auth=async()=>({access_token:'incomplete',user:{id:'new'}});
- await assert.rejects(api.login('user@example.test','password-123'),/유효/);assert.equal(api.session.user.id,'old');assert.equal(records.size,0);
+ const{api,records}=fixture();api.accountFunction=async()=>({access_token:'incomplete',user:{id:'new'}});
+ await assert.rejects(api.login('existing_id','password-123'),/유효/);assert.equal(api.session.user.id,'old');assert.equal(records.size,0);
 });
 test('password upgrade requires a server verified email on the same UID',async()=>{
  const{api}=fixture();api.session=session('old');api.auth=async()=>({id:'old',email:'user@example.test'});let updated=false;api.updateUser=async()=>{updated=true};
@@ -33,6 +33,6 @@ test('logout serializes after pending vault saves and clears only local authenti
  const old=api.save();await ready;const cleared=api.clearSession();release();await Promise.all([old,cleared]);assert.deepEqual(writes,['old',null]);assert.equal(api.session,null);
 });
 test('a late login response cannot restore an account after local logout',async()=>{
- const{api,records}=fixture();let release;api.auth=async()=>{await new Promise(r=>release=r);return session('old')};
- const login=api.login('user@example.test','password-123');await api.clearSession();release();await login;assert.equal(api.session,null);assert.equal(records.get('auth'),null);
+ const{api,records}=fixture();let release;api.accountFunction=async()=>{await new Promise(r=>release=r);return session('old')};
+ const login=api.login('existing_id','password-123');await api.clearSession();release();await login;assert.equal(api.session,null);assert.equal(records.get('auth'),null);
 });

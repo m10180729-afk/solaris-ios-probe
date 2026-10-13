@@ -244,5 +244,29 @@ class AndroidPageTests(unittest.TestCase):
             self.assertFalse(evidence["phone_apk_policy_passed"])
 
 
+class ReceiveOnlyAPKTests(unittest.TestCase):
+    def test_receive_only_accepts_no_native_libraries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'fixture.apk'
+            with zipfile.ZipFile(path,'w') as z:z.writestr('classes.dex',b'fixture')
+            result=checks.inspect_apk(path,phone_apk=True,receive_only=True)
+            self.assertTrue(result['receive_only_policy_passed'])
+            self.assertFalse(result['native_alignment_required'])
+            self.assertEqual(result['libraries'],[])
+    def test_receive_only_rejects_even_aligned_native_sender(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'fixture.apk'
+            with zipfile.ZipFile(path,'w') as z:z.writestr('lib/arm64-v8a/libwebrtc.so',relro_elf())
+            result=checks.inspect_apk(path,phone_apk=True,receive_only=True)
+            self.assertFalse(result['receive_only_policy_passed'])
+            self.assertFalse(result['phone_apk_policy_passed'])
+    def test_default_inspection_still_rejects_empty_native_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'fixture.apk'
+            with zipfile.ZipFile(path,'w') as z:z.writestr('classes.dex',b'fixture')
+            result=checks.inspect_apk(path,phone_apk=True)
+            self.assertFalse(result['elf_aligned_16kb'])
+            self.assertFalse(result['phone_apk_policy_passed'])
+
 if __name__ == "__main__":
     unittest.main()

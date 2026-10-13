@@ -56,9 +56,14 @@ internal sealed class AppBridge
     internal async Task<object?> Command(string command, JsonElement a)
     {
         string S(string name) => a.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
-        if (command == "platform") return new { platform = "windows", version = Program.Version };
+        if (command == "platform") return new { platform = "windows", version = Program.Version, systemTitlebar = true, mediaSend = true, canPublish = true };
         if (command == "mediaStatus") return media.Snapshot();
         if (command == "windowState") return window.Snapshot();
+        if (command == "copyText") {
+            string text = S("text");
+            if (System.Text.Encoding.UTF8.GetByteCount(text) > 65536) throw new ArgumentException("복사할 내용을 확인하세요.");
+            if (text.Length > 0) Clipboard.SetText(text); return true;
+        }
         if (command == "windowMinimize") { window.Minimize(); return window.Snapshot(); }
         if (command == "windowMaximize") { window.ToggleMaximize(); return window.Snapshot(); }
         if (command == "windowClose") { form.BeginInvoke(new Action(form.Close)); return true; }

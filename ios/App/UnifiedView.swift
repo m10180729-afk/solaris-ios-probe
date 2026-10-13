@@ -56,6 +56,8 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     private var pendingPicker: (id: String, command: String)?
     private var receivers: [String: DesktopScreenReceiver] = [:]
     private weak var receiverFullscreen: UIViewController?
+    private var receiverFullscreenID: String?
+    private var receiverFullscreenToken: UUID?
     private var receiverConnections: [String: String] = [:]
     private var surfaces: [String: UIHostingController<Build54ScreenSurface>] = [:]
     private var observers: [NSObjectProtocol] = []
@@ -74,12 +76,15 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     }
     deinit { for receiver in receivers.values { receiver.stop() }; for observer in observers { NotificationCenter.default.removeObserver(observer) } }
     private func dismissReceiverFullscreen() {
-        receiverFullscreen?.dismiss(animated: false); receiverFullscreen = nil
+        let id = receiverFullscreenID, controller = receiverFullscreen
+        receiverFullscreenID = nil; receiverFullscreenToken = nil; receiverFullscreen = nil
+        controller?.dismiss(animated: false)
+        if let id { emit(["type": "media-receive-fullscreen", "enabled": false, "id": id]) }
     }
     private func removeReceiver(_ id: String) {
         // The presented viewer retains its receiver snapshot; dismiss it before
         // stopping any receiver so a stale black surface cannot cover the app.
-        if receivers[id] != nil { dismissReceiverFullscreen() }
+        if receiverFullscreenID == id { dismissReceiverFullscreen() }
         receiverConnections.removeValue(forKey: id)
         receivers.removeValue(forKey: id)?.stop()
         if let controller = surfaces.removeValue(forKey: id) { controller.willMove(toParent: nil); controller.view.removeFromSuperview(); controller.removeFromParent() }
@@ -106,8 +111,11 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
               let args = m["args"] as? [String: Any] else { return }
         do {
             switch command {
-            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true])
+            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true, "mediaSend": true, "canPublish": true, "systemTitlebar": false])
             case "authListen": reply(id, true)
+            case "copyText":
+                guard let text = args["text"] as? String, text.utf8.count <= 65536 else { throw UnifiedError("복사할 내용을 확인하세요.") }
+                UIPasteboard.general.string = text; reply(id, true)
             case "authTake": reply(id, AuthReturnRouter.shared.take())
             case "authAck": reply(id, AuthReturnRouter.shared.acknowledge(args["url"] as? String ?? ""))
             case "authStatus": reply(id, AuthReturnRouter.shared.metadata)
@@ -158,7 +166,7 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 for view in surfaces.values { view.view.isHidden = true }
                 for item in items {
                     guard let bid = item["id"] as? String, let surface = surfaces[bid] else { continue }
-                    func n(_ key: String) -> CGFloat { CGFloat((item[key] as? NSNumber)?.doubleValue ?? 0) * scale }
+                    func n(_ key: String) -> CGFloat { let value = (item[key] as? NSNumber)?.doubleValue ?? 0; return value.isFinite ? CGFloat(value) * scale : 0 }
                     surface.view.frame = CGRect(x: n("x"), y: n("y"), width: max(0, n("width")), height: max(0, n("height")))
                     let mask = CAShapeLayer()
                     mask.path = UIBezierPath(rect: CGRect(x: n("clipX"), y: n("clipY"), width: max(0, n("clipWidth")), height: max(0, n("clipHeight")))).cgPath
@@ -167,11 +175,19 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 }
                 reply(id, true)
             case "mediaReceiveFullscreen":
+                if args["enabled"] as? Bool == false { dismissReceiverFullscreen(); reply(id, true); break }
                 let bid = args["id"] as? String ?? ""
-                guard receivers[bid] != nil else { throw UnifiedError("방송이 종료되었습니다.") }
-                let controller = UIHostingController(rootView: Build54Fullscreen(receivers: receivers, selected: bid))
-                dismissReceiverFullscreen(); receiverFullscreen = controller
-                controller.modalPresentationStyle = .fullScreen; present(controller); reply(id, true)
+                guard receivers[bid] != nil, host != nil else { throw UnifiedError("방송이 종료되었습니다.") }
+                let token = UUID()
+                let controller = UIHostingController(rootView: Build54Fullscreen(receivers: receivers, selected: bid, didSelect: { [weak self] selected in
+                    guard let self, self.receiverFullscreenToken == token else { return }
+                    self.receiverFullscreenID = selected; self.emit(["type": "media-receive-fullscreen", "enabled": true, "id": selected])
+                }, didExit: { [weak self] in
+                    guard let self, self.receiverFullscreenToken == token else { return }; self.dismissReceiverFullscreen()
+                }))
+                dismissReceiverFullscreen(); receiverFullscreen = controller; receiverFullscreenID = bid; receiverFullscreenToken = token
+                controller.modalPresentationStyle = .fullScreen; present(controller)
+                emit(["type": "media-receive-fullscreen", "enabled": true, "id": bid]); reply(id, true)
             case "pickFile":
                 guard pendingPicker == nil else { throw UnifiedError("파일 선택이 진행 중입니다.") }
                 pendingPicker = (id, command)
@@ -238,6 +254,8 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         for id in Array(receivers.keys) { removeReceiver(id) }
+        showPicker.wrappedValue = false
+        if let group = ProbeShared.group() { try? FileManager.default.removeItem(at: group.url.appendingPathComponent("unified-broadcast.json")) }
         if let url = appURL { webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent()) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
@@ -262,19 +280,82 @@ struct Build54ScreenSurface: View {
 struct Build54Fullscreen: View {
     let receivers: [String: DesktopScreenReceiver]
     @State var selected: String
-    @Environment(\.dismiss) private var dismiss
+    let didSelect: (String) -> Void
+    let didExit: () -> Void
+    @State private var zoom: CGFloat = 1
+    @State private var pan = CGSize.zero
+    private func reset() { zoom = 1; pan = .zero }
+    private func bounded(_ value: CGSize, in size: CGSize) -> CGSize {
+        let value = ScreenViewport.offset(x: Double(value.width), y: Double(value.height), width: Double(size.width), height: Double(size.height), scale: Double(zoom))
+        return CGSize(width: value.x, height: value.y)
+    }
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            if let receiver = receivers[selected] { Build54ScreenSurface(receiver: receiver).ignoresSafeArea() }
+            GeometryReader { geometry in
+                if let receiver = receivers[selected] {
+                    ZStack {
+                        Build54ScreenSurface(receiver: receiver)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .scaleEffect(zoom).offset(pan)
+                        FullscreenViewerGestures(zoom: $zoom, pan: $pan, size: geometry.size)
+                    }.onChange(of: geometry.size) { size in pan = bounded(pan, in: size) }
+                }
+            }.clipped().ignoresSafeArea()
             HStack {
                 if receivers.count > 1 {
-                    Menu("방송 전환") { ForEach(receivers.keys.sorted(), id: \.self) { id in Button(String(id.prefix(8))) { selected = id } } }
+                    Menu("방송 전환") { ForEach(receivers.keys.sorted(), id: \.self) { id in Button(String(id.prefix(8))) { selected = id; didSelect(id) } } }
                 }
-                Button("전체화면 종료") { dismiss() }
+                Button("화면 맞춤 · \(Int(zoom * 100))%") { reset() }
+                Button("전체화면 종료") { didExit() }
             }.padding().background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 12)).padding()
-        }
+        }.onChange(of: selected) { _ in reset() }.onDisappear { reset(); didExit() }
     }
+}
+
+// UIKit recognizers also accept iPad trackpad scrolling; a SwiftUI drag alone
+// only covers direct dragging. The controls above this transparent layer retain
+// their own touches, and the video capture/decoder is never reconfigured.
+struct FullscreenViewerGestures: UIViewRepresentable {
+    @Binding var zoom: CGFloat
+    @Binding var pan: CGSize
+    let size: CGSize
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: FullscreenViewerGestures
+        private var startZoom: CGFloat = 1
+        private var startPan = CGSize.zero
+        init(_ parent: FullscreenViewerGestures) { self.parent = parent }
+        private func bound(_ value: CGSize) -> CGSize {
+            let position = ScreenViewport.offset(x: Double(value.width), y: Double(value.height), width: Double(parent.size.width), height: Double(parent.size.height), scale: Double(parent.zoom))
+            return CGSize(width: position.x, height: position.y)
+        }
+        @objc func pinch(_ recognizer: UIPinchGestureRecognizer) {
+            if recognizer.state == .began { startZoom = parent.zoom }
+            parent.zoom = CGFloat(ScreenViewport.scale(Double(startZoom * recognizer.scale)))
+            parent.pan = bound(parent.pan)
+        }
+        @objc func drag(_ recognizer: UIPanGestureRecognizer) {
+            if recognizer.state == .began { startPan = parent.pan; startZoom = parent.zoom }
+            let translation = recognizer.translation(in: recognizer.view)
+            if recognizer.numberOfTouches == 0 {
+                parent.zoom = CGFloat(ScreenViewport.scale(Double(startZoom) * exp(-Double(translation.y) * 0.002)))
+                parent.pan = bound(parent.pan); return
+            }
+            parent.pan = bound(CGSize(width: startPan.width + translation.x, height: startPan.height + translation.y))
+        }
+        func gestureRecognizer(_ first: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith second: UIGestureRecognizer) -> Bool { true }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(); view.backgroundColor = .clear
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pinch(_:)))
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.drag(_:)))
+        pinch.delegate = context.coordinator; pan.delegate = context.coordinator
+        pan.maximumNumberOfTouches = 2; pan.allowedScrollTypesMask = .all
+        view.addGestureRecognizer(pinch); view.addGestureRecognizer(pan)
+        return view
+    }
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.parent = self }
 }
 
 struct UnifiedError: LocalizedError { let message: String; init(_ message: String) { self.message = message }; var errorDescription: String? { message } }

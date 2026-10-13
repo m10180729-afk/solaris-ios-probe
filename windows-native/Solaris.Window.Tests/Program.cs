@@ -35,6 +35,21 @@ internal static class Program
         Check(snapshot.RootElement.GetProperty("state").GetString() == "minimized" && !snapshot.RootElement.GetProperty("fullscreen").GetBoolean(), "Window bridge state is incorrect");
         Check(events.Count > 0, "No window state notifications");
         Console.WriteLine("PASS: minimize exits fullscreen and reports native state");
-        Console.WriteLine("PASS: 4 real WinForms window state regressions; no media capture or interactive UI test.");
+
+        using (var normal = JsonDocument.Parse(JsonSerializer.Serialize(window.Snapshot())))
+            Check(normal.RootElement.GetProperty("systemTitlebar").GetBoolean(), "Ordinary Windows chrome must suppress duplicate web titlebar controls");
+        form.WindowState = FormWindowState.Normal;
+        events.Clear();
+        window.SetFullscreen(true);
+        using (var full = JsonDocument.Parse(JsonSerializer.Serialize(window.Snapshot())))
+            Check(full.RootElement.GetProperty("fullscreen").GetBoolean() && !full.RootElement.GetProperty("systemTitlebar").GetBoolean(), "Fullscreen snapshot still advertises an OS titlebar");
+        Check(events.Count == 1, "A chrome transition published intermediate window snapshots");
+        events.Clear();
+        window.SetFullscreen(false);
+        Check(events.Count == 1, "Fullscreen restoration published intermediate window snapshots");
+        using (var restored = JsonDocument.Parse(JsonSerializer.Serialize(events[0])))
+            Check(!restored.RootElement.GetProperty("fullscreen").GetBoolean() && restored.RootElement.GetProperty("systemTitlebar").GetBoolean(), "Window event chrome disagrees with restored native chrome");
+        Console.WriteLine("PASS: native titlebar visibility and atomic fullscreen/restoration events");
+        Console.WriteLine("PASS: 5 real WinForms window state regressions; no media capture or interactive UI test.");
     }
 }

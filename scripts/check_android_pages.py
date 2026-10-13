@@ -73,7 +73,7 @@ def elf_loads(data):
             "aligned_16kb": all(segment["aligned_16kb"] for segment in loads + relro)}
 
 
-def inspect_apk(path, phone_apk=False):
+def inspect_apk(path, phone_apk=False, receive_only=False):
     libraries = []
     with zipfile.ZipFile(path) as archive:
         entries = [entry for entry in archive.infolist() if entry.filename.startswith("lib/") and entry.filename.endswith(".so")]
@@ -99,12 +99,17 @@ def inspect_apk(path, phone_apk=False):
     integrity = bool(libraries) and not any("error" in library for library in libraries)
     abis = {library["abi"] for library in libraries}
     phone_errors = []
-    if phone_apk:
+    if receive_only:
+        if libraries:
+            phone_errors.append('Receive-only WebView APK must not contain native sender libraries')
+    elif phone_apk:
         if "arm64-v8a" not in abis:
             phone_errors.append("Phone APK must contain arm64-v8a native libraries")
         if abis - PHONE_ABIS:
             phone_errors.append("Phone APK must exclude non-phone ABIs: " + ", ".join(sorted(abis - PHONE_ABIS)))
-    return {"build": 64, "apk": Path(path).name, "page_size": PAGE_SIZE, "libraries": libraries,
+    return {"build": 65, "apk": Path(path).name, "page_size": PAGE_SIZE, "libraries": libraries,
+            "receive_only": receive_only,"receive_only_policy_passed":receive_only and not libraries,
+            "native_alignment_required":not receive_only,
             "required_16kb_abis": sorted(REQUIRED_ABIS), "native_elf_integrity": integrity,
             "phone_apk_policy_required": phone_apk, "phone_apk_policy_errors": phone_errors,
             "phone_apk_policy_passed": not phone_errors,
@@ -125,12 +130,17 @@ def main():
     parser.add_argument("--apk", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--phone-apk", action="store_true", help="Require arm64-v8a and exclude x86/x86_64 from the phone APK")
+    parser.add_argument("--receive-only", action="store_true", help="Require no packaged native sender libraries; WebView handles decoding")
     args = parser.parse_args()
-    result = inspect_apk(args.apk, phone_apk=args.phone_apk)
+    result = inspect_apk(args.apk, phone_apk=args.phone_apk,receive_only=args.receive_only)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     bad = [library["path"] for library in result["libraries"]
            if "error" in library or library["required_16kb"] and not library["aligned_16kb"]]
+    if args.receive_only:
+        if not result['receive_only_policy_passed']:raise SystemExit('FAIL: receive-only APK contains native libraries')
+        print('PASS: receive-only WebView APK contains no native sender libraries; ELF alignment not applicable (device runtime unverified)')
+        return
     if not result["elf_aligned_16kb"] or not result["phone_apk_policy_passed"]:
         errors = [", ".join(bad)] if bad else []
         if not result["elf_aligned_16kb"] and not bad:

@@ -33,9 +33,9 @@ test('late stored-session read is invalidated by sign-out',async()=>{
  const{api,records}=fixture(),pending=deferred();api.ledger.get=async()=>{await pending.promise;return session();};const init=api.init();await api.clearSession();pending.resolve();await init;assert.equal(api.session,null);assert.equal(records.get('auth'),null);
 });
 test('repeated logout shares a single local revocation request',async()=>{
- const{api}=fixture(),pending=deferred();const original=globalThis.fetch;let requests=0;
- globalThis.fetch=async(url,options)=>{requests++;assert(url.endsWith('/logout?scope=local'));assert.equal(options.headers.Authorization,'Bearer fixture-token');await pending.promise;return new Response(null,{status:204});};
- try{const first=api.logout(),second=api.logout();assert.equal(first,second);pending.resolve();assert.equal((await first).remoteRevoked,true);assert.equal(requests,1);}finally{globalThis.fetch=original;}
+ const{api}=fixture(),pending=deferred();const original=globalThis.fetch;let requests=0,departures=0;
+ globalThis.fetch=async(url,options)=>{if(url.includes('/rest/v1/rpc/')){departures++;assert.equal(JSON.parse(options.body).action,'presence_leave');}else{requests++;assert(url.endsWith('/logout?scope=local'));}assert.equal(options.headers.Authorization,'Bearer fixture-token');await pending.promise;return new Response(null,{status:204});};
+ try{const first=api.logout(),second=api.logout();assert.equal(first,second);pending.resolve();assert.equal((await first).remoteRevoked,true);assert.equal(requests,1);assert.equal(departures,1);}finally{globalThis.fetch=original;}
 });
 test('expired access token does not falsely claim remote session revocation',async()=>{
  const{api}=fixture();api.session=session(-1);const original=globalThis.fetch;globalThis.fetch=async()=>new Response(null,{status:401});
@@ -60,13 +60,14 @@ test('logging back into the same UID cannot accept an earlier session response',
  const{api}=fixture(),pending=deferred(),started=deferred(),original=globalThis.fetch;let rpcCalls=0;
  globalThis.fetch=async(url,options)=>{
   if(!String(url).includes('/rest/v1/rpc/'))return new Response(null,{status:204});
+  if(JSON.parse(options.body).action==='presence_leave')return new Response(null,{status:204});
   if(++rpcCalls===1)return{ok:true,json:async()=>{started.resolve();await pending.promise;return{nickname:'old session result'};}};
   assert.equal(options.headers.Authorization,'Bearer new-login-token');return Response.json({nickname:'current session result'});
  };
  try{
   const request=api.rpc('profile'),rejected=assert.rejects(request,/인증 상태가 변경.*취소/);
-  await started.promise;await api.logout();api.auth=async()=>({...session(),access_token:'new-login-token'});
-  await api.login('fixture@example.test','fixture-password');pending.resolve();await rejected;
+  await started.promise;await api.logout();api.accountFunction=async()=>({...session(),access_token:'new-login-token'});
+  await api.login('fixture_id','fixture-password');pending.resolve();await rejected;
   assert.equal(api.session.user.id,'existing-uid');assert.equal(api.session.access_token,'new-login-token');
   assert.deepEqual(await api.rpc('profile'),{nickname:'current session result'});
  }finally{globalThis.fetch=original;}
@@ -75,10 +76,11 @@ test('logging back into the same UID cannot accept an earlier session response',
 test('an old request waiting for refresh cannot be sent under a later same-UID login',async()=>{
  const{api}=fixture(),pending=deferred(),started=deferred(),original=globalThis.fetch;let rpcCalls=0;api.session=session(-1);
  api.auth=async path=>{if(path.includes('refresh_token')){started.resolve();await pending.promise;return session();}return{...session(),access_token:'new-login-token'};};
- globalThis.fetch=async url=>{if(String(url).includes('/rest/v1/rpc/'))rpcCalls++;return new Response(null,{status:204});};
+ api.accountFunction=async()=>({...session(),access_token:'new-login-token'});
+ globalThis.fetch=async(url,options)=>{if(String(url).includes('/rest/v1/rpc/')&&JSON.parse(options.body).action!=='presence_leave')rpcCalls++;return new Response(null,{status:204});};
  try{
   const request=api.rpc('friend_request',{target:'old-friend'}),rejected=assert.rejects(request,/인증 상태가 변경.*취소/);
-  await started.promise;await api.logout();await api.login('fixture@example.test','fixture-password');pending.resolve();await rejected;
+  await started.promise;await api.logout();await api.login('fixture_id','fixture-password');pending.resolve();await rejected;
   assert.equal(rpcCalls,0);assert.equal(api.session.access_token,'new-login-token');
  }finally{globalThis.fetch=original;}
 });

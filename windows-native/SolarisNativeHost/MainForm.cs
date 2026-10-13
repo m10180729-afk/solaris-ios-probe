@@ -38,6 +38,8 @@ internal sealed class MainForm : Form
             PostNativeStatus(state, message, detail);
         });
         Text = $"Solaris · {Program.Version}";
+        using (var icon = typeof(MainForm).Assembly.GetManifestResourceStream("SolarisNativeHost.Solaris.ico"))
+            if (icon != null) using (var original = new Icon(icon)) Icon = (Icon)original.Clone();
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimizeBox = true;
         MaximizeBox = true;
