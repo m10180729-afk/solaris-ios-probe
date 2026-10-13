@@ -13,7 +13,7 @@ with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
         relative = path.relative_to(ROOT)
         if relative.parts[0] not in TOP or not path.is_file() or path.is_symlink() or SKIP.intersection(relative.parts):
             continue
-        if any(part.endswith((".xcodeproj", ".xcworkspace")) for part in relative.parts):
+        if '.temp' in relative.parts or any(part.endswith((".xcodeproj", ".xcworkspace")) for part in relative.parts):
             continue
         if path.suffix in {".pyc", ".ipa", ".p12", ".mobileprovision", ".apk", ".aab", ".jks", ".keystore"} or path.name == "local.properties" or path.name.startswith(".env"):
             continue
