@@ -1,5 +1,6 @@
-# Solaris 0.4.0 build63
+# Solaris 0.4.0 build64
 
+build64은 Discord 공식 공개 UI 이미지와 공통 스타일 값을 참고해 기존 기능의 배치·버튼·설정 창을 정리합니다. [build64 UI 변경](docs/BUILD64_UI_KO.md)을 확인하세요.
 build63은 Google 계정 연결 오류가 복귀 뒤 대기 문구로 남는 문제와 인증 초기화 경쟁을 수정한다. 현재 수정·검증 범위는 [build63 인증 수정](docs/BUILD63_AUTH_KO.md)을 따른다. build62 설명은 아래 이전 기능 기록이다.
 
 Discord와 함께 사용하는 Windows·Android·iOS·iPadOS 화면공유 및 일반 파일 전송 앱이다. build62는 Android 공유 승인·취소·재시작 처리, Google 복귀 처리, 오프라인 로그아웃, Windows 창 조절, PC·모바일 탐색과 진단 화면을 개선했다.

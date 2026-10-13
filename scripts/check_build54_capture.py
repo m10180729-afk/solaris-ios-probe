@@ -16,7 +16,7 @@ actual = {
 for key, value in actual.items():
     assert value == reference[key], f'Build54 source mismatch: {key}'
 report = {
-    'build': 63,
+    'build': 64,
     'baseline_commit': reference['commit'],
     'original_windows_capture_identical': True,
     'original_ios_capture_pump_identical': True,

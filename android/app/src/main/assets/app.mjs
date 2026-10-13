@@ -17,7 +17,7 @@ let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,
 let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
 let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
 let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve(),authReturnSeen=false;const authReturns=new Set();
-let loggingOut=false,accountUIEpoch=0,bootPromise=null,dialogReturnFocus=null,windowState={platform:'browser',state:'normal',fullscreen:false};
+let loggingOut=false,accountUIEpoch=0,bootPromise=null,dialogReturnFocus=null,dialogAnchor=null,windowState={platform:'browser',state:'normal',fullscreen:false};
 let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
 const avatarCache=new Map(),autoWatchDisabled=new Set(),autoWatchAttempt=new Map();
 
@@ -29,9 +29,13 @@ function el(tag,text=null,attrs={}){
 function button(text,action,id,attrs={}){
  const danger=['server-leave','server-delete','channel-delete','friend-remove','block','file-cancel','file-reject'].includes(action);
  const n=el('button',null,{type:'button','data-action':action,...(id?{'data-id':id}:{}),...attrs,class:[attrs.class??'',danger?'danger':''].filter(Boolean).join(' ')});
- const glyph={'friend':'message','friend-menu':'more','server-settings':'chevron','session-request':'screen','friend-file':'files','send-file':'files','watch':'screen','unwatch':'stop','fullscreen':'full','profile':'user','end-session':'leave','logout':'leave','session-more':'more','quality-details':'signal'}[action];
+ const glyph={'friend':'message','friend-menu':'more','member-menu':'more','friend-profile':'user','user-profile':'user','server-settings':'chevron','session-request':'screen','friend-file':'files','channel-file':'files','send-file':'files','watch':'screen','unwatch':'stop','fullscreen':'full','profile':'user','settings':'settings','end-session':'leave','logout':'leave','session-more':'more','quality-details':'signal'}[action];
  if(text&&glyph&&!n.hasAttribute('aria-label'))n.setAttribute('aria-label',text);if(text&&!n.hasAttribute('title'))n.title=text;
  if(text!==null){if(glyph)n.append(icon(glyph,18));if(!['friend-menu','server-settings'].includes(action))n.append(el('span',text,{class:'button-label'}));}return n;
+}
+function iconAction(text,action,id,glyph,attrs={}){
+ const control=button(text,action,id,{...attrs,class:['icon-action',attrs.class??''].filter(Boolean).join(' '),'aria-label':text,title:attrs.title??text});
+ control.replaceChildren(icon(glyph,20));return control;
 }
 function setButtonLabel(n,text,glyph){n.replaceChildren(...(glyph?[icon(glyph,18)]:[]),el('span',text,{class:'button-label'}));n.setAttribute('aria-label',text);n.title=text;}
 function error(e){
@@ -62,12 +66,30 @@ function identity(p={},online){
  }
  return wrap;
 }
-function modal(title,body){
+function clearDialogPosition(dialog){
+ for(const property of ['position','inset','left','top','right','bottom','margin'])dialog.style.removeProperty(property);
+ dialog.classList.remove('anchored-context');
+}
+function positionContextDialog(){
+ const dialog=$('#dialog');if(!dialog.open||!dialog.classList.contains('context-dialog'))return;
+ clearDialogPosition(dialog);if(!dialogAnchor||!matchMedia('(min-width:761px)').matches)return;
+ const anchor=dialogAnchor.element?.isConnected?dialogAnchor.element.getBoundingClientRect():dialogAnchor.rect;
+ if(!anchor?.width||!anchor?.height)return;
+ const size=dialog.getBoundingClientRect(),gap=8,clamp=(value,extent,viewport)=>Math.max(gap,Math.min(value,Math.max(gap,viewport-extent-gap)));
+ const x=clamp(anchor.right-size.width,size.width,innerWidth),below=anchor.bottom+gap;
+ const y=clamp(below+size.height<=innerHeight-gap?below:anchor.top-size.height-gap,size.height,innerHeight);
+ Object.assign(dialog.style,{position:'fixed',inset:'auto',margin:'0',left:x+'px',top:y+'px'});dialog.classList.add('anchored-context');
+}
+globalThis.addEventListener('resize',positionContextDialog);
+function modal(title,body,{anchor=null}={}){
  if(loggingOut)return;
- if(!$('#dialog').open)dialogReturnFocus=document.activeElement;
+ if(!$('#dialog').open)dialogReturnFocus=anchor?.isConnected?anchor:document.activeElement;
+ clearDialogPosition($('#dialog'));dialogAnchor=body.classList.contains('context-menu')&&anchor?.getClientRects().length?{element:anchor,rect:anchor.getBoundingClientRect()}:null;
  $('#dialog').style.removeProperty('width');$('#dialog').style.removeProperty('height');
  $('#dialog').classList.toggle('profile-dialog',body.classList.contains('profile-settings')||body.classList.contains('profile-card'));
+ $('#dialog').classList.toggle('context-dialog',body.classList.contains('context-menu'));
  $('#dialog-content').replaceChildren(el('h1',title,{id:'dialog-title'}),body);if(!$('#dialog').open)$('#dialog').showModal();
+ positionContextDialog();
 }
 function confirmAction(title,text){
  return new Promise(resolve=>{
@@ -159,7 +181,9 @@ function renderShareState(){
 }
 function settingsNavigation(active){
  const nav=el('nav',null,{class:'settings-navigation','aria-label':'사용자 설정'});
- nav.append(el('h2','사용자 설정'),button('프로필','profile-tab','profile',{class:active==='profile'?'active':''}),button('내 계정','profile-tab','account',{class:active==='account'?'active':''}),button('앱 설정','settings',null,{class:active==='app'?'active':''}),button('연결 상태','quality-details'),el('div',null,{class:'settings-nav-divider'}),button('로그아웃','logout',null,{class:'danger settings-logout'}));
+ nav.append(el('h2','사용자 설정'));
+ for(const[id,text,action]of [['profile','프로필','profile-tab'],['account','내 계정','profile-tab'],['app','앱 설정','settings']])nav.append(button(text,action,action==='profile-tab'?id:null,{class:active===id?'active':'','aria-current':active===id?'page':'false'}));
+ nav.append(el('h2','앱 및 연결'),button('연결 상태','quality-details'),el('div',null,{class:'settings-nav-divider'}),button('로그아웃','logout',null,{class:'danger settings-logout'}));
  return nav;
 }
 function diagnosticSnapshot(){
@@ -348,9 +372,10 @@ function render(){
  const members=server?snapshot.members.filter(m=>m.server_id===server):accepted.filter(f=>f.online);
  $('#participants-title').textContent=server?'서버 참여자 — '+members.length:'온라인 친구 — '+members.length;
  for(const m of members){
-  const row=identity(m.profile,m.online),b=snapshot.broadcasts.find(b=>b.publisher===m.profile.uid&&media.watching.has(b.id)),stat=b?diagnostics[b.id]:null;
+  const row=el('div',null,{class:'member-row'}),who=identity(m.profile,m.online),profile=button(null,'user-profile',m.profile.uid,{class:'member-profile','aria-label':m.profile.nickname+' 프로필 보기'}),b=snapshot.broadcasts.find(b=>b.publisher===m.profile.uid&&media.watching.has(b.id)),stat=b?diagnostics[b.id]:null;
+  profile.append(...who.childNodes);row.append(profile);
   if(stat){const grade=qualityGrade(stat);row.append(el('span',null,{class:'quality-dot '+grade.color,title:grade.text,'aria-label':grade.text}));}
-  row.dataset.action='user-profile';row.dataset.id=m.profile.uid;row.setAttribute('role','button');row.tabIndex=0;people.append(row);
+  if(m.profile.uid!==loadedUID)row.append(iconAction(m.profile.nickname+' 참여자 메뉴','member-menu',m.profile.uid,'more',{class:'member-menu','aria-haspopup':'dialog'}));people.append(row);
  }
  if(!people.childElementCount)people.append(el('p','온라인 사용자가 없습니다.',{class:'muted'}));
  if(page==='direct'&&friend){people.replaceChildren(profileCard(friend,friendRecord(friend.uid)?.online));$('#participants-title').textContent='사용자 프로필';}
@@ -378,7 +403,7 @@ function render(){
  $('#messages-title').textContent=friend?'개인 메시지':'채널 메시지';$('#composer-help').textContent=matchMedia('(pointer: coarse)').matches?'줄바꿈 · 보내기 버튼으로 전송':'Enter로 보내기 · Shift+Enter로 줄바꿈';
  const connection=$('#sidebar-connection');connection.hidden=!scope&&!media.broadcast;connection.replaceChildren();if(scope||media.broadcast)connection.append(el('span','● '+(media.broadcast?'화면 송출 중':scope.kind==='direct'?'화면공유 연결됨':'# '+(snapshot.channels.find(c=>c.id===scope.id)?.name??'채널'))),button('연결 상태','quality-details',null,{'aria-label':'연결 상태 확인'}));
  if(page==='friends')renderFriends();else if(page==='direct')renderDirect();else if(page==='channel')renderChannel();
- const toolbar=$('#session-controls'),header=$('.stage-header');if(['direct','channel'].includes(page)){if(toolbar.parentElement!==header)header.insertBefore(toolbar,header.querySelector('[data-action=toggle-people]'));}else if(toolbar.parentElement===header)$('#stage').insertBefore(toolbar,$('#chat'));
+ const toolbar=$('#session-controls'),header=$('#header-actions')??$('.stage-header');if(['direct','channel'].includes(page)){if(toolbar.parentElement!==header)header.insertBefore(toolbar,header.querySelector('[data-action=toggle-people]'));}else if(toolbar.parentElement===header)$('#stage').insertBefore(toolbar,$('#chat'));
  $('#session-more').disabled=!scope&&!friend;
  for(const b of $('#mobile-tabs').children){const active=b.dataset.action==='mobile-friends'?page==='friends':b.dataset.action==='mobile-files'?page==='transfers':b.dataset.action==='mobile-menu'?['direct','channel'].includes(page):false;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');}
  refreshVideoIdentities();renderMessages();
@@ -405,11 +430,12 @@ function renderFriends(){
  const friends=snapshot.friends.filter(f=>!friendListQuery||[f.profile.nickname,f.profile.user_id].some(v=>v?.toLocaleLowerCase().includes(friendListQuery.toLocaleLowerCase()))).filter(f=>friendFilter==='pending'?f.status==='pending':f.status==='accepted'&&(friendFilter!=='online'||f.online));
  panel.append(el('h2',(friendFilter==='pending'?'대기 중':friendFilter==='online'?'온라인':'친구')+' — '+friends.length));
  for(const f of friends){
-  const row=identity(f.profile,f.status==='accepted'?f.online:undefined),actions=el('div',null,{class:'row-actions'});
-  if(f.status==='accepted')actions.append(button('메시지','friend',f.profile.uid,{class:'primary'}));
-  else if(f.requester===loadedUID)actions.append(el('span','보낸 친구 요청',{class:'muted'}),button('취소','friend-cancel',f.profile.uid));
-  else actions.append(button('수락','friend-accept',f.profile.uid,{class:'primary'}),button('거절','friend-reject',f.profile.uid));
-  row.append(actions,button('⋯','friend-menu',f.profile.uid,{class:'row-menu','aria-label':f.profile.nickname+' 친구 메뉴'}));panel.append(row);
+  const row=el('div',null,{class:'row friend-row'}),who=identity(f.profile,f.status==='accepted'?f.online:undefined),main=button(null,f.status==='accepted'?'friend':'friend-profile',f.profile.uid,{class:'friend-row-main','aria-label':f.profile.nickname+(f.status==='accepted'?' 대화 열기':' 프로필 보기')}),actions=el('div',null,{class:'row-actions friend-action-group'});
+  main.append(...who.childNodes);row.append(main);
+  if(f.status==='accepted')actions.append(iconAction(f.profile.nickname+' 메시지 보내기','friend',f.profile.uid,'message'));
+  else if(f.requester===loadedUID)actions.append(el('span','보낸 친구 요청',{class:'friend-request-label muted'}),iconAction('취소','friend-cancel',f.profile.uid,'close',{title:f.profile.nickname+'에게 보낸 친구 요청 취소'}));
+  else actions.append(iconAction('수락','friend-accept',f.profile.uid,'check',{title:f.profile.nickname+' 친구 요청 수락'}),iconAction('거절','friend-reject',f.profile.uid,'close',{title:f.profile.nickname+' 친구 요청 거절'}));
+  actions.append(iconAction(f.profile.nickname+' 친구 메뉴','friend-menu',f.profile.uid,'more',{class:'row-menu','aria-haspopup':'dialog'}));row.append(actions);panel.append(row);
  }
  if(!friends.length)panel.append(emptyState('함께할 친구를 찾아보세요.','친구 추가에서 고유 ID로 친구 요청을 보낼 수 있어요.'));
 }
@@ -417,8 +443,8 @@ function renderDirect(){
  const panel=$('#panel');panel.dataset.page='direct';panel.replaceChildren();if(!friend)return;
  const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online),el('p',friend.bio||'@'+friend.nickname+'님과의 개인 메시지입니다.',{class:'profile-bio muted'}));panel.append(profile);
  const s=sessionFor(friend.uid);if(!s||s.state==='ended')return;
- const banner=el('div',null,{class:'session-banner compact-session'});
- if(s.state==='accepted')banner.append(el('span','화면공유 연결됨'),button('연결 종료','end-session',null,{class:'danger'}));
+ const banner=el('div',null,{class:'session-banner compact-session connection-banner',role:'status'});
+ if(s.state==='accepted')banner.append(icon('screen',18),el('span','화면공유 연결됨'));
  else{banner.append(el('span',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.'));
   if(s.requester===loadedUID)banner.append(button('요청 취소','session-cancel',s.id));
   else banner.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));
@@ -542,7 +568,7 @@ async function profileModal(tab='profile'){
  }
  const recoverable=user.email_confirmed_at||google;account.append(el('p',recoverable?'다른 기기에서도 로그인하면 친구·서버·프로필이 그대로 유지됩니다.':'이메일이나 Google을 연결하기 전에 로그아웃하면 이 계정에 다시 접근하지 못할 수 있어요.',{class:'form-help'+(recoverable?'':' account-warning')}));content.append(profile,account);modal('사용자 설정',body);
 }
-async function action(a,id){
+async function action(a,id,anchor=null){
  if(loggingOut&&!a.startsWith('window-'))return;
  if(a.startsWith('window-')){
   if(!bridge.native||windowState.platform!=='windows')return;
@@ -555,14 +581,14 @@ async function action(a,id){
  if(a==='mobile-files'){await action('transfers');return;}
  if(a==='mobile-profile'){closeNav();await profileModal();return;}
  if(a==='dismiss-error'){$('#error').hidden=true;return;}
- if(a==='profile-tab'){if(id==='account'||!$('#dialog').querySelector('[data-profile-pane]')){await profileModal(id);return;}for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]'))b.classList.toggle('active',b.dataset.id===id);return;}
+ if(a==='profile-tab'){if(id==='account'||!$('#dialog').querySelector('[data-profile-pane]')){await profileModal(id);return;}for(const p of $('#dialog').querySelectorAll('[data-profile-pane]'))p.hidden=p.dataset.profilePane!==id;for(const b of $('#dialog').querySelectorAll('[data-action=profile-tab]')){b.classList.toggle('active',b.dataset.id===id);b.setAttribute('aria-current',b.dataset.id===id?'page':'false');}return;}
  if(a==='account'){await profileModal('account');return;}
  if(a==='incoming-requests'){$('#workspace').classList.add('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded','true');$('#requests').scrollIntoView({block:'nearest'});$('#requests button')?.focus();return;}
  if(a==='close-people'){closePeople();document.querySelector('[data-action=toggle-people]').focus();return;}
  if(a==='session-more'){
-  const body=el('div',null,{class:'action-menu'});body.append(button('파일 보내기','send-file'),button('연결 및 화면공유 상태','quality-details'));
-  if(scope)body.append(button('화면공유 연결 종료','end-session',null,{class:'danger'}));
-  body.append(el('p','메시지는 화면공유 연결을 종료해도 계속 보낼 수 있어요.',{class:'form-help'}));modal('대화 메뉴',body);return;
+  const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});actions.append(button('파일 보내기','send-file'),button('연결 및 화면공유 상태','quality-details'));body.append(actions);
+  if(scope){const connection=el('section',null,{class:'context-section'});connection.append(button(scope.kind==='channel'?'채널 나가기':'화면공유 연결 종료','end-session',null,{class:'danger'}));body.append(connection);}
+  body.append(el('p','메시지는 화면공유 연결을 종료해도 계속 보낼 수 있어요.',{class:'form-help'}));modal('대화 메뉴',body,{anchor});return;
  }
  if(a==='quality-details'||a==='diagnostics'){closeNav();qualityModal();return;}
  if(a==='quality-refresh'){renderQualityDetails();return;}
@@ -656,10 +682,22 @@ async function action(a,id){
   await api.rpc(a.replaceAll('-','_'),{target:id});$('#dialog').close();await poll(true);return;
  }
  if(a==='friend-menu'){
-  const f=friendRecord(id);if(!f)return;const body=el('div');body.append(identity(f.profile,f.online),button('프로필 보기','friend-profile',id));
-  if(f.status==='accepted'){const actions=el('div',null,{class:'action-menu'});actions.append(button('메시지 보내기','friend',id),button('화면공유 요청','session-request',id),button('파일 보내기','friend-file',id));body.append(actions);}
-  const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','친구 관계 관리'));
-  if(f.status==='accepted')danger.append(button('친구 삭제','friend-remove',id));danger.append(button('사용자 차단','block',id));body.append(danger);modal('친구 메뉴',body);return;
+  const f=friendRecord(id);if(!f)return;const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});body.append(identity(f.profile,f.online));actions.append(button('프로필 보기','friend-profile',id));
+  if(f.status==='accepted'){
+   const sharing=button('화면공유 요청','session-request',id),file=button('파일 보내기','friend-file',id);sharing.disabled=!f.online&&sessionFor(id)?.state!=='accepted';file.disabled=!f.online;
+   if(!f.online){sharing.title='친구가 온라인일 때 화면공유를 요청할 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
+   actions.append(button('메시지 보내기','friend',id),sharing,file);
+  }body.append(actions);
+  const danger=el('section',null,{class:'danger-zone context-section context-actions'});
+  if(f.status==='accepted')danger.append(button('친구 삭제','friend-remove',id));danger.append(button('사용자 차단','block',id));body.append(danger);modal('친구 메뉴',body,{anchor});return;
+ }
+ if(a==='member-menu'){
+  if(friendRecord(id)){await action('friend-menu',id,anchor);return;}
+  const member=snapshot.members.find(m=>m.server_id===server&&m.profile.uid===id);if(!member)return;
+  const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});body.append(identity(member.profile,member.online));actions.append(button('프로필 보기','user-profile',id));
+  if(scope?.kind==='channel'&&member.channel_id===scope.id&&id!==loadedUID){
+   const channel=snapshot.channels.find(c=>c.id===scope.id),file=button('파일 보내기','channel-file',id,{'data-channel':scope.id});file.disabled=!member.online||!channel?.files_enabled;file.title=!member.online?'온라인 참여자에게 파일을 보낼 수 있어요.':!channel?.files_enabled?'이 채널의 파일 전송이 꺼져 있어요.':'이 참여자에게 원본 파일 보내기';actions.append(file);
+  }body.append(actions);modal('참여자 메뉴',body,{anchor});return;
  }
  if(a==='friend-profile'||a==='user-profile'){const p=friendRecord(id)?.profile??snapshot.members.find(m=>m.profile.uid===id)?.profile??(id===loadedUID?snapshot.me:null);if(!p)return;const card=profileCard(p,friendRecord(id)?.online);if(friendRecord(id)?.status==='accepted')card.querySelector('.profile-card-content').append(button('메시지 보내기','friend',id,{class:'primary'}));modal('사용자 프로필',card);return;}
  if(a==='server-create'){formModal('서버 만들기','server-create-form',[{label:'서버 이름',name:'name',attrs:{maxlength:'64',required:'true',placeholder:'친구들과 함께할 공간'}}],'서버 만들기');return;}
@@ -714,13 +752,17 @@ async function action(a,id){
 
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!$('#dialog').open){if($('#workspace').classList.contains('nav-open')){e.preventDefault();closeNav();$('#nav-toggle').focus();}else if($('#workspace').classList.contains('people-open')){e.preventDefault();closePeople();document.querySelector('[data-action=toggle-people]').focus();}}
- if((e.key==='Enter'||e.key===' ')&&e.target.getAttribute('role')==='button'&&e.target.dataset.action){e.preventDefault();run(()=>action(e.target.dataset.action,e.target.dataset.id),e.target);}
+ if((e.key==='Enter'||e.key===' ')&&e.target.getAttribute('role')==='button'&&e.target.dataset.action){e.preventDefault();run(()=>action(e.target.dataset.action,e.target.dataset.id,e.target),e.target);}
 });
 document.addEventListener('click',e=>{
- const b=e.target.closest('[data-action]');if(b&&!b.disabled)run(()=>action(b.dataset.action,b.dataset.id),b);
+ const b=e.target.closest('[data-action]');if(b&&!b.disabled)run(()=>action(b.dataset.action,b.dataset.id,b),b);
 });
 $('#dialog-close').onclick=()=>$('#dialog').close();
-$('#dialog').addEventListener('close',()=>{if(!$('#dialog').open){$('#dialog-content').replaceChildren();if(dialogReturnFocus?.isConnected&&!dialogReturnFocus.closest('[hidden]'))dialogReturnFocus.focus();dialogReturnFocus=null;}});
+$('#dialog').addEventListener('click',e=>{
+ const dialog=e.currentTarget;if(e.target!==dialog||!dialog.open||!dialog.classList.contains('context-dialog'))return;
+ const bounds=dialog.getBoundingClientRect();if(e.clientX<bounds.left||e.clientX>bounds.right||e.clientY<bounds.top||e.clientY>bounds.bottom)dialog.close();
+});
+$('#dialog').addEventListener('close',()=>{if(!$('#dialog').open){clearDialogPosition($('#dialog'));dialogAnchor=null;$('#dialog-content').replaceChildren();if(dialogReturnFocus?.isConnected&&!dialogReturnFocus.closest('[hidden]'))dialogReturnFocus.focus();dialogReturnFocus=null;}});
 document.addEventListener('submit',e=>{
  e.preventDefault();const form=e.target,data=Object.fromEntries(new FormData(form)),control=form.querySelector('button[type=submit],button:not([type])');
  run(async()=>{
@@ -818,7 +860,6 @@ await run(async()=>{
  try{const saved=JSON.parse(localStorage.getItem('solaris-verification')??'null');if(saved&&['email','signup','recovery'].includes(saved.type))verification=saved;}catch{}
  {const t=bridge.native?await bridge.call('vaultGet',{key:'turn'}):await ledger.get('turn');if(t){try{const saved=JSON.parse(t);if(saved?.urls&&saved.username&&saved.credential)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},saved];}catch{}}}
  for(const n of document.querySelectorAll('[data-icon]')){const text=n.textContent.trim();n.replaceChildren(icon(n.dataset.icon,20));if(!n.hasAttribute('aria-label')||n.closest('#mobile-tabs'))n.append(el('span',text,{class:'button-label'}));n.title=n.getAttribute('aria-label')??text;}
- const quick=el('div',null,{class:'account-quick-actions'});quick.append(button('내 계정','account'),button('로그아웃','logout',null,{'aria-label':'이 기기에서 로그아웃'}));$('.self-profile').append(quick);
  const attach=document.querySelector('[data-action=send-file]');attach.id='compose-attach';attach.type='button';attach.className='compose-attach';attach.setAttribute('aria-label','파일 보내기');attach.title='원본 파일 보내기';attach.replaceChildren(icon('plus',20));$('#chat button').id='chat-send';$('#chat-send').type='submit';$('#chat').prepend(attach);
  $('#session-controls .share-actions').append(button('대화 메뉴','session-more',null,{id:'session-more','aria-label':'대화 메뉴',class:'session-more'}));
  const shareState=el('div',null,{id:'share-state',class:'share-state',role:'status',hidden:'true'});shareState.append(icon('screen',18),el('span',null,{class:'share-state-label'}),button('연결 상태','quality-details'),button('공유 중지','stop',null,{class:'danger'}));

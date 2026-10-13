@@ -36,7 +36,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertIn("runs-on: windows-2025", self.workflow)
         self.assertIn("dotnet publish", self.workflow)
         self.assertIn("SolarisNativeHost.exe --self-test", self.workflow)
-        self.assertIn("Solaris-Windows-build63", self.workflow)
+        self.assertIn("Solaris-Windows-build64", self.workflow)
         self.assertIn("ffmpeg-release-essentials.zip", self.workflow)
         self.assertIn("-force_key_frames", (ROOT / "windows-native/SolarisNativeHost/NativeH264Capture.cs").read_text())
         self.assertIn("BUILD_NUMBER='54'", self.html)

@@ -38,6 +38,142 @@ async function verifyScriptCSP(page,path){
  assert.equal(await page.evaluate(()=>window.scriptCSPProbeResult),true,'The actual document must block unsafe eval');
  (results.scriptCSP??=[]).push({path,unsafeEvalBlocked:true,bundledHashRequired:path.includes('/Unified/')});
 }
+// Geometry checks complement the screenshots: document overflow alone misses
+// clipped header actions, covered composers and unreachable modal content.
+async function captureResponsive(page,name,{conversation=false,dialog=false,touch=false}={}){
+ if(dialog)await page.locator('#dialog-close').scrollIntoViewIfNeeded();
+ const measurement=await page.evaluate(({conversation,dialog,touch})=>{
+  const rect=n=>{const r=n.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
+  const visible=n=>n&&!n.hidden&&getComputedStyle(n).display!=='none'&&n.getClientRects().length>0;
+  const failures=[],record={viewport:{width:innerWidth,height:innerHeight},documentWidth:document.documentElement.scrollWidth,dialog,conversation,touch};
+  const bounds=(n,label)=>{if(!visible(n)){failures.push(label+' hidden');return null;}const r=rect(n);if(r.x< -1||r.right>innerWidth+1||r.y< -1||r.bottom>innerHeight+1)failures.push(label+' outside viewport');return r;};
+  const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.x,b.x)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y)>1;
+  if(document.documentElement.scrollWidth>innerWidth+1)failures.push('document horizontal overflow');
+  if(dialog){
+   const modal=document.querySelector('#dialog'),r=bounds(modal,'dialog');record.modal=r;
+   if(visible(modal)){
+    if(modal.scrollWidth>modal.clientWidth+1)failures.push('dialog horizontal overflow');
+    const scrollable=[modal,...modal.querySelectorAll('*')].filter(n=>visible(n)&&n.scrollHeight>n.clientHeight+1&&/auto|scroll/.test(getComputedStyle(n).overflowY));
+    record.scrollContainers=scrollable.map(n=>({id:n.id,className:n.className,height:n.clientHeight,scrollHeight:n.scrollHeight}));
+    record.close=bounds(document.querySelector('#dialog-close'),'dialog close');
+    record.fields=[...modal.querySelectorAll('input:not([type=file]),textarea,select')].filter(visible).map(n=>({name:n.name,...rect(n)}));
+    if(record.fields.some(n=>n.x<r.x-1||n.right>r.right+1||n.width<100))failures.push('dialog field clipped or too narrow');
+   }
+  }else{
+   const header=document.querySelector('.stage-header');record.header=bounds(header,'stage header');
+   const controls=[...header.querySelectorAll('button')].filter(visible).filter(n=>!n.closest('#friend-tabs'));
+   record.headerControls=controls.map(n=>({label:n.getAttribute('aria-label')||n.textContent.trim(),...bounds(n,'header '+(n.getAttribute('aria-label')||n.id))}));
+   const title=bounds(document.querySelector('#scope-title'),'conversation title');
+   if(conversation&&title.width<40)failures.push('conversation title squeezed below 40px');
+   for(let i=0;i<record.headerControls.length;i++){
+    const current=record.headerControls[i];
+    if(overlap(current,title))failures.push('header control covers title: '+current.label);
+    for(const other of record.headerControls.slice(i+1))if(overlap(current,other))failures.push('header controls overlap: '+current.label+' / '+other.label);
+   }
+   if(touch){
+    const targets=[...controls,...document.querySelectorAll('#mobile-tabs button,#panel .friend-row [data-action=friend],#panel .friend-row [data-action=friend-menu]')].filter(visible);
+    record.touchTargets=targets.map(n=>({label:n.getAttribute('aria-label')||n.textContent.trim(),...rect(n)}));
+    for(const n of record.touchTargets)if(n.width<43.5||n.height<43.5)failures.push('touch target smaller than 44px: '+n.label);
+    record.friendTabs=[...document.querySelectorAll('#friend-tabs button')].filter(visible).map(n=>({label:n.textContent,...rect(n)}));
+    if(record.friendTabs.some(n=>n.height<43.5))failures.push('friend tab smaller than 44px');
+   }
+   if(conversation){
+    record.composer=bounds(document.querySelector('#chat'),'composer');
+    record.messageField=bounds(document.querySelector('#chat textarea'),'message field');
+    if(record.messageField.width<100)failures.push('message field squeezed below 100px');
+    record.attach=bounds(document.querySelector('#compose-attach'),'file attach');record.send=bounds(document.querySelector('#chat-send'),'message send');
+    if(overlap(record.attach,record.messageField)||overlap(record.send,record.messageField))failures.push('composer controls cover message field');
+    const tabs=document.querySelector('#mobile-tabs');if(visible(tabs)){record.bottomTabs=rect(tabs);if(overlap(record.composer,record.bottomTabs))failures.push('bottom tabs cover composer');}
+   }
+  }
+  record.failures=failures;return record;
+ },{conversation,dialog,touch});
+ (results.responsiveGeometry??=[]).push({name,...measurement});
+ await page.screenshot({path:join(out,name+'.png'),fullPage:true});
+ assert.deepEqual(measurement.failures,[],name+': '+measurement.failures.join('; '));
+ return measurement;
+}
+async function responsiveExistingActions(page){
+ const cases=[];
+ for(const[device,width,height]of[['windows',1280,900],['ipad',1024,768],['small-desktop',860,720],['phone',390,844]]){
+  const phone=width<=760;await page.setViewportSize({width,height});
+  await page.locator(phone?'#mobile-tabs [data-action=mobile-friends]':'#server-rail [data-action=friends]').click();
+  await page.locator('#friend-tabs [data-action=friend-filter][data-id=all]').click();
+  await page.locator('#panel [data-action=friend]').first().waitFor({state:'visible'});
+  await captureResponsive(page,device,{touch:phone});
+  // The broad identity target and compact message icon must both retain the
+  // same conversation navigation after the friend row is restyled.
+  for(const target of['.friend-row-main','.friend-action-group [data-action=friend]']){
+   await page.locator('#panel '+target).first().click();await page.locator('#panel[data-page=direct]').waitFor();
+   await page.locator(phone?'#mobile-tabs [data-action=mobile-friends]':'#server-rail [data-action=friends]').click();
+   await page.locator('#friend-tabs [data-action=friend-filter][data-id=all]').click();
+  }
+  const menuAction=page.locator('#panel [data-action=friend-menu]').first(),anchor=await menuAction.boundingBox();
+  assert(anchor,'The menu trigger must have a visible target');await menuAction.click();
+  await page.locator('#dialog').waitFor({state:'visible'});const menuGeometry=await captureResponsive(page,'friend-menu-'+device,{dialog:true});
+  const anchored=await page.locator('#dialog').evaluate(n=>n.classList.contains('anchored-context'));
+  assert.equal(anchored,!phone,'Only desktop menus should use the trigger anchor');
+  if(!phone){
+   const popup=menuGeometry.modal;
+   assert(Math.abs(popup.right-(anchor.x+anchor.width))<=8,'Desktop menu must align near its trigger right edge');
+   const below=popup.y-(anchor.y+anchor.height),above=anchor.y-popup.bottom;
+   assert(below>=-1&&below<=12||above>=-1&&above<=12,'Desktop menu must open below or flip directly above the trigger');
+  }
+  await page.keyboard.press('Escape');await page.locator('#dialog').waitFor({state:'hidden'});
+  assert.equal(await menuAction.evaluate(n=>document.activeElement===n),true,'Escape must restore focus to the original menu trigger');
+  await menuAction.click();await page.locator('#dialog').waitFor({state:'visible'});
+  if(!phone){
+   // Desktop menus now close on an outside click. That close must reset the
+   // same popup state and restore focus before opening the menu again.
+   await page.mouse.click(8,height-8);await page.locator('#dialog').waitFor({state:'hidden'});
+   assert.equal(await menuAction.evaluate(n=>document.activeElement===n),true,'Outside close must restore the menu trigger focus');
+   await menuAction.click();await page.locator('#dialog').waitFor({state:'visible'});
+  }
+  await page.locator('#dialog [data-action=friend]').click();await page.locator('#panel[data-page=direct]').waitFor();
+  await page.locator('#messages .message-row').last().scrollIntoViewIfNeeded();
+  await captureResponsive(page,'dm-'+device,{conversation:true,touch:phone});
+  await page.locator('#session-more').click();await page.locator('#dialog [data-action=quality-details]').click();
+  await page.locator('#quality-details').waitFor();await captureResponsive(page,'diagnostics-'+device,{dialog:true});await page.locator('#dialog-close').click();
+  const members=page.locator('[data-action=toggle-people]'),membersVisible=await members.isVisible();
+  if(membersVisible){
+   await members.click();assert.equal(await members.getAttribute('aria-expanded'),'true');
+   const people=await page.locator('#people').boundingBox();assert(people&&people.x>=0&&people.x+people.width<=width+1);
+   await page.screenshot({path:join(out,'people-'+device+'.png'),fullPage:true});
+   await page.locator('[data-action=close-people]').click();assert.equal(await members.getAttribute('aria-expanded'),'false');
+   assert.equal(await page.locator('body').evaluate(n=>n.contains(document.activeElement)&&document.activeElement.dataset.action==='toggle-people'),true);
+  }
+  await page.locator(phone?'#mobile-tabs [data-action=mobile-profile]':'[data-action=settings]').click();
+  await page.locator('#dialog [data-action=profile-tab][data-id=profile]').click();
+  await page.locator('#profile-edit').waitFor();await captureResponsive(page,'profile-'+device,{dialog:true});
+  await page.locator('#avatar-file').scrollIntoViewIfNeeded();
+  const upload=await page.locator('.upload-photo-button').boundingBox();assert(upload&&upload.y>=0&&upload.y+upload.height<=height+1,'profile upload must be reachable by scrolling');
+  await page.locator('#dialog [data-action=profile-tab][data-id=account]').click();
+  await page.locator('#password-edit').waitFor();await captureResponsive(page,'account-'+device,{dialog:true});
+  await page.locator('#password-edit button').scrollIntoViewIfNeeded();
+  const save=await page.locator('#password-edit button').boundingBox();assert(save&&save.y>=0&&save.y+save.height<=height+1,'account save must be reachable by scrolling');
+  await page.locator('#dialog [data-action=settings]').click();await page.locator('#settings-edit').waitFor();
+  await captureResponsive(page,'settings-'+device,{dialog:true});
+  assert.equal(await page.locator('#dialog').evaluate(n=>getComputedStyle(n).resize),phone?'none':'both');
+  await page.locator('#dialog-close').click();
+  await page.locator(phone?'#mobile-tabs [data-action=mobile-files]':'.side-navigation [data-action=transfers]').click();
+  await page.locator('#stage[data-page=transfers]').waitFor();await captureResponsive(page,'files-'+device,{touch:phone});
+  cases.push({device,width,height,contextPopup:{anchor,dialog:menuGeometry.modal,anchored,escapeReturnsFocus:true,outsideClickReturnsFocus:phone?null:true},
+              friendRowAndIconOpenConversation:true,friendMenuOpensConversation:true,conversationDiagnosticsReachable:true,peopleCloseReturnsFocus:membersVisible?true:null,
+              profileAndAccountScrollReachable:true,settingsAndTransferNavigation:true});
+ }
+ await page.setViewportSize({width:1280,height:900});
+ results.responsiveExistingFeatureActions={passed:true,physicalDevices:false,cases};
+}
+async function acceptIncomingScreenRequest(page){
+ await page.locator('#incoming-request').waitFor({state:'visible'});
+ await page.locator('#incoming-request').click();
+ assert.equal(await page.locator('#header-actions [data-action=toggle-people]').getAttribute('aria-expanded'),'true',
+              'The actual request banner must open the consent panel');
+ assert.equal(await page.locator('#people').isVisible(),true,
+              'The consent panel must remain visible on the friends page after opening it');
+ await page.locator('#requests').getByRole('button',{name:'수락',exact:true}).click();
+ await page.locator('#incoming-request').waitFor({state:'hidden'});
+}
 async function installNativeAuthProbe(ctx,{state,verifier,platform='ios',uid=null,providerError=false}){
  await ctx.addInitScript(({state,verifier,platform,uid,providerError})=>{
   const flow={kind:uid?'google-link':'google',base:platform==='windows'?'http://127.0.0.1:43854/auth/callback':'solaris://auth/callback',state,verifier,email:null,uid,expires:Date.now()+600000};
@@ -141,8 +277,8 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  else{await p.getByRole('button',{name:'ID로 빠르게 시작',exact:true}).click();await p.locator('#register input[name=user_id]').fill('alice');await p.locator('#register input[name=nickname]').fill('솔라');await p.locator('#register button').click();}await p.locator('#workspace').waitFor({state:'visible'});}
  const[a,b]=pages;
  // An ID-only account has a visible sign-out action with an explicit recovery warning.
- await a.locator('.account-quick-actions [data-action=logout]').click();await a.getByText(/계정에 다시 접근하지 못할 수/).waitFor();await a.getByRole('button',{name:'취소',exact:true}).click();assert(await a.locator('#workspace').isVisible());assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);results.anonymousLogoutVisibleAndCancelable=true;
- await a.getByRole('button',{name:'친구 추가',exact:true}).click();await a.locator('#friend-search input').fill('bob');await new Promise(r=>setTimeout(r,2500));assert.equal(await a.locator('#friend-search input').inputValue(),'bob');await a.locator('#friend-search button').click();await a.getByRole('button',{name:'친구 요청 보내기',exact:true}).click();await b.getByRole('button',{name:'대기 중',exact:true}).click();await b.getByRole('button',{name:'수락',exact:true}).click();await a.getByRole('button',{name:'모두',exact:true}).click();await b.getByRole('button',{name:'모두',exact:true}).click();await a.locator('#panel [data-action=friend-menu]').first().click();await a.getByRole('button',{name:'화면공유 요청',exact:true}).click();await b.locator('#incoming-request').waitFor({state:'visible'});await b.locator('#incoming-request').click();await b.locator('#requests').getByRole('button',{name:'수락',exact:true}).click();await a.locator('#scope-title').filter({hasText:'지구'}).waitFor();results.accountFriendsDirect=true;
+ await a.getByRole('button',{name:'설정',exact:true}).click();await a.locator('#dialog [data-action=logout]').click();await a.getByText(/계정에 다시 접근하지 못할 수/).waitFor();await a.getByRole('button',{name:'취소',exact:true}).click();assert(await a.locator('#workspace').isVisible());assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);if(await a.locator('#dialog').isVisible())await a.locator('#dialog-close').click();results.anonymousLogoutVisibleAndCancelable=true;
+ await a.getByRole('button',{name:'친구 추가',exact:true}).click();await a.locator('#friend-search input').fill('bob');await new Promise(r=>setTimeout(r,2500));assert.equal(await a.locator('#friend-search input').inputValue(),'bob');await a.locator('#friend-search button').click();await a.getByRole('button',{name:'친구 요청 보내기',exact:true}).click();await b.getByRole('button',{name:'대기 중',exact:true}).click();await b.getByRole('button',{name:'수락',exact:true}).click();await a.getByRole('button',{name:'모두',exact:true}).click();await b.getByRole('button',{name:'모두',exact:true}).click();await a.locator('#panel [data-action=friend-menu]').first().click();await a.getByRole('button',{name:'화면공유 요청',exact:true}).click();await acceptIncomingScreenRequest(b);await a.locator('#scope-title').filter({hasText:'지구'}).waitFor();assert((await rpc(uids[1],'sync',{cursor:0})).sessions.some(s=>s.state==='accepted'&&s.a===uids[0]&&s.b===uids[1]||s.state==='accepted'&&s.a===uids[1]&&s.b===uids[0]));results.accountFriendsDirect=true;
  await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#profile-edit [name=nickname]').fill('태양');await a.locator('#profile-edit textarea').fill('태양처럼 밝게 🌞');await a.locator('#profile-edit button').click();await a.locator('#dialog-close').click();await b.locator('#panel strong').filter({hasText:'태양'}).waitFor();await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#avatar-file').setInputFiles({name:'profile.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH4sAAAAASUVORK5CYII=','base64')});await a.locator('#dialog').waitFor({state:'hidden'});await b.locator('#panel img').waitFor();assert.equal(photos.size,1);results.profileAvatar=true;
  await a.reload();await a.locator('#workspace').waitFor({state:'visible'});results.restartPersistence=true;
  await a.getByRole('button',{name:'설정',exact:true}).click();await a.locator('select[name=updateChannel]').selectOption('stable');await a.locator('input[name=maxReceive]').fill('3');await a.getByRole('button',{name:'설정 저장',exact:true}).click();results.settings=true;
@@ -214,16 +350,14 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  await a.evaluate(()=>{finishNativeStop(true);restoreNativeProbe();});await rpc(uids[1],'broadcast_stop',{id:nativeBroadcast.id});await rpc(uids[0],'session_end',{id:personal.id});
  results.failureRestoresVideoControlsAndTouchWithDelayedNativeStop={passed:true,nativeBridgeInjected:true,physicalDevice:false};
  await a.getByRole('button',{name:'지구 개인 메시지',exact:true}).click();
- for(const[device,width,height]of [['dm-windows',1280,900],['dm-ipad',1024,768],['dm-phone',390,844]]){await a.setViewportSize({width,height});await a.locator('#messages .message-row').last().scrollIntoViewIfNeeded();await a.screenshot({path:join(out,device+'.png'),fullPage:true});assert(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'DM overflow on '+device);}
- await a.setViewportSize({width:1280,height:900});
  // Unchanged polling preserves the live form and its focus.
  await a.getByRole('button',{name:'친구',exact:true}).first().click();await a.getByRole('button',{name:'친구 추가',exact:true}).click();await a.locator('#friend-search input').fill('typing');const stable=await a.locator('#friend-search input').evaluate(n=>{n.dataset.probe='retained';return n.dataset.probe;});await new Promise(r=>setTimeout(r,2500));assert.equal(await a.locator('#friend-search input').getAttribute('data-probe'),stable);assert.equal(await a.locator('#friend-search input').inputValue(),'typing');results.stablePollingDOM=true;
 
  await a.setViewportSize({width:390,height:844});await a.getByRole('button',{name:'채널 목록 열기',exact:true}).click();await a.getByRole('button',{name:'내 프로필',exact:true}).first().waitFor({state:'visible'});await a.locator('#nav-scrim').click({position:{x:378,y:90}}).catch(async()=>{await a.locator('#nav-toggle').click();});assert.equal(await a.locator('#nav-toggle').getAttribute('aria-expanded'),'false');results.mobileDrawer=true;await a.setViewportSize({width:1280,height:900});
  // A separate touch context uses actual coarse-pointer media queries.
  const touch=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,storageState:await contexts[0].storageState({indexedDB:true})});contexts.push(touch);await installFixture(touch,uids[0]);const mobile=await touch.newPage();pages.push(mobile);mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(base+'/shared/index.html');await mobile.locator('#workspace').waitFor({state:'visible'});
- await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.getByRole('button',{name:'지구 개인 메시지',exact:true}).click();const composer=mobile.locator('#chat textarea');await composer.fill('모바일 첫 줄');await composer.press('Enter');assert.equal(await composer.inputValue(),'모바일 첫 줄\n');await composer.type('둘째 줄');await mobile.locator('#chat-send').click();await mobile.locator('#messages').filter({hasText:'모바일 첫 줄\n둘째 줄'}).waitFor();assert.equal(await composer.inputValue(),'');assert.equal(await composer.evaluate(n=>n.style.height),'auto');assert(await mobile.locator('#share .button-label').isVisible());assert(await mobile.locator('#compose-attach').isVisible());await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.keyboard.press('Escape');assert.equal(await mobile.locator('#nav-toggle').getAttribute('aria-expanded'),'false');results.mobileShareLabelAndDrawerEscape=true;
- await mobile.locator('#mobile-tabs [data-action=mobile-profile]').click();await mobile.locator('#profile-edit [name=bio]').fill('🌞'.repeat(190));assert.equal(await mobile.locator('.field-counter').textContent(),'190 / 190');await mobile.locator('#profile-edit button').click();await mobile.locator('#dialog-close').click();assert.equal((await rpc(uids[0],'profile')).bio,'🌞'.repeat(190));assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await mobile.screenshot({path:join(out,'dm-touch-phone.png'),fullPage:true});results.mobileTouchComposerAndProfile={passed:true,physicalDevice:false};
+ await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.getByRole('button',{name:'지구 개인 메시지',exact:true}).click();const composer=mobile.locator('#chat textarea');await composer.fill('모바일 첫 줄');await composer.press('Enter');assert.equal(await composer.inputValue(),'모바일 첫 줄\n');await composer.type('둘째 줄');await mobile.locator('#chat-send').click();await mobile.locator('#messages').filter({hasText:'모바일 첫 줄\n둘째 줄'}).waitFor();assert.equal(await composer.inputValue(),'');assert.equal(await composer.evaluate(n=>n.style.height),'auto');assert(await mobile.locator('#share').isVisible());assert(await mobile.locator('#share').isEnabled());assert.match(await mobile.locator('#share').getAttribute('aria-label'),/화면공유/);assert.equal(await mobile.locator('#share').getAttribute('title'),await mobile.locator('#share').getAttribute('aria-label'));assert.equal(await mobile.locator('#share .ui-icon').count(),1);assert(await mobile.locator('#compose-attach').isVisible());await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.keyboard.press('Escape');assert.equal(await mobile.locator('#nav-toggle').getAttribute('aria-expanded'),'false');results.mobileShareLabelAndDrawerEscape=true;
+ await mobile.locator('#mobile-tabs [data-action=mobile-profile]').click();await mobile.locator('#profile-edit [name=bio]').fill('🌞'.repeat(190));assert.equal(await mobile.locator('.field-counter').textContent(),'190 / 190');await captureResponsive(mobile,'profile-touch-phone',{dialog:true});await mobile.locator('#profile-edit button').click();await mobile.locator('#dialog-close').click();assert.equal((await rpc(uids[0],'profile')).bio,'🌞'.repeat(190));await captureResponsive(mobile,'dm-touch-phone',{conversation:true,touch:true});results.mobileTouchComposerAndProfile={passed:true,physicalDevice:false};
  await touch.close();contexts.splice(contexts.indexOf(touch),1);pages.pop();
  // Exercise shared Windows controls against an injected bridge, including an
  // event that arrives before the command reply and a native Escape/F11 exit.
@@ -252,7 +386,7 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
   const restored=new DiskFiles({native:false},new Ledger('disk-ui-probe'));await restored.write(id,3,new Uint8Array([100,101,102]));await restored.finish(id,'original',6);const result={partialHash,bytes:await(await handle.getFile()).text(),size:(await restored.check(id)).size};await root.removeEntry('solaris-disk-probe');return result;
  });assert.equal(diskEvidence.bytes,'abcdef');assert.equal(diskEvidence.size,6);assert.equal(diskEvidence.partialHash,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');results.browserDiskCheckpoint=diskEvidence;
  await a.evaluate(()=>localStorage.setItem('solaris-settings','{broken'));await a.reload();await a.locator('#workspace').waitFor({state:'visible'});await a.getByRole('button',{name:'설정',exact:true}).click();assert.equal(await a.locator('input[name=maxReceive]').inputValue(),'4');await a.locator('#dialog-close').click();results.corruptSettingsPreserveAccount=true;
- for(const[device,width,height]of [['windows',1280,900],['ipad',1024,768],['phone',390,844]]){await a.setViewportSize({width,height});await a.screenshot({path:join(out,device+'.png'),fullPage:true});assert(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Horizontal overflow on '+device);}
+ await responsiveExistingActions(a);
   results.coldNativeGoogleReturnDuringStartup={passed:true,nativeBridgeInjected:true,physicalDevice:false,realGoogleAccount:false,cases:[await coldNativeAuthReturn('/shared/index.html'),await coldNativeAuthReturn('/ios/App/Resources/Unified/unified.html'),await coldNativeAuthReturn('/shared/index.html',{failExchange:true}),await coldNativeAuthReturn('/ios/App/Resources/Unified/unified.html',{failExchange:true}),await coldNativeAuthReturn('/shared/index.html',{failExchange:true,failBeforeResume:true}),await coldNativeAuthReturn('/shared/index.html',{foregroundReturn:true}),await coldNativeAuthReturn('/shared/index.html',{platform:'android',foregroundReturn:true}),await coldNativeAuthReturn('/shared/index.html',{platform:'windows',foregroundReturn:true})]};
   results.nativeLinkedIdentityFailures={passed:true,nativeBridgeInjected:true,physicalDevice:false,realGoogleAccount:false,cases:[await nativeLinkedIdentityFailure('/shared/index.html'),await nativeLinkedIdentityFailure('/ios/App/Resources/Unified/unified.html')]};
   if(errors.length)throw Error(errors.join('; '));results.success=true;console.log('PASS: canonical and bundled UI, secure account, native cold-return PKCE race, friend/session consent, profile/avatar, persisted restart, settings, responsive layouts');
