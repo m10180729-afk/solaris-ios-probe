@@ -6,6 +6,13 @@ export function isGoogleUser(user){
  if(Array.isArray(user.identities))return user.identities.some(identity=>identity.provider==='google');
  return user.app_metadata?.provider==='google'||user.app_metadata?.providers?.includes('google')===true;
 }
+function authSessionID(session){
+ try{const uid=session?.user?.id,parts=session?.access_token?.split('.');if(typeof uid!=='string'||!uid||parts?.length!==3||!parts[0]||!parts[2]||!/^[A-Za-z0-9_-]+$/.test(parts[1]))return null;
+  const payload=parts[1].replace(/-/g,'+').replace(/_/g,'/'),claims=JSON.parse(atob(payload+'='.repeat((4-payload.length%4)%4)));
+  return claims.sub===uid&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claims.session_id??'')?claims.session_id:null;
+ }catch{return null;}
+}
+function sameAuthSession(a,b){const id=authSessionID(a);return id!==null&&id===authSessionID(b)&&a.user.id===b.user.id;}
 export class API extends EventTarget {
  constructor(config,bridge,ledger){super();if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.url)||!/^sb_publishable_/.test(config.key))throw new Error('Invalid project configuration');this.config=config;this.bridge=bridge;this.ledger=ledger;this.session=null;this.revision=0;this.saveQueue=Promise.resolve();this.authFlow=new AuthFlow(this);this.deviceId=crypto.randomUUID();this.deletionPending=false;}
  async save(){const session=this.session,revision=this.revision;if(session&&!session.expires_at)session.expires_at=Date.now()/1000+(session.expires_in??3600);const next=this.saveQueue.then(async()=>{if(revision!==this.revision||session!==this.session)return;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:JSON.stringify(session)});else await this.ledger.set('auth',session);this.dispatchEvent(new Event('auth'));});this.saveQueue=next.catch(()=>{});await next;}
@@ -23,11 +30,22 @@ export class API extends EventTarget {
   const revision=this.revision,original=this.session;if(!original)throw new Error('Authentication required');
   if(!isGoogleUser(original.user)){await this.clearSession();throw googleOnlyError();}
   if(original.expires_at*1000>Date.now()+90000)return;
-  if(this.bridge.native){const raw=await this.bridge.call('vaultGet',{key:'session'});if(revision!==this.revision||this.session!==original)return;const saved=typeof raw==='string'?JSON.parse(raw):raw;
-   if(saved?.user?.id===original.user.id&&saved.expires_at>original.expires_at){if(!isGoogleUser(saved.user)){await this.clearSession();throw googleOnlyError();}this.session=saved;}
+  let vaultSession;
+  if(this.bridge.native){const raw=await this.bridge.call('vaultGet',{key:'session'});if(revision!==this.revision||this.session!==original)return;try{vaultSession=typeof raw==='string'?JSON.parse(raw):raw;}catch{vaultSession=null;}
+   if(sameAuthSession(vaultSession,original)&&vaultSession.expires_at>original.expires_at){if(!isGoogleUser(vaultSession.user)){await this.clearSession();throw googleOnlyError();}this.session=vaultSession;}
   }
   if(revision!==this.revision||!this.session||this.session.expires_at*1000>Date.now()+90000)return;
   const current=this.session,uid=current.user.id;
+  if(this.bridge.native&&sameAuthSession(vaultSession,current)){
+   // ReplayKit rotates the shared refresh token while its capture is active.
+   // The host can use its still-valid access token until that handoff arrives.
+   this.refreshPlatform??=Promise.resolve().then(()=>this.bridge.call('platform')).then(info=>info?.platform).catch(()=>null);
+   const platform=await this.refreshPlatform;if(revision!==this.revision||this.session!==current)return;
+   if(platform==='ios'){let status;try{status=await this.bridge.call('mediaStatus');}catch{}
+    if(revision!==this.revision||this.session!==current)return;
+    if(status?.nativeAuthRefreshOwner===true&&current.expires_at*1000>Date.now()+15000)return;
+   }
+  }
   if(!this.refreshing||this.refreshingOwner?.revision!==revision||this.refreshingOwner?.uid!==uid){
    const task=(async()=>{let session;try{session=await this.auth('token?grant_type=refresh_token',{refresh_token:current.refresh_token});}catch(error){if(error.status===401||error.status===400&&['invalid_grant','invalid_refresh_token','refresh_token_not_found','refresh_token_already_used','session_not_found'].includes(error.code))await this.invalidateSession(current,revision,error);throw error;}if(revision!==this.revision||this.session!==current)return;if(session.user?.id!==uid)throw new Error('갱신된 계정이 일치하지 않습니다.');if(!isGoogleUser(session.user)){await this.clearSession();throw googleOnlyError();}this.session=session;await this.save();})();
    this.refreshingOwner={revision,uid};this.refreshing=task;task.then(()=>{if(this.refreshing===task){this.refreshing=null;this.refreshingOwner=null;}},()=>{if(this.refreshing===task){this.refreshing=null;this.refreshingOwner=null;}});

@@ -1,5 +1,6 @@
 import{applySenderPolicy,tuneDesktopSDP,tuneScreenOfferSDP,selectCodecs,selectAudioCodecs}from'./build54-screen.mjs';
 import{uuid,sleep,redact}from'./platform.mjs';
+export const CONNECTION_LIMITS=Object.freeze({peerGrace:15000,publisherGrace:30000,controlTimeout:45000,firstFrameTimeout:30000,recoveryTimeout:45000,retryInterval:5000,maxRecoveries:3});
 // One high-quality policy on every platform. Native capture keeps the source's
 // aspect ratio and never upscales a smaller display. Congestion affects only
 // the requesting peer's bitrate, never the shared source or its frame rate.
@@ -89,7 +90,7 @@ const viewerOperations=new Map();
 // Native capture teardown must also finish before a replacement engine starts.
 const publisherOperations=new WeakMap();
 export class Media extends EventTarget {
- constructor(api,bridge,settings){super();this.api=api;this.ownerUID=api.session.user.id;this.joining=new Map();this.bridge=bridge;this.settings=settings;this.peers=new Map();this.nativePeers=new Map();this.nativeReceivers=new Map();this.meters=new Map();this.watching=new Map();this.early=new Map();this.stream=null;this.broadcast=null;this.snapshot={broadcasts:[]};this.native=bridge.native;this.reconnects=0;this.disconnectTimers=new Map();this.watchEpochs=new Map();this.senderStats=new Map();this.playbackStats=new Map();this.lastServerContact=Date.now();this.nativeListener=e=>this.nativeEvent(e.detail);bridge.addEventListener('event',this.nativeListener);this.offline=()=>this.endConnections('인터넷 연결이 끊겨 화면공유를 종료했습니다.');globalThis.addEventListener?.('offline',this.offline);this.timer=setInterval(()=>this.tick().catch(e=>this.error(e)),2500);this.guard=setInterval(()=>this.connectionGuard(),1000);this.guard.unref?.();}
+ constructor(api,bridge,settings){super();this.api=api;this.ownerUID=api.session.user.id;this.joining=new Map();this.bridge=bridge;this.settings=settings;this.peers=new Map();this.nativePeers=new Map();this.nativePeerStates=new Map();this.nativeReceivers=new Map();this.meters=new Map();this.watching=new Map();this.early=new Map();this.stream=null;this.broadcast=null;this.snapshot={broadcasts:[]};this.native=bridge.native;this.reconnects=0;this.disconnectTimers=new Map();this.watchEpochs=new Map();this.senderStats=new Map();this.playbackStats=new Map();this.lastServerContact=Date.now();this.nativeListener=e=>this.nativeEvent(e.detail);bridge.addEventListener('event',this.nativeListener);this.offline=()=>{this.offlineSince??=Date.now();};globalThis.addEventListener?.('offline',this.offline);this.timer=setInterval(()=>this.tick().catch(e=>this.error(e)),2500);this.timer.unref?.();this.controlTimer=setInterval(()=>this.controlTick().catch(e=>this.error(e)),5000);this.controlTimer.unref?.();this.guard=setInterval(()=>this.connectionGuard(),1000);this.guard.unref?.();}
  async platform(){return this.platformInfo??=(this.native?await this.bridge.call('platform'):{platform:'browser'});}
  get uid(){return this.ownerUID;}
  get ice(){return this.settings.iceServers??[{urls:['stun:stun.l.google.com:19302','stun:global.stun.twilio.com:3478']}];}
@@ -100,27 +101,51 @@ export class Media extends EventTarget {
   const stats={...value,...this.playbackStats.get(id),sender,receiver:safeMediaStats({...value,...this.playbackStats.get(id)}),disposition:diagnoseQuality({...value,...this.playbackStats.get(id)},sender)};
   this.emit('quality',{id,stats,grade:qualityGrade(stats)});return stats;
  }
- endConnections(reason){if(this.closed||(!this.broadcast&&!this.watching.size&&!this.starting))return;
+ endConnections(reason){if(this.closed||(!this.broadcast&&!this.watching.size&&!this.starting))return;this.emit('diagnostics',{event:'connection-ended',reason,controlAgeMilliseconds:Date.now()-this.lastServerContact});
   for(const id of [...this.watching.keys()])this.failWatch(id,new Error(reason));
   if(this.broadcast||this.starting){this.stop().catch(e=>this.error(e));this.error(new Error(reason));}
  }
- connectionGuard(){if(this.closed)return;if(globalThis.navigator?.onLine===false)this.endConnections('인터넷 연결이 끊겨 화면공유를 종료했습니다.');
-  else if((this.broadcast||this.watching.size)&&Date.now()-this.lastServerContact>20000)this.endConnections('서버 연결을 확인할 수 없어 화면공유를 종료했습니다.');
+ liveConnection(){return this.broadcast?.nativeSignaling||this.broadcast?.transport==='replaykit'||[...this.peers.values()].some(p=>!p.closed&&p.pc.connectionState==='connected')||[...this.nativeReceivers.values()].some(n=>n.stats?.active!==false&&n.stats?.state==='connected');}
+ connectionGuard(){if(this.closed)return;const now=Date.now();if(globalThis.navigator?.onLine===false)this.offlineSince??=now;else this.offlineSince=null;
+  // A blocked stats/decoder promise must not suspend the recovery deadline.
+  for(const[id,w]of this.watching){if(w.recoveryStarted!=null&&now-w.recoveryStarted>=CONNECTION_LIMITS.recoveryTimeout)this.failWatch(id,new Error('영상 연결을 복구하지 못해 시청을 종료했습니다.'));else if(!w.frames&&now-w.lastFrame>=CONNECTION_LIMITS.firstFrameTimeout)this.recoverWatch(id);}
+  if(this.offlineSince&&now-this.offlineSince>=CONNECTION_LIMITS.peerGrace&&!this.liveConnection())this.endConnections('인터넷 연결이 복구되지 않아 화면공유를 종료했습니다.');
+  else if((this.broadcast||this.watching.size)&&now-this.lastServerContact>CONNECTION_LIMITS.controlTimeout&&!this.liveConnection())this.endConnections('서버와 화면공유 연결이 복구되지 않아 종료했습니다.');
+ }
+ async controlTick(){
+  if(this.closed)return;
+  // Consent renewal must not wait for a slow native decoder/getStats call.
+  for(const[id,w]of this.watching){const n=this.nativeReceivers.get(id),p=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending),cid=n?.connectionID??p?.nativeConnection??p?.remoteEpoch;
+   const stats=w.controlStats&&Date.now()-w.controlStatsAt<10000?w.controlStats:{frames:w.frames??0,fps:0,qualityMeasured:false};
+   this.sendHeartbeat(id,w,cid,{...stats,state:n?.stats?.state??p?.pc.connectionState??'connecting'});
+  }
+  const b=this.broadcast;if(!b||b.transport==='replaykit'||b.nativeSignaling||this.touchingBroadcast===b)return;
+  this.touchingBroadcast=b;try{const alive=await this.api.rpc('broadcast_touch',{id:b.id});if(this.broadcast!==b||this.closed)return;this.lastServerContact=Date.now();if(!alive)await this.stop();}finally{if(this.touchingBroadcast===b)this.touchingBroadcast=null;}
  }
  publisherDisconnected(){const b=this.broadcast;if(!b?.hadConnection)return;const key='publisher:'+b.id;
   if(this.nativePeers.size||[...this.peers.values()].some(p=>p.sending&&p.pc.connectionState==='connected')){clearTimeout(this.disconnectTimers.get(key));this.disconnectTimers.delete(key);return;}
   if(this.disconnectTimers.has(key))return;
-  const ticket=setTimeout(()=>{this.disconnectTimers.delete(key);if(this.broadcast===b&&!this.nativePeers.size&&![...this.peers.values()].some(p=>p.sending&&p.pc.connectionState==='connected'))this.stop().catch(e=>this.error(e));},2500);ticket.unref?.();this.disconnectTimers.set(key,ticket);
+  const ticket=setTimeout(()=>{this.disconnectTimers.delete(key);if(this.broadcast===b&&!this.nativePeers.size&&![...this.peers.values()].some(p=>p.sending&&p.pc.connectionState==='connected')){this.emit('diagnostics',{event:'publisher-no-viewers',timeoutMilliseconds:CONNECTION_LIMITS.publisherGrace});this.stop().catch(e=>this.error(e));}},CONNECTION_LIMITS.publisherGrace);ticket.unref?.();this.disconnectTimers.set(key,ticket);
  }
  peerState(p,state){this.emit('state',{id:p.broadcast,state});if(this.closed||p.closed||this.peers.get(p.id)!==p)return;
   if(state==='disconnected'&&this.disconnectTimers.has(p.id))return;
   clearTimeout(this.disconnectTimers.get(p.id));this.disconnectTimers.delete(p.id);
-  if(state==='connected'){if(p.sending&&this.broadcast?.id===p.broadcast){this.broadcast.hadConnection=true;this.publisherDisconnected();}return;}
+  if(state==='connected'){const w=this.watching.get(p.broadcast);if(!p.sending&&w?.frames>0){w.recoveryStarted=null;w.retries=0;}if(p.sending&&this.broadcast?.id===p.broadcast){this.broadcast.hadConnection=true;this.publisherDisconnected();}return;}
   if(!['failed','disconnected','closed'].includes(state))return;
   const end=()=>{if(this.peers.get(p.id)!==p||p.pc.connectionState==='connected')return;this.disconnectTimers.delete(p.id);
    if(p.sending){p.close();this.peers.delete(p.id);this.meters.delete(p.id);this.publisherDisconnected();}
-   else this.failWatch(p.broadcast,new Error('화면공유 연결이 끊겨 시청을 종료했습니다.'));};
-  if(state==='disconnected'){const ticket=setTimeout(end,2500);ticket.unref?.();this.disconnectTimers.set(p.id,ticket);}else end();
+   else if(p.pc.connectionState==='closed')this.failWatch(p.broadcast,new Error('화면공유 연결이 종료되었습니다.'));else this.recoverWatch(p.broadcast);};
+  if(state==='disconnected'){const ticket=setTimeout(end,CONNECTION_LIMITS.peerGrace);ticket.unref?.();this.disconnectTimers.set(p.id,ticket);}else end();
+ }
+ recoverWatch(id){
+  const w=this.watching.get(id);if(!w||this.closed||w.recoveryPending)return;
+  const now=Date.now();w.recoveryStarted??=now;
+  if(now-w.recoveryStarted>=CONNECTION_LIMITS.recoveryTimeout){this.failWatch(id,new Error('화면공유 연결을 복구하지 못해 시청을 종료했습니다.'));return;}
+  if(w.lastRecovery!==undefined&&now-w.lastRecovery<CONNECTION_LIMITS.retryInterval||w.retries>=CONNECTION_LIMITS.maxRecoveries)return;
+  w.lastRecovery=now;w.retries++;this.reconnects++;this.emit('state',{id,state:'reconnecting'});
+  const p=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending),n=this.nativeReceivers.get(id),b=w.broadcast;
+  const task=b.transport==='browser'&&p?.pc.restartIce?Promise.resolve().then(()=>p.pc.restartIce()):this.join(b,{connectionID:n?.connectionID??p?.nativeConnection,epoch:p?.remoteEpoch});
+  w.recoveryPending=Promise.resolve(task).catch(e=>{if(this.watching.get(id)===w)this.error(e);}).finally(()=>{if(this.watching.get(id)===w)w.recoveryPending=null;});
  }
  start(scope){
   if(this.closed)return Promise.reject(new Error('종료된 화면공유 엔진입니다.'));
@@ -159,7 +184,7 @@ export class Media extends EventTarget {
   const b=this.broadcast;this.broadcast=null;
   for(const t of this.stream?.getTracks()??[]){t.onended=null;t.stop();}this.stream=null;
   for(const[k,p]of this.peers)if(p.sending){p.close();this.peers.delete(k);this.meters.delete(k);}
-  this.nativePeers.clear();this.emit('broadcast',null);
+  this.nativePeers.clear();this.nativePeerStates.clear();for(const[key,ticket]of this.disconnectTimers)if(key.startsWith('publisher:')||key.startsWith('native:')){clearTimeout(ticket);this.disconnectTimers.delete(key);}this.emit('broadcast',null);
   this.nativeSenderStats=null;this.receiverReadings?.clear();this.nativeGenerations?.clear();
   // A new start waits for the previous native stop, even after UI recovers.
   const before=publisherOperations.get(this.bridge)??Promise.resolve();
@@ -191,17 +216,21 @@ export class Media extends EventTarget {
   const p=this.make(id,b.publisher,scope,b.id);p.nativeConnection=connectionID;p.pc.onnegotiationneeded=null;
   p.pc.onicecandidate=e=>{if(e.candidate)this.api.signal(scope,b.publisher,{type:'native-ice',broadcast:b.id,connectionID,candidate:e.candidate.toJSON()}).catch(e=>this.error(e));};return p;
  }
- async startNativeReceiver(b,connectionID,replayKit){
+ async startNativeReceiver(b,connectionID,replayKit,w=this.watching.get(b.id)){
+  if(this.closed||!w||this.watching.get(b.id)!==w)return false;
   const previous=this.nativeReceivers.get(b.id);if(previous?.connectionID===connectionID)return;
-  if(previous)await this.bridge.call('mediaReceiveStop',{id:b.id});
+  const epoch=w.receiverEpoch=(w.receiverEpoch??0)+1,current=()=>!this.closed&&this.watching.get(b.id)===w&&w.receiverEpoch===epoch;
+  if(previous){this.nativeReceivers.delete(b.id);await this.bridge.call('mediaReceiveStop',{id:b.id,connectionID:previous.connectionID});}
+  if(!current())return false;
   const n={connectionID,stats:null,started:Date.now()};this.nativeReceivers.set(b.id,n);
-  try{await this.bridge.call('mediaReceiveStart',{id:b.id,viewerID:this.uid,connectionID,replayKit,iceServers:this.ice});if(!this.closed&&this.watching.has(b.id)&&this.nativeReceivers.get(b.id)===n)this.emit('track',{id:b.id,native:true,stream:null});else await this.bridge.call('mediaReceiveStop',{id:b.id,connectionID}).catch(()=>{});}
-  catch(e){if(this.nativeReceivers.get(b.id)===n){this.nativeReceivers.delete(b.id);this.bridge.call('mediaReceiveStop',{id:b.id,connectionID}).catch(()=>{});}throw e;}
+  try{await this.bridge.call('mediaReceiveStart',{id:b.id,viewerID:this.uid,connectionID,replayKit,iceServers:this.ice});if(current()&&this.nativeReceivers.get(b.id)===n){this.emit('track',{id:b.id,native:true,stream:null});return true;}await this.bridge.call('mediaReceiveStop',{id:b.id,connectionID}).catch(()=>{});return false;}
+  catch(e){if(this.nativeReceivers.get(b.id)===n){this.nativeReceivers.delete(b.id);this.bridge.call('mediaReceiveStop',{id:b.id,connectionID}).catch(()=>{});}if(current())throw e;return false;}
  }
  async viewerOffer(b,recover=false){
   const w=this.watching.get(b.id);if(!w)return;w.lastJoin=Date.now();
   const scope={kind:b.scope_kind,id:b.scope_id},id='media:'+b.id+':'+this.uid;
-  if((await this.platform()).nativeReceive){if(this.nativeReceivers.has(b.id)&&!recover)return;await this.startNativeReceiver(b,uuid(),true);return;}
+  const platform=await this.platform();if(this.closed||this.watching.get(b.id)!==w)return;
+  if(platform.nativeReceive){if(this.nativeReceivers.has(b.id)&&!recover)return;await this.startNativeReceiver(b,uuid(),true,w);return;}
   const existing=this.peers.get(id);
   if(existing&&!recover){if(existing.pc.localDescription)await this.api.signal(scope,b.publisher,{type:'native-receive-offer',broadcast:b.id,connectionID:existing.nativeConnection,sdp:existing.pc.localDescription.sdp});return;}
   const connectionID=uuid(),p=await this.receiverPeer(b,connectionID);
@@ -226,7 +255,7 @@ export class Media extends EventTarget {
  async adjust(remote,quality,connectionID){const b=this.broadcast;if(!b)return;const q={...b.quality,mbps:Math.max(Math.min(8,b.quality.mbps),Math.min(b.quality.mbps,Number(quality?.mbps)||b.quality.mbps))};if(b.transport==='native'){if(this.nativePeers.get(remote)!==connectionID)return;await this.bridge.call('mediaQuality',{id:b.id,viewerID:remote,connectionID,quality:q});}else if(b.transport==='browser'){const p=this.peers.get('media:'+b.id+':'+remote);if(!p)return;for(const sender of p.pc.getSenders()){if(sender.track?.kind!=='video')continue;const par=sender.getParameters();if(!par.encodings?.length)continue;par.encodings[0].maxBitrate=q.mbps*1e6;par.encodings[0].maxFramerate=q.fps;par.encodings[0].scaleResolutionDownBy=1;await sender.setParameters(par);}}}
  async update(snapshot){this.lastServerContact=Date.now();this.snapshot=snapshot;if(this.native&&!this.starting&&!this.broadcast&&snapshot.broadcasts.some(b=>b.publisher===this.uid)&&(await this.platform()).canPublish!==false){const status=await this.bridge.call('mediaStatus');const own=snapshot.broadcasts.find(b=>b.id===status.id&&b.publisher===this.uid);if(status.active&&own&&!this.starting&&!this.broadcast&&this.api.session?.user?.id===this.uid){this.broadcast={id:own.id,publisher:own.publisher,transport:own.transport,scope:{kind:own.scope_kind,id:own.scope_id},quality:own.quality,nativeSignaling:status.nativeSignaling===true,started:Date.now(),seen:true,pending:false};for(const p of status.peers??[])this.nativePeers.set(p.viewerID,p.connectionID);this.emit('broadcast',this.broadcast);}}if(this.broadcast){if(snapshot.broadcasts.some(b=>b.id===this.broadcast.id)){this.broadcast.seen=true;this.broadcast.missing=0;}else if(this.broadcast.seen){this.broadcast.missing=(this.broadcast.missing??0)+1;if(this.broadcast.missing>=3)await this.stop();}}for(const[id]of this.watching)if(!snapshot.broadcasts.some(b=>b.id===id))await this.unwatch(id);for(const[k,p]of this.peers)if(p.sending&&(!this.broadcast||!viewerAllowed(p.remote,this.broadcast,snapshot))){p.close();this.peers.delete(k);}for(const[remote,cid]of this.nativePeers){if(this.broadcast&&!viewerAllowed(remote,this.broadcast,snapshot)){await this.bridge.call('mediaLeave',{id:this.broadcast.id,viewerID:remote,connectionID:cid});this.nativePeers.delete(remote);}}this.publisherDisconnected();}
  make(id,remote,scope,broadcast,sending=false){let p=this.peers.get(id);if(p)return p;p=new Peer({id,remote,scope,api:this.api,iceServers:this.ice,polite:this.uid>remote});p.broadcast=broadcast;p.sending=sending;p.transformOffer=sending?tuneDesktopSDP:null;p.senderMeter=sending?new SenderMeter():null;p.addEventListener('track',e=>{const track=e.detail.track;try{if(e.detail.receiver&&'jitterBufferTarget'in e.detail.receiver)e.detail.receiver.jitterBufferTarget=this.watching.get(broadcast)?.broadcast.transport==='replaykit'?750:500;}catch{}p.remoteStream??=e.detail.streams?.[0]??new MediaStream();if(!p.remoteStream.getTracks().some(t=>t.id===track.id))p.remoteStream.addTrack(track);this.emit('track',{id:broadcast,stream:p.remoteStream,track});});p.addEventListener('error',e=>this.error(e.detail));p.addEventListener('state',e=>this.peerState(p,e.detail));this.peers.set(id,p);this.meters.set(id,new QualityMeter());return p;}
- async handle(s){const v=s.payload,remote=s.sender,scope={kind:s.scope_kind,id:s.scope_kind==='friend'?remote:s.scope_id};
+ async handle(s){if(this.closed)return;const v=s.payload,remote=s.sender,scope={kind:s.scope_kind,id:s.scope_kind==='friend'?remote:s.scope_id};
   if(v.type==='media-sender-stats'){const w=this.watching.get(v.broadcast),p=[...this.peers.values()].find(p=>p.broadcast===v.broadcast&&!p.sending),cid=this.nativeReceivers.get(v.broadcast)?.connectionID??p?.nativeConnection??p?.remoteEpoch;
    if(w?.broadcast.publisher===remote&&cid&&v.connectionID===cid)this.senderStats.set(v.broadcast,{at:Date.now(),stats:safeMediaStats(v.stats)});return;}
   if(v.type==='media-heartbeat'&&this.broadcast?.id===v.broadcast){const p=this.peers.get('media:'+v.broadcast+':'+remote),cid=this.nativePeers.get(remote)??p?.epoch;
@@ -236,7 +265,8 @@ export class Media extends EventTarget {
   if(v.type==='media-heartbeat'&&this.broadcast?.id===v.broadcast&&this.broadcast.transport==='native'){await this.bridge.call('mediaHeartbeat',{id:v.broadcast,viewerID:remote,connectionID:v.connectionID,fps:v.fps,framesDecoded:v.framesDecoded});return;}
   if(v.type==='native-offer'){
    const w=this.watching.get(v.broadcast);if(!w||w.broadcast.publisher!==remote||w.broadcast.transport==='replaykit')return;
-   if((await this.platform()).nativeReceive){await this.startNativeReceiver(w.broadcast,v.connectionID,false);await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:v});for(const candidate of this.early.get(v.connectionID)??[])await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:{type:'native-ice',connectionID:v.connectionID,candidate}});this.early.delete(v.connectionID);return;}
+   const platform=await this.platform();if(this.closed||this.watching.get(v.broadcast)!==w)return;
+   if(platform.nativeReceive){await this.startNativeReceiver(w.broadcast,v.connectionID,false,w);if(this.watching.get(v.broadcast)!==w||this.nativeReceivers.get(v.broadcast)?.connectionID!==v.connectionID)return;await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:v});for(const candidate of this.early.get(v.connectionID)??[])await this.bridge.call('mediaReceiveSignal',{id:v.broadcast,payload:{type:'native-ice',connectionID:v.connectionID,candidate}});this.early.delete(v.connectionID);return;}
    const id='media:'+v.broadcast+':'+this.uid;let p=this.peers.get(id);
    if(p?.nativeConnection===v.connectionID){if(p.pc.localDescription)await this.api.signal(scope,remote,{type:'native-answer',broadcast:v.broadcast,connectionID:v.connectionID,sdp:p.pc.localDescription.sdp});return;}
    p=await this.receiverPeer(w.broadcast,v.connectionID);await p.pc.setRemoteDescription({type:'offer',sdp:v.sdp});preferScreenCodec(p.pc);
@@ -255,33 +285,37 @@ export class Media extends EventTarget {
  async nativeEvent(m){try{
   if(m.type==='media-receiver-signal'||m.type==='media-receiver-stats'){
    const w=this.watching.get(m.id),n=this.nativeReceivers.get(m.id);if(!w||!n||n.connectionID!==m.connectionID)return;
-   if(m.type==='media-receiver-stats'){n.stats=m.stats;if(m.stats?.state==='disconnected')n.disconnectedAt??=Date.now();else n.disconnectedAt=null;this.emit('state',{id:m.id,state:m.stats?.state});this.emit('diagnostics',redact(m));if(['failed','closed'].includes(m.stats?.state))this.failWatch(m.id,new Error('화면공유 연결이 끊겨 시청을 종료했습니다.'));return;}
+   if(m.type==='media-receiver-stats'){n.stats=m.stats;if(m.stats?.state==='disconnected')n.disconnectedAt??=Date.now();else n.disconnectedAt=null;this.emit('state',{id:m.id,state:m.stats?.state});this.emit('diagnostics',redact(m));if(m.stats?.state==='closed')this.failWatch(m.id,new Error('화면공유 연결이 종료되었습니다.'));else if(m.stats?.state==='failed')this.recoverWatch(m.id);return;}
    const payload=m.payload??{};const type=m.kind==='viewer-offer'?'native-receive-offer':m.kind==='ice'?'native-ice':'native-answer';
    if(m.kind==='answer'&&!payload.sdp)return;
    await this.api.signal({kind:w.broadcast.scope_kind,id:w.broadcast.scope_id},w.broadcast.publisher,{type,broadcast:m.id,connectionID:m.connectionID,...(m.kind==='ice'?{candidate:payload}:{sdp:payload.sdp})});return;
   }
   const b=this.broadcast;if(!b)return;
   if(m.type==='rtp-signal'&&m.session===b.id&&Number.isFinite(m.generation)){this.nativeGenerations??=new Map();if(m.generation<(this.nativeGenerations.get(m.viewerID)??-1))return;this.nativeGenerations.set(m.viewerID,m.generation);}
-  if(m.type==='rtp-peer'&&m.session===b.id&&this.nativePeers.get(m.viewerID)===m.connectionID){if(m.state==='connected')b.hadConnection=true;
-   if(['failed','closed','disconnected'].includes(m.state)){this.nativePeers.delete(m.viewerID);this.bridge.call('mediaLeave',{id:b.id,viewerID:m.viewerID,connectionID:m.connectionID}).catch(()=>{});this.publisherDisconnected();}}
+  if(m.type==='rtp-peer'&&m.session===b.id&&this.nativePeers.get(m.viewerID)===m.connectionID){const key='native:'+m.viewerID;this.nativePeerStates.set(m.viewerID,{connectionID:m.connectionID,state:m.state});
+   if(m.state==='connected'){b.hadConnection=true;clearTimeout(this.disconnectTimers.get(key));this.disconnectTimers.delete(key);this.publisherDisconnected();}
+   else if(['failed','closed','disconnected'].includes(m.state)){const leave=()=>{if(this.broadcast!==b||this.nativePeers.get(m.viewerID)!==m.connectionID)return;this.disconnectTimers.delete(key);if(this.nativePeerStates.get(m.viewerID)?.state==='connected')return;this.nativePeers.delete(m.viewerID);this.nativePeerStates.delete(m.viewerID);this.bridge.call('mediaLeave',{id:b.id,viewerID:m.viewerID,connectionID:m.connectionID}).catch(()=>{});this.publisherDisconnected();};if(m.state==='disconnected'){if(!this.disconnectTimers.has(key)){const ticket=setTimeout(leave,CONNECTION_LIMITS.peerGrace);ticket.unref?.();this.disconnectTimers.set(key,ticket);}}else{clearTimeout(this.disconnectTimers.get(key));leave();}}}
   if(m.type==='rtp-metrics'&&m.session===b.id)this.nativeSenderStats={at:Date.now(),stats:safeMediaStats({state:'connected',fps:m.nativeEncodedFPS,frames:m.nativeEncodedFrames,width:m.width,height:m.height,encoder:m.encoderImplementation,qualityMeasured:Number.isFinite(m.nativeEncodedFPS)}),viewers:m.viewers??[]};
-  if(m.type==='rtp-signal'&&m.session===b.id){this.nativePeers.set(m.viewerID,m.connectionID);const v=m.kind==='offer'?{type:'native-offer',broadcast:b.id,connectionID:m.connectionID,sdp:m.payload.sdp}:{type:'native-ice',broadcast:b.id,connectionID:m.connectionID,candidate:m.payload};await this.api.signal(b.scope,m.viewerID,v);}if(m.type==='media-signal'&&m.id===b.id){this.nativePeers.set(m.viewerID,m.payload.connectionID);if(!b.nativeSignaling)await this.api.signal(b.scope,m.viewerID,m.payload);}if(m.type==='rtp-metrics'&&m.session===b.id||m.type==='media-metrics'&&m.id===b.id)this.emit('diagnostics',redact(m));if(m.type==='media-peer-error'&&m.id===b.id)this.error(new Error(m.error??'화면공유 연결 오류'));if(m.type==='media-ended'&&m.id===b.id||m.type==='rtp-status'&&m.session===b.id&&m.state==='error'){if(m.error)this.error(new Error(m.error));if(this.broadcast===b)await this.stop();}}catch(e){this.error(e);}}
+  if(m.type==='rtp-signal'&&m.session===b.id){this.setNativePeer(m.viewerID,m.connectionID);const v=m.kind==='offer'?{type:'native-offer',broadcast:b.id,connectionID:m.connectionID,sdp:m.payload.sdp}:{type:'native-ice',broadcast:b.id,connectionID:m.connectionID,candidate:m.payload};await this.api.signal(b.scope,m.viewerID,v);}if(m.type==='media-signal'&&m.id===b.id){this.setNativePeer(m.viewerID,m.payload.connectionID);if(!b.nativeSignaling)await this.api.signal(b.scope,m.viewerID,m.payload);}if(m.type==='rtp-metrics'&&m.session===b.id||m.type==='media-metrics'&&m.id===b.id)this.emit('diagnostics',redact(m));if(m.type==='media-peer-error'&&m.id===b.id)this.error(new Error(m.error??'화면공유 연결 오류'));if(m.type==='media-ended'&&m.id===b.id||m.type==='rtp-status'&&m.session===b.id&&m.state==='error'){if(m.error)this.error(new Error(m.error));if(this.broadcast===b)await this.stop();}}catch(e){this.error(e);}}
+ setNativePeer(viewerID,connectionID){if(this.nativePeers.get(viewerID)!==connectionID){const key='native:'+viewerID;clearTimeout(this.disconnectTimers.get(key));this.disconnectTimers.delete(key);this.nativePeerStates.delete(viewerID);}this.nativePeers.set(viewerID,connectionID);}
  async tick(){if(this.closed||this.ticking)return;this.ticking=true;try{await this.tickOnce();}finally{this.ticking=false;}}
  async tickOnce(){
   const b=this.broadcast;
   if(b?.transport==='replaykit'){const status=await this.bridge.call('mediaStatus');if(status.active&&status.id===b.id){if(b.pending){b.pending=false;this.emit('broadcast',b);}}else if(this.broadcast===b&&(!b.pending||Date.now()-b.started>45000))await this.stop();}
-  if(b&&b.transport!=='replaykit'&&!b.nativeSignaling){const alive=await this.api.rpc('broadcast_touch',{id:b.id});this.lastServerContact=Date.now();if(!alive&&this.broadcast===b)await this.stop();}
+  // Start the independent lease renewal before collecting possibly slow stats.
+  if(b)this.controlTick().catch(e=>this.error(e));
   if(b&&this.broadcast===b)await this.samplePublisher(b);
   for(const[id,w]of this.watching){
    if(this.closed||this.watching.get(id)!==w)continue;
-   if(!w.frames&&Date.now()-w.lastFrame>20000){this.failWatch(id,new Error('영상이 도착하지 않아 화면공유 시청을 종료했습니다.'));continue;}
+   if(!w.frames&&Date.now()-w.lastFrame>CONNECTION_LIMITS.firstFrameTimeout)this.recoverWatch(id);
+   if(w.recoveryStarted!=null&&Date.now()-w.recoveryStarted>=CONNECTION_LIMITS.recoveryTimeout){this.failWatch(id,new Error('영상 연결을 복구하지 못해 시청을 종료했습니다.'));continue;}
    const n=this.nativeReceivers.get(id);if(n){await this.tickNative(id,w,n);continue;}
    const p=[...this.peers.values()].find(p=>p.broadcast===id&&!p.sending);
-   if(!p){if(Date.now()-w.lastJoin>5000)await this.join(w.broadcast);continue;}
+   if(!p){if(w.recoveryStarted!=null)this.recoverWatch(id);else if(Date.now()-w.lastJoin>5000)await this.join(w.broadcast);continue;}
    try{const stats=this.meters.get(p.id).measure(await p.pc.getStats(),p.pc.connectionState);if(this.watching.get(id)!==w)continue;
-    if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;}w.frames=stats.frames;
-    this.quality(id,stats);this.sendHeartbeat(id,w,p.nativeConnection??p.remoteEpoch,stats);
-    if(stats.stalled&&Date.now()-w.lastFrame>20000){this.failWatch(id,new Error('영상 처리 응답이 없어 시청을 종료했습니다.'));continue;}
+    if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;w.recoveryStarted=null;}else if(stats.frames>0&&stats.state==='connected'&&!stats.stalled){w.retries=0;w.recoveryStarted=null;}w.frames=stats.frames;
+    w.controlStats=stats;w.controlStatsAt=Date.now();this.quality(id,stats);this.sendHeartbeat(id,w,p.nativeConnection??p.remoteEpoch,stats);
+    if(stats.stalled&&Date.now()-w.lastFrame>CONNECTION_LIMITS.firstFrameTimeout)this.recoverWatch(id);
     if(['failed','disconnected','closed'].includes(p.pc.connectionState))this.peerState(p,p.pc.connectionState);
    }catch(e){this.error(e);}
   }
@@ -305,9 +339,10 @@ export class Media extends EventTarget {
  }
  async tickNative(id,w,n){
   const stats=n.stats??{active:true,state:'connecting',frames:0,fps:0};
-  if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;}w.frames=stats.frames;
-  this.quality(id,stats);this.sendHeartbeat(id,w,n.connectionID,stats);
-  if(['failed','closed'].includes(stats.state)||stats.state==='disconnected'&&n.disconnectedAt&&Date.now()-n.disconnectedAt>2500)this.failWatch(id,new Error('화면공유 연결이 끊겨 시청을 종료했습니다.'));
+  if(stats.frames>w.frames){w.lastFrame=Date.now();w.retries=0;w.recoveryStarted=null;}else if(stats.frames>0&&stats.state==='connected'&&!stats.stalled){w.retries=0;w.recoveryStarted=null;}w.frames=stats.frames;
+  w.controlStats=stats;w.controlStatsAt=Date.now();this.quality(id,stats);this.sendHeartbeat(id,w,n.connectionID,stats);
+  if(stats.state==='closed')this.failWatch(id,new Error('화면공유 연결이 종료되었습니다.'));
+  else if(stats.state==='failed'||stats.state==='disconnected'&&n.disconnectedAt&&Date.now()-n.disconnectedAt>=CONNECTION_LIMITS.peerGrace)this.recoverWatch(id);
  }
- close(){this.startEpoch=(this.startEpoch??0)+1;this.closed=true;clearInterval(this.timer);clearInterval(this.guard);for(const ticket of this.disconnectTimers.values())clearTimeout(ticket);this.disconnectTimers.clear();globalThis.removeEventListener?.('offline',this.offline);for(const id of [...this.watching.keys()])this.unwatch(id);this.stopCurrent().catch(()=>{});for(const[id]of this.nativeReceivers)this.bridge.call('mediaReceiveStop',{id}).catch(()=>{});this.nativeReceivers.clear();this.bridge.removeEventListener('event',this.nativeListener);for(const p of this.peers.values())p.close();this.peers.clear();}
+ close(){this.startEpoch=(this.startEpoch??0)+1;this.closed=true;clearInterval(this.timer);clearInterval(this.controlTimer);clearInterval(this.guard);for(const ticket of this.disconnectTimers.values())clearTimeout(ticket);this.disconnectTimers.clear();globalThis.removeEventListener?.('offline',this.offline);for(const id of [...this.watching.keys()])this.unwatch(id);this.stopCurrent().catch(()=>{});for(const[id]of this.nativeReceivers)this.bridge.call('mediaReceiveStop',{id}).catch(()=>{});this.nativeReceivers.clear();this.bridge.removeEventListener('event',this.nativeListener);for(const p of this.peers.values())p.close();this.peers.clear();}
 }

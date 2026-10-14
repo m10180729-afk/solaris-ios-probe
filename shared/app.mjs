@@ -4,7 +4,8 @@ import {Bridge,Ledger,DiskFiles,VERSION,readSettings,requestTimeout} from './pla
 import {Media,qualityGrade} from './media.mjs';
 import {Transfers} from './files.mjs';
 import {DirectMessages} from './chat.mjs';
-import {clipVideoBounds,resetVideoFullscreen,VideoViewport} from './viewing.mjs';
+import {clipVideoBounds,resetVideoFullscreen,VideoViewport,NativeLayoutQueue} from './viewing.mjs';
+import {SignalQueue} from './signal-queue.mjs';
 import {AppLifecycle} from './lifecycle.mjs';
 import {DiagnosticLog,sanitizeDiagnostics} from './diagnostics.mjs';
 import {icon} from './icons.mjs';
@@ -12,7 +13,7 @@ import {icon} from './icons.mjs';
 const $=s=>document.querySelector(s), bridge=new Bridge(), ledger=new Ledger();
 const api=new API(config,bridge,ledger), disk=new DiskFiles(bridge);
 const emptySnapshot=()=>({friends:[],servers:[],channels:[],members:[],sessions:[],broadcasts:[],blocks:[],signals:[]});
-let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
+let media,files,dm,signalQueue,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
 let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
 let nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
@@ -276,12 +277,12 @@ async function selectServer(id){return navigate(async current=>{
 async function pollOnce(){
  if(polling||loggingOut||!api.session||!media)return;polling=true;
  try{
-  const next=await api.rpc('sync',{cursor,dm_cursor:dm?.cursor??0,presence_active:windowState.platform==='windows'||!document.hidden&&!nativeBackground});if(loggingOut||api.session?.user?.id!==loadedUID)return;snapshot=next;dm?.merge(next.messages);delete snapshot.messages;
+  const next=await api.rpc('sync',{cursor,dm_cursor:dm?.cursor??0,presence_active:windowState.platform==='windows'||!document.hidden&&!nativeBackground});if(loggingOut||api.session?.user?.id!==loadedUID)return;lastPoll=Date.now();media.lastServerContact=lastPoll;snapshot=next;dm?.merge(next.messages);delete snapshot.messages;
   if(friend){const f=friendRecord(friend.uid);if(f?.status==='accepted')friend=f.profile;else{friend=null;scope=null;page='friends';}}
   if(server&&!snapshot.servers.some(s=>s.id===server)){server=null;scope=null;page='friends';}
   if(scope?.kind==='channel'&&!snapshot.channels.some(c=>c.id===scope.id)){await media.stop();scope=null;page=server?'channel':'friends';}
   if(friend){const s=sessionFor(friend.uid);const before=scope;scope=s?.state==='accepted'?{kind:'direct',id:s.id}:null;if(before?.kind==='direct'&&!scope)message('개인 연결이 종료되었습니다.');}
-  for(const signal of next.signals??[]){try{await handle(signal);}catch(e){error(e);}cursor=Math.max(cursor,signal.id);}
+  for(const signal of next.signals??[]){if(!signalQueue?.enqueue(signal))break;cursor=Math.max(cursor,signal.id);}
   lastPoll=Date.now();$('#connection').textContent='온라인 · '+VERSION;showSelf(true);
   await media.update(snapshot);await files.reconcile(snapshot);
   const liveIDs=new Set(snapshot.broadcasts.map(b=>b.id));for(const id of autoWatchDisabled)if(!liveIDs.has(id))autoWatchDisabled.delete(id);for(const id of autoWatchAttempt.keys())if(!liveIDs.has(id))autoWatchAttempt.delete(id);
@@ -311,7 +312,7 @@ async function bootOnce(){
    if(m.solaris_user_id&&m.solaris_nickname){try{me=await api.rpc('profile',{user_id:m.solaris_user_id,nickname:m.solaris_nickname});}catch(e){if(/duplicate|unique/i.test(e.message)){showAuth('claim','이미 사용 중인 ID입니다. 새 고유 ID를 선택하세요.');$('#register [name=nickname]').value=m.solaris_nickname;return;}throw e;}}
    if(!current())return;if(!me){showAuth('claim');return;}
   }
-  clearInterval(timer);exitViewingFullscreen();nativeScreens.clear();if(media&&media.ownerUID!==me.uid)await media.stop();media?.close();files?.close();await dm?.close();clearTimeout(message.saveTimer);if(loadedUID)await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log?.flush();await chatSave;
+  clearInterval(timer);signalQueue?.close();exitViewingFullscreen();nativeScreens.clear();if(media&&media.ownerUID!==me.uid)await media.stop();media?.close();files?.close();await dm?.close();clearTimeout(message.saveTimer);if(loadedUID)await ledger.set('messages:'+loadedUID,structuredClone(conversations));await log?.flush();await chatSave;
   if(!current())return;
   if(loadedUID!==me.uid){for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();}
   navigationEpoch++;navigationBusy=false;joinedChannel=null;loadedUID=me.uid;snapshot=emptySnapshot();snapshot.me=me;scope=null;server=null;friend=null;cursor=0;page='friends';uiKey='';
@@ -319,6 +320,7 @@ async function bootOnce(){
   log=new DiagnosticLog(ledger,me.uid);await log.load();if(!current())return;log.record('app-start',{version:VERSION});
   media=new Media(api,bridge,settings);files=new Transfers(api,disk,ledger,media.ice,()=>!!media?.broadcast||!!media?.watching.size);await files.init();if(!current())return;
   const ownedMedia=media,ownedFiles=files,listen=(target,type,handler)=>target.addEventListener(type,e=>{if(current()&&media===ownedMedia&&files===ownedFiles)handler(e);});
+  signalQueue=new SignalQueue({dispatch:s=>handle(s,ownedMedia,ownedFiles),isCurrent:()=>current()&&media===ownedMedia&&files===ownedFiles,onError:error});
   listen(media,'error',e=>error(e.detail));
   listen(media,'starting',()=>{uiKey='';render();});
   listen(media,'broadcast',e=>{
@@ -362,14 +364,14 @@ async function bootOnce(){
  finally{booting=false;}
 }
 async function notify(title,body){if(bridge.native&&snapshot.me?.presence_preference!=='dnd')await bridge.call('notify',{title,body}).catch(()=>{});}
-async function handle(s){
+async function handle(s,activeMedia=media,activeFiles=files){
  const v=s.payload;if(v.type==='chat'){
   if(typeof v.text==='string'&&v.text.length<=2000){
    const p=friendRecord(s.sender)?.profile??snapshot.members.find(m=>m.profile.uid===s.sender)?.profile;
    message(v.text,p?.nickname??'참여자',s.scope_kind==='channel'?'channel:'+s.scope_id:'friend:'+s.sender);
   }return;
  }
- if(v.type.startsWith('file-')||v.type==='rtc'&&v.peer?.startsWith('files:'))await files.handle(s);else await media.handle(s);
+ if(v.type.startsWith('file-')||v.type==='rtc'&&v.peer?.startsWith('files:'))await activeFiles?.handle(s);else await activeMedia?.handle(s);
 }
 function displayKey(){
  return JSON.stringify({snapshot,page,friend:friend?.uid,server,scope,friendFilter,navigationBusy,watching:[...media.watching.keys()],broadcast:media.broadcast?.id,preparing:media.broadcast?.pending},(key,value)=>['last_seen','updated_at','created_at','signals','rate_limits','messages'].includes(key)?undefined:value);
@@ -509,11 +511,9 @@ function refreshVideoIdentities(){
   const who=identity(b.profile,true);who.classList.add('broadcast-identity');head.querySelector('.broadcast-identity')?.replaceWith(who);head.dataset.identity=key;
  }
 }
-const nativeScreens=new Set();let nativeLayoutTimer,nativeLayoutHadItems=false;
+const nativeScreens=new Set();let nativeLayoutHadItems=false;
 const videoResize=globalThis.ResizeObserver?new ResizeObserver(()=>layoutNativeScreens()):null;
-function layoutNativeScreens(){
- if(!bridge.native)return;clearTimeout(nativeLayoutTimer);
- nativeLayoutTimer=setTimeout(()=>{
+const nativeLayoutQueue=new NativeLayoutQueue({measure:()=>{
   const workspace=$('#workspace'),blocked=!!document.querySelector('dialog[open]')||workspace.hidden||workspace.classList.contains('nav-open')||workspace.classList.contains('people-open');
   const items=[...nativeScreens].map(id=>{
    const video=document.querySelector('#video-'+id+' video'),r=video?.getBoundingClientRect();if(!r)return{id,visible:false};
@@ -522,9 +522,9 @@ function layoutNativeScreens(){
    const clip=clipVideoBounds(r,bounds),ready=!video.closest('.video-card').querySelector('.video-waiting');
    return{id,x:r.x,y:r.y,width:r.width,height:r.height,...clip,visible:!blocked&&ready&&video.getClientRects().length>0&&clip.clipWidth>0&&clip.clipHeight>0};
   });
-  if(items.length||nativeLayoutHadItems)bridge.call('mediaReceiveLayout',{viewportWidth:innerWidth,items}).catch(()=>{});nativeLayoutHadItems=items.length>0;
- },40);
-}
+  if(!items.length&&!nativeLayoutHadItems)return null;nativeLayoutHadItems=items.length>0;return{viewportWidth:innerWidth,items};
+ },send:payload=>bridge.call('mediaReceiveLayout',payload)});
+function layoutNativeScreens(){if(bridge.native)nativeLayoutQueue.request();}
 new MutationObserver(layoutNativeScreens).observe($('#stage'),{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','style']});
 new MutationObserver(layoutNativeScreens).observe($('#workspace'),{attributes:true,attributeFilter:['class','hidden']});
 new MutationObserver(layoutNativeScreens).observe($('#dialog'),{attributes:true,attributeFilter:['open']});
@@ -604,6 +604,7 @@ async function profileModal(tab='profile'){
  const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','계정 탈퇴'),el('p','계정과 서버에 저장된 프로필·친구 관계·메시지·소유 서버 및 파일이 삭제됩니다. 복구할 수 없어요.',{class:'form-help'}),button('계정 탈퇴','account-delete',null,{class:'danger'}));account.append(danger);content.append(profile,account);modal('사용자 설정',body);
 }
 function clearPrivateUI(){
+   signalQueue?.close();signalQueue=null;
    snapshot=emptySnapshot();loadedUID=null;conversations={};drafts={};diagnostics={};scope=null;server=null;friend=null;page='friends';uiKey='';messageKey='';cursor=0;lastPoll=0;log=null;googleBusy=false;autoWatchDisabled.clear();autoWatchAttempt.clear();
    for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();
    clearVideos();$('#dialog').close();for(const id of ['videos','messages','panel','channels','servers','participants','requests','broadcast-list','self-profile'])$('#'+id).replaceChildren();
@@ -880,7 +881,7 @@ api.addEventListener('auth',()=>{
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
  if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
-globalThis.addEventListener('pagehide',()=>{api.leavePresence?.().catch(()=>{});clearVideos();log?.flush().catch(()=>{});files?.close();media?.close();});
+globalThis.addEventListener('pagehide',()=>{signalQueue?.close();api.leavePresence?.().catch(()=>{});clearVideos();log?.flush().catch(()=>{});files?.close();media?.close();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)api.leavePresence?.().catch(()=>{});else if(api.session&&!loggingOut)poll();});
 async function ackNativeAuthReturn(url){if(bridge.native)await bridge.call('authAck',{url}).catch(()=>{});}
 async function foreground(){

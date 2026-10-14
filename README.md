@@ -1,4 +1,6 @@
-# Solaris 0.4.0 build66
+# Solaris 0.4.0 build67
+
+build67은 시청자별 연결 오류와 늦은 명령이 전체 화면공유를 끝내는 경로, 일시적 연결 손실과 신호 대기열, 시청 동의 갱신, iOS 방송 제어·인증 갱신의 경쟁 문제를 수정한다. 기존 Google 전용 인증과 build54 캡처·전송 엔진은 유지한다. [build67 변경과 검증 범위](docs/BUILD67_KO.md)를 확인하세요.
 
 build66은 모든 플랫폼에서 Google 계정으로만 가입·로그인한다. Google 인증 뒤 처음 한 번 프로필 ID와 닉네임을 정하고, 기존 ID는 친구 검색용으로 유지한다. 이메일·비밀번호 가입과 복구 화면은 제거했으며 기존 회원·프로필·서버 데이터를 초기화하지 않는다. [build66 변경과 검증 범위](docs/BUILD66_KO.md)를 확인하세요.
 
@@ -35,4 +37,4 @@ python3 scripts/check_build54_capture.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-실제 GPU 캡처 품질/FPS·Google 계정 인증·Android/iOS 설치는 별도 검증이 필요하다. Android는 시청 전용이며 가입·로그인에 SMTP가 필요하지 않다. Windows build54 캡처·전송 엔진 해시는 일치한다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 이전 빌드 문서는 당시의 기록이며 현재 가입·로그인과 서버 설정은 build66 문서를 따른다.
+실제 GPU 캡처 품질/FPS·Google 계정 인증·Android/iOS 설치는 별도 검증이 필요하다. Android는 시청 전용이며 가입·로그인에 SMTP가 필요하지 않다. Windows build54 캡처·전송 엔진 해시는 일치한다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 이전 빌드 문서는 당시의 기록이며 현재 공유 수명·서버 변경은 build67 문서를, Google 가입·로그인은 build66 문서를 따른다.

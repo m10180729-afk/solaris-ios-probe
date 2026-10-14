@@ -11,7 +11,8 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         var ready = false
         var candidates: [RTCIceCandidate] = []
         var answer: String?
-        var seen = Date()
+        var seen = ProcessInfo.processInfo.systemUptime
+        var disconnectedAt: TimeInterval?
         var quality: [String: Any]?
         var stats: [String: Any] = [:]
         var statsPending = false
@@ -35,10 +36,13 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private var polling = false
     private var stopped = false
     private var refreshing = false
-    private var lastTouch = Date.distantPast
-    private var lastStats = Date.distantPast
+    private var touching = false
+    private var lastTouch = -Double.infinity
+    private var lastStats = -Double.infinity
+    private var controlStatus: [String: Int] = [:]
+    private var stopReason: String?
     private var lifetime = BroadcastLifetime(now: ProcessInfo.processInfo.systemUptime)
-    private let startedAt = Date()
+    private let startedAt = ProcessInfo.processInfo.systemUptime
     private let finish: (Error) -> Void
     init(context: [String: Any], group: URL, finish: @escaping (Error) -> Void) throws {
         guard let url = context["url"] as? String, URL(string: url)?.host?.hasSuffix(".supabase.co") == true,
@@ -71,6 +75,7 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     }
     private func finishStopped(_ reason: String) {
         guard !stopped else { return }
+        stopReason = reason
         stopInternal()
         let message = reason == "viewers-disconnected" ? "모든 시청자의 연결이 끊겨 화면공유를 종료했습니다." : "화면공유 연결이 끊겨 방송을 종료했습니다. 다시 연결한 뒤 시작하세요."
         finish(NSError(domain: "Solaris", code: 4, userInfo: [NSLocalizedDescriptionKey: message]))
@@ -90,46 +95,59 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         guard !stopped else { return }
         if let reason = lifetime.stopReason(now: ProcessInfo.processInfo.systemUptime) { finishStopped(reason); return }
         let captureReady = engine.unifiedFramesReady()
-        if !captureReady && Date().timeIntervalSince(startedAt) > 10 {
+        if !captureReady && ProcessInfo.processInfo.systemUptime - startedAt > 10 {
+            stopReason = "capture-frame-timeout"
             stopInternal()
             finish(NSError(domain: "Solaris", code: 3, userInfo: [NSLocalizedDescriptionKey: "ReplayKit 캡처 프레임이 도착하지 않았습니다. 화면공유를 다시 시작하세요."]))
             return
         }
         guard let data = try? Data(contentsOf: group.appendingPathComponent("unified-broadcast.json")),
-              let latest = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], latest["id"] as? String == id else {
+              let latest = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], latest["id"] as? String == id,
+              latest["uid"] as? String == context["uid"] as? String,
+              BroadcastSessionIdentity.sameContextSession(latest, context) else {
+            stopReason = "local-broadcast-stop-or-replacement"
             stopInternal(); finish(NSError(domain: "Solaris", code: 2, userInfo: [NSLocalizedDescriptionKey: "Solaris에서 화면공유를 종료했습니다."])); return
         }
-        // Local stop and watchdog checks must run even while HTTP is pending.
-        guard !polling, !refreshing else { return }
-        if let exp = latest["expiresAt"] as? Double, exp > (context["expiresAt"] as? Double ?? 0) { context = latest }
-        if (context["expiresAt"] as? Double ?? Date().timeIntervalSince1970 + 3600) < Date().timeIntervalSince1970 + 90 { refresh(); return }
-        polling = true
-        rpc("sync", ["cursor": cursor, "presence_active": false]) { [weak self] response in
-            guard let self else { return }; self.polling = false; guard !self.stopped else { return }
-            guard let snapshot = response as? [String: Any] else { return }
-            self.lifetime.syncSucceeded(now: ProcessInfo.processInfo.systemUptime)
-            guard (snapshot["broadcasts"] as? [[String: Any]] ?? []).contains(where: { $0["id"] as? String == self.id }) else { self.finishStopped("broadcast-ended"); return }
-            self.prune(snapshot)
-            for signal in snapshot["signals"] as? [[String: Any]] ?? [] {
-                self.cursor = max(self.cursor, (signal["id"] as? NSNumber)?.int64Value ?? 0)
-                guard let p = signal["payload"] as? [String: Any], p["broadcast"] as? String == self.id,
-                      signal["scope_kind"] as? String == self.scope["kind"] as? String,
-                      signal["scope_id"] as? String == self.scope["id"] as? String,
-                      let sender = signal["sender"] as? String else { continue }
-                self.handle(sender, p)
+        let now = ProcessInfo.processInfo.systemUptime
+        if let exp = latest["expiresAt"] as? Double, exp >= (context["expiresAt"] as? Double ?? 0) { context = latest }
+        let expiry = context["expiresAt"] as? Double ?? 0
+        // Refresh and sync are independent of the ownership heartbeat. Continue
+        // using the still-valid token during a slow refresh; never stop RTP just
+        // because the control request occupies its own in-flight slot.
+        if !refreshing && expiry < Date().timeIntervalSince1970 + 90 { refresh() }
+        if expiry > Date().timeIntervalSince1970 + 2 {
+            if BroadcastControlPolicy.touchDue(now: now, lastAttempt: lastTouch, pending: touching, captureReady: captureReady, tokenUsable: true) {
+                lastTouch = now; touching = true
+                rpc("broadcast_touch", ["id": id]) { [weak self] result in
+                    guard let self else { return }; self.touching = false; guard !self.stopped else { return }
+                    if (result as? Bool) == true { self.lifetime.touchSucceeded(now: ProcessInfo.processInfo.systemUptime) }
+                    else if (result as? Bool) == false { self.finishStopped("broadcast-ended") }
+                }
             }
-            for (uid,n) in Array(self.nodes) where Date().timeIntervalSince(n.seen)>15 { self.removeNode(uid, expected: n) }
-        }
-        if captureReady && Date().timeIntervalSince(lastTouch)>5 {
-            lastTouch = Date()
-            rpc("broadcast_touch", ["id": id]) { [weak self] result in
-                guard let self, !self.stopped else { return }
-                if (result as? Bool) == true { self.lifetime.touchSucceeded(now: ProcessInfo.processInfo.systemUptime) }
-                else if (result as? Bool) == false { self.finishStopped("broadcast-ended") }
+            if !polling {
+                polling = true
+                rpc("sync", ["cursor": cursor, "presence_active": false]) { [weak self] response in
+                    guard let self else { return }; self.polling = false; guard !self.stopped else { return }
+                    guard let snapshot = response as? [String: Any] else { return }
+                    self.lifetime.syncSucceeded(now: ProcessInfo.processInfo.systemUptime)
+                    guard (snapshot["broadcasts"] as? [[String: Any]] ?? []).contains(where: { $0["id"] as? String == self.id }) else { self.finishStopped("broadcast-ended"); return }
+                    self.prune(snapshot)
+                    for signal in snapshot["signals"] as? [[String: Any]] ?? [] {
+                        self.cursor = max(self.cursor, (signal["id"] as? NSNumber)?.int64Value ?? 0)
+                        guard let p = signal["payload"] as? [String: Any], p["broadcast"] as? String == self.id,
+                              signal["scope_kind"] as? String == self.scope["kind"] as? String,
+                              signal["scope_id"] as? String == self.scope["id"] as? String,
+                              let sender = signal["sender"] as? String else { continue }
+                        self.handle(sender, p)
+                    }
+                }
             }
         }
-        if Date().timeIntervalSince(lastStats)>2 {
-            lastStats = Date()
+        for (uid, node) in Array(nodes) {
+            if BroadcastControlPolicy.retirePeer(now: now, lastSeen: node.seen, disconnectedAt: node.disconnectedAt, connected: lifetime.connected.contains(node.connection)) { removeNode(uid, expected: node) }
+        }
+        if now - lastStats >= 2 {
+            lastStats = now
             for node in nodes.values { sampleStats(node) }
             diagnostics()
         }
@@ -159,14 +177,14 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         if type == "native-ice", let c = p["candidate"] as? [String: Any], let sdp = c["candidate"] as? String {
             let candidate = RTCIceCandidate(sdp: sdp, sdpMLineIndex: (c["sdpMLineIndex"] as? NSNumber)?.int32Value ?? 0, sdpMid: c["sdpMid"] as? String)
             if let n = nodes[uid], n.connection == connection {
-                n.seen = Date()
+                n.seen = ProcessInfo.processInfo.systemUptime
                 if n.ready { n.peer.add(candidate) { _ in } } else if n.candidates.count < 128 { n.candidates.append(candidate) }
             } else if earlyIce.count < 16 || earlyIce[key] != nil {
                 if (earlyIce[key]?.count ?? 0) < 128 { earlyIce[key, default: []].append(candidate) }
             }
             return
         }
-        guard let n = nodes[uid], n.connection == connection else { return }; n.seen = Date()
+        guard let n = nodes[uid], n.connection == connection else { return }; n.seen = ProcessInfo.processInfo.systemUptime
         if type == "media-heartbeat" {
             n.receiverStats = ScreenTelemetry.sanitize((p["stats"] as? [String: Any]) ?? ["fps": p["fps"] ?? 0, "frames": p["framesDecoded"] ?? 0])
             diagnostics()
@@ -176,7 +194,7 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private func receiveViewerOffer(_ uid: String, _ connection: String, _ sdp: String) {
         guard engine.unifiedFramesReady() else { return }
         if let old = nodes[uid] {
-            if old.connection == connection { old.seen = Date(); if let answer = old.answer { signal(old, ["type": "native-receive-answer", "sdp": answer]) }; return }
+            if old.connection == connection { old.seen = ProcessInfo.processInfo.systemUptime; if let answer = old.answer { signal(old, ["type": "native-receive-answer", "sdp": answer]) }; return }
             removeNode(uid, expected: old)
         }
         guard nodes.count < 5 else { return }
@@ -222,20 +240,24 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         var r = URLRequest(url: url); r.httpMethod = "POST"; r.timeoutInterval = 6; r.httpBody = try? JSONSerialization.data(withJSONObject: ["action":action,"args":args])
         r.setValue(context["key"] as? String, forHTTPHeaderField: "apikey"); r.setValue("Bearer \(context["accessToken"] as? String ?? "")", forHTTPHeaderField: "Authorization"); r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         network.dataTask(with: r) { [weak self] data,response,error in
-            self?.queue.async { let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200; completion(ok ? data.flatMap { try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed) } : nil) }
+            self?.queue.async { guard let self else { return }; let status = (response as? HTTPURLResponse)?.statusCode ?? 0; self.controlStatus[action] = status; let ok = error == nil && status == 200; completion(ok ? data.flatMap { try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed) } : nil) }
         }.resume()
     }
     private func refresh() {
         refreshing = true
+        let expected = context
         var r = URLRequest(url: URL(string: (context["url"] as! String) + "/auth/v1/token?grant_type=refresh_token")!); r.httpMethod="POST"; r.timeoutInterval=6
         r.setValue(context["key"] as? String,forHTTPHeaderField:"apikey"); r.setValue("application/json",forHTTPHeaderField:"Content-Type"); r.httpBody=try? JSONSerialization.data(withJSONObject:["refresh_token":context["refreshToken"]!])
         network.dataTask(with:r) { [weak self] data,response,error in self?.queue.async {
             guard let self, !self.stopped else { return }; self.refreshing=false
+            self.controlStatus["refresh"] = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, var s=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any], let token=s["access_token"] as? String, let refresh=s["refresh_token"] as? String, (s["user"] as? [String:Any])?["id"] as? String == self.context["uid"] as? String else { return }
             let expiry=(s["expires_at"] as? Double) ?? Date().timeIntervalSince1970+(s["expires_in"] as? Double ?? 3600); s["expires_at"]=expiry
-            self.context["accessToken"]=token;self.context["refreshToken"]=refresh;self.context["expiresAt"]=expiry
-            if let bytes=try? JSONSerialization.data(withJSONObject:self.context) { try? bytes.write(to:self.group.appendingPathComponent("unified-broadcast.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
-            if let bytes=try? JSONSerialization.data(withJSONObject:s) { try? bytes.write(to:self.group.appendingPathComponent("shared-session.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]) }
+            guard !token.isEmpty, !refresh.isEmpty else { return }
+            do {
+                guard let current = try BroadcastContextStore.commitRefresh(s, expected: expected, directory: self.group) else { self.finishStopped("broadcast-ended"); return }
+                self.context = current
+            } catch { /* Do not recreate a stopped/replaced context after an I/O failure. */ }
         }}.resume()
     }
     private func sampleStats(_ node: Node) {
@@ -270,6 +292,10 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
     private func diagnostics() {
         var d:[String:Any]=["id":id,"state":stopped ? "stopped" : "active","version":ProbeShared.appVersion,"peers":nodes.count,"updatedAt":Date().timeIntervalSince1970]
         d["hadConnected"] = lifetime.hadConnected; d["connectedPeers"] = lifetime.connected.count
+        d["controlStatus"] = controlStatus; d["stopReason"] = stopReason ?? ""
+        d["syncAgeSeconds"] = max(0, ProcessInfo.processInfo.systemUptime - lifetime.lastSuccessfulSync)
+        d["heartbeatAgeSeconds"] = max(0, ProcessInfo.processInfo.systemUptime - lifetime.lastSuccessfulTouch)
+        d["refreshPending"] = refreshing; d["touchPending"] = touching; d["syncPending"] = polling
         d["connectionStates"] = nodes.values.map { ["viewerID": $0.uid, "connectionID": $0.connection, "state": $0.iceState] }
         d["encoders"] = nodes.values.map { ["connectionID": $0.connection, "statistics": $0.stats, "receiverStatistics": $0.receiverStats] as [String: Any] }
         d.merge(engine.unifiedCaptureDiagnostics()) { _, new in new }
@@ -285,8 +311,12 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
             switch state {
             case .connected, .completed:
                 n.iceState = state == .completed ? "completed" : "connected"
+                n.disconnectedAt = nil; n.seen = ProcessInfo.processInfo.systemUptime
                 self.lifetime.markConnected(n.connection, now: ProcessInfo.processInfo.systemUptime); self.policy(n)
-            case .disconnected, .failed, .closed:
+            case .disconnected:
+                n.iceState = "disconnected"; n.disconnectedAt = n.disconnectedAt ?? ProcessInfo.processInfo.systemUptime
+                self.lifetime.markDisconnected(n.connection, now: ProcessInfo.processInfo.systemUptime)
+            case .failed, .closed:
                 n.iceState = state == .failed ? "failed" : state == .closed ? "closed" : "disconnected"
                 self.removeNode(n.uid, expected: n)
             case .checking: n.iceState = "checking"

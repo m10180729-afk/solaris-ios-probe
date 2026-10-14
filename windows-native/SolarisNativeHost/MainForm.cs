@@ -28,7 +28,7 @@ internal sealed class MainForm : Form
 
     internal MainForm()
     {
-        rtp = new Build54RtpAdapter(PostRtpMessage);
+        rtp = new Build54RtpAdapter(PostRtpMessage, callback => new OriginalRtpEngine(callback));
         window = new WindowController(this, PostRtpMessage);
         app = new AppBridge(this, rtp, value => status.Text = value, PostRtpMessage, window);
         capture = new NativeH264Capture(PostNativeFrame, (state, message, detail) =>

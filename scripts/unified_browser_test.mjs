@@ -1,10 +1,10 @@
 // Real Chromium WebRTC, real PostgreSQL ACLs, and bounded filesystem I/O.
 // Supabase HTTP is replaced with the same migration running in PGlite.
 // This proves automated interoperability, never native-device capture/FPS.
-import{chromium}from'playwright';import{PGlite}from'@electric-sql/pglite';import{createServer}from'node:http';import{readFile,mkdir,open,stat}from'node:fs/promises';import{createHash,randomUUID}from'node:crypto';import{networkInterfaces,cpus,freemem,totalmem}from'node:os';import{monitorEventLoopDelay}from'node:perf_hooks';import{join,extname}from'node:path';
+import{chromium}from'playwright';import{PGlite}from'@electric-sql/pglite';import{createServer}from'node:http';import{readFile,mkdir,open,stat}from'node:fs/promises';import{createHash,randomUUID}from'node:crypto';import{networkInterfaces,cpus,freemem,totalmem}from'node:os';import{monitorEventLoopDelay}from'node:perf_hooks';import{join,extname}from'node:path';import assert from'node:assert/strict';
 const root=process.cwd(),out=join(root,'build/unified-evidence');await mkdir(out,{recursive:true});
 try{networkInterfaces();}catch(error){const{writeFile}=await import('node:fs/promises');await writeFile(join(out,'results.json'),JSON.stringify({success:false,blocked:true,error:'Network interface discovery denied; real WebRTC ICE cannot be verified in this environment.',detail:error.message},null,2));console.error('BLOCKED: network interface discovery denied; real WebRTC verification is pending.');process.exit(1);}
-const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz default now(),is_anonymous boolean not null default false,raw_user_meta_data jsonb default '{}');create table auth.identities(user_id uuid references auth.users(id) on delete cascade,provider text,primary key(user_id,provider));create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade);create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`);for(const file of['001_solaris.sql','003_build60_dm.sql','004_build61_accounts_broadcast.sql','005_build65_accounts_presence_invites.sql','006_build66_google_only.sql'])await db.exec(await readFile('backend/'+file,'utf8'));
+const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz default now(),is_anonymous boolean not null default false,raw_user_meta_data jsonb default '{}');create table auth.identities(user_id uuid references auth.users(id) on delete cascade,provider text,primary key(user_id,provider));create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade);create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`);for(const file of['001_solaris.sql','003_build60_dm.sql','004_build61_accounts_broadcast.sql','005_build65_accounts_presence_invites.sql','006_build66_google_only.sql','007_build67_sharing_resilience.sql'])await db.exec(await readFile('backend/'+file,'utf8'));
 let serial=Promise.resolve(),queuedRPCs=0;const rpcStats=new Map(),slowRPCs=[],routeFailures=[];
 function rpc(uid,action,args={}){
  const queuedAt=Date.now(),depth=++queuedRPCs;let startedAt;
@@ -38,6 +38,68 @@ const sampleHost=()=>{
  evidence.host.samples.push({at:now,elapsedMs:elapsed,cpuBusyPercent:total?100*(total-idle)/total:0,nodeCPUPercent:elapsed?((usage.user-lastUsage.user)+(usage.system-lastUsage.system))/(elapsed*10):0,freeMemory:freemem(),nodeRSS:process.memoryUsage().rss});if(evidence.host.samples.length>120)evidence.host.samples.shift();lastCPU=current;lastUsage=usage;lastSample=now;
 };
 const hostTimer=setInterval(sampleHost,2000);
+async function sharingLaneAndLeaseRegression(broadcast){
+ const publisher=pages[0],viewer=pages[1],started=Date.now();
+ await publisher.evaluate(({broadcast,heldViewer,otherViewer})=>{
+  const original=engine.handle.bind(engine),originalSignal=api.signal.bind(api);let release,releaseStats;const gate=new Promise(resolve=>release=resolve),statsGate=new Promise(resolve=>releaseStats=resolve),heldStats=new Set();
+  window.laneProbe={held:false,released:false,statsReleased:false,heldSenderStats:0,otherHeartbeats:0,beforePolls:syncStats.runs};
+  // Artificially aging consent below is not an authorization-negative test.
+  // Hold only publisher telemetry destined for that viewer until its consent
+  // renews, then deliver every held message through the unchanged real RPC.
+  api.signal=(scope,recipient,payload)=>{
+   if(recipient!==heldViewer||payload.type!=='media-sender-stats'||payload.broadcast!==broadcast||laneProbe.statsReleased)return originalSignal(scope,recipient,payload);
+   laneProbe.heldSenderStats++;const task=statsGate.then(()=>originalSignal(scope,recipient,payload));heldStats.add(task);task.then(()=>heldStats.delete(task),()=>heldStats.delete(task));return task;
+  };
+  window.releaseSenderStatsProbe=async()=>{laneProbe.statsReleased=true;api.signal=originalSignal;releaseStats();await Promise.allSettled([...heldStats]);};
+  engine.handle=async signal=>{
+   if(signal.payload.type==='media-heartbeat'&&signal.payload.broadcast===broadcast){
+    if(signal.sender===heldViewer&&!laneProbe.released){laneProbe.held=true;await gate;}
+    if(signal.sender===otherViewer)laneProbe.otherHeartbeats++;
+   }
+   return original(signal);
+  };
+  window.releaseLaneProbe=()=>{laneProbe.released=true;release();engine.handle=original;};
+ },{broadcast:broadcast.id,heldViewer:users[1],otherViewer:users[2]});
+ try{
+  await viewer.evaluate(async id=>{const p=[...engine.peers.values()].find(p=>p.broadcast===id&&!p.sending);await api.signal(p.scope,p.remote,{type:'media-heartbeat',broadcast:id,connectionID:p.remoteEpoch,framesDecoded:1});},broadcast.id);
+  await publisher.waitForFunction(()=>laneProbe.held,null,{timeout:20000});
+  const before=await viewer.evaluate(async id=>{
+   clearInterval(interval);await sync(true);const p=[...engine.peers.values()].find(p=>p.broadcast===id&&!p.sending),original=p.pc.getStats.bind(p.pc);
+   let release;const gate=new Promise(resolve=>release=resolve);window.statsProbe={blocked:false,leaseAged:false,beforeSyncRuns:syncStats.runs,postBlockHeartbeatRequests:0,postBlockHeartbeatAcks:0};
+   const originalSignal=api.signal.bind(api);api.signal=async(scope,recipient,payload)=>{
+    const probed=payload.type==='media-heartbeat'&&payload.broadcast===id&&statsProbe.blocked&&statsProbe.leaseAged;
+    if(probed)statsProbe.postBlockHeartbeatRequests++;const result=await originalSignal(scope,recipient,payload);if(probed)statsProbe.postBlockHeartbeatAcks++;return result;
+   };
+   p.pc.getStats=()=>{statsProbe.blocked=true;return gate;};window.pendingStatsProbe=engine.tick();
+   window.releaseStatsProbe=async()=>{api.signal=originalSignal;p.pc.getStats=original;release(await original());await pendingStatsProbe;window.interval=setInterval(()=>sync(),350);};
+   return{epoch:p.epoch,frames:tracks.get(id).getVideoPlaybackQuality().totalVideoFrames};
+  },broadcast.id);
+  await viewer.waitForFunction(()=>statsProbe.blocked,null,{timeout:20000});
+  // An existing consent row can be stale while real RTP still flows. With sync
+  // paused and getStats held, only the independent viewer heartbeat can renew it.
+  await db.query("update solaris_private.viewers set last_seen=now()-interval '46 seconds' where broadcast_id=$1 and uid=$2",[broadcast.id,users[1]]);
+  const aged=(await db.query('select last_seen from solaris_private.viewers where broadcast_id=$1 and uid=$2',[broadcast.id,users[1]])).rows[0].last_seen;
+  await viewer.evaluate(()=>statsProbe.leaseAged=true);
+  const deadline=Date.now()+20000;let lease;
+  while(Date.now()<deadline){
+   lease=(await db.query('select last_seen,extract(epoch from now()-last_seen)::double precision age from solaris_private.viewers where broadcast_id=$1 and uid=$2',[broadcast.id,users[1]])).rows[0];
+   if(lease&&new Date(lease.last_seen)>new Date(aged)&&await viewer.evaluate(()=>statsProbe.postBlockHeartbeatAcks>0))break;await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert(lease&&new Date(lease.last_seen)>new Date(aged),'A blocked getStats call and paused sync must not prevent the viewer heartbeat renewing SQL consent');
+  await publisher.evaluate(()=>releaseSenderStatsProbe());
+  await publisher.waitForFunction(()=>laneProbe.otherHeartbeats>0&&syncStats.runs>laneProbe.beforePolls+2,null,{timeout:20000});
+  const after=await viewer.evaluate(id=>{const p=[...engine.peers.values()].find(p=>p.broadcast===id&&!p.sending);return{epoch:p?.epoch,state:p?.pc.connectionState,watching:engine.watching.has(id),frames:tracks.get(id).getVideoPlaybackQuality().totalVideoFrames,syncRuns:syncStats.runs,beforeSyncRuns:statsProbe.beforeSyncRuns,statsStillBlocked:engine.ticking,postBlockHeartbeatRequests:statsProbe.postBlockHeartbeatRequests,postBlockHeartbeatAcks:statsProbe.postBlockHeartbeatAcks};},broadcast.id);
+  assert.equal(after.epoch,before.epoch);assert.equal(after.state,'connected');assert.equal(after.watching,true);assert(after.frames>before.frames,'Real decoded video must continue while telemetry is blocked');assert.equal(after.syncRuns,after.beforeSyncRuns);assert.equal(after.statsStillBlocked,true);
+  assert(after.postBlockHeartbeatRequests>=1&&after.postBlockHeartbeatAcks>=1,'A heartbeat must be issued and acknowledged after both getStats blocks and the SQL consent row is aged');
+  const lane=await publisher.evaluate(()=>({...laneProbe,afterPolls:syncStats.runs,queue:signalQueue.snapshot(),broadcastActive:!!engine.broadcast}));
+  assert.equal(lane.held,true);assert.equal(lane.released,false);assert(lane.otherHeartbeats>0);assert(lane.afterPolls>lane.beforePolls+2);assert(lane.queue.pending>0);assert.equal(lane.broadcastActive,true);
+  const publisherLease=(await db.query('select extract(epoch from now()-last_seen)::double precision age from solaris_private.broadcasts where id=$1',[broadcast.id])).rows[0];assert(publisherLease?.age<10,'The publisher lease must renew while its slow incoming peer lane is held');
+  assert.equal((await db.query('select count(*)::int count from solaris_private.viewers where broadcast_id=$1',[broadcast.id])).rows[0].count,5);
+  return{passed:true,elapsedMs:Date.now()-started,slowPeerLaneHeld:true,siblingHeartbeatDispatched:true,syncContinued:true,statsBlocked:true,viewerSyncPaused:true,staleViewerConsentRenewed:true,publisherLeaseFresh:true,sameEpoch:true,postBlockHeartbeat:true,postBlockHeartbeatRequests:after.postBlockHeartbeatRequests,postBlockHeartbeatAcks:after.postBlockHeartbeatAcks,decodedFrames:after.frames-before.frames,slots:5};
+ }finally{
+  await publisher.evaluate(async()=>{window.releaseLaneProbe?.();await window.releaseSenderStatsProbe?.();});await viewer.evaluate(async()=>{await window.releaseStatsProbe?.();});
+ }
+}
 try{
  browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{}),args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--autoplay-policy=no-user-gesture-required','--disable-features=WebRtcHideLocalIpsWithMdns']});
  for(const uid of users){const ctx=await browser.newContext();contexts.push(ctx);await ctx.route('https://*.supabase.co/**',async route=>{
@@ -48,7 +110,7 @@ try{
    const timing={at:received,action:action.action,preRouteMs:action.fixtureStartedAt?received-action.fixtureStartedAt:0,databaseMs:databaseDone-received,fulfillMs:Date.now()-databaseDone};routeStats.count++;routeStats.maxPreRouteMs=Math.max(routeStats.maxPreRouteMs,timing.preRouteMs);routeStats.maxDatabaseMs=Math.max(routeStats.maxDatabaseMs,timing.databaseMs);routeStats.maxFulfillMs=Math.max(routeStats.maxFulfillMs,timing.fulfillMs);if(timing.preRouteMs>1000||timing.databaseMs>1000||timing.fulfillMs>1000){routeTiming.push(timing);if(routeTiming.length>200)routeTiming.shift();}
   }catch(e){routeFailures.push({at:Date.now(),action:action?.action,error:e.message});if(routeFailures.length>100)routeFailures.shift();await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:e.message})}).catch(()=>{});}
  });const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/fixture.html');await p.evaluate(async({uid})=>{
-  const{Media}=await import('/shared/media.mjs'),{API}=await import('/shared/api.mjs'),{Ledger}=await import('/shared/platform.mjs');const bridge=new EventTarget();bridge.native=false;window.api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},bridge,new Ledger());api.session={user:{id:uid,is_anonymous:false,email_confirmed_at:new Date().toISOString(),identities:[{provider:'google',id:uid}],app_metadata:{provider:'google',providers:['google']}},access_token:uid,expires_at:Date.now()/1000+3600};window.engine=new Media(api,bridge,{maxReceive:5,iceServers:[]});window.errors=[];engine.addEventListener('error',e=>errors.push(e.detail.message));window.tracks=new Map();engine.addEventListener('track',e=>{const v=document.createElement('video');v.autoplay=true;v.muted=true;v.srcObject=e.detail.stream;v.dataset.broadcast=e.detail.id;document.body.append(v);v.play();tracks.set(e.detail.id,v);});
+  const{Media}=await import('/shared/media.mjs'),{API}=await import('/shared/api.mjs'),{Ledger}=await import('/shared/platform.mjs'),{SignalQueue}=await import('/shared/signal-queue.mjs');const bridge=new EventTarget();bridge.native=false;window.api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},bridge,new Ledger());api.session={user:{id:uid,is_anonymous:false,email_confirmed_at:new Date().toISOString(),identities:[{provider:'google',id:uid}],app_metadata:{provider:'google',providers:['google']}},access_token:uid,expires_at:Date.now()/1000+3600};window.engine=new Media(api,bridge,{maxReceive:5,iceServers:[]});window.errors=[];engine.addEventListener('error',e=>errors.push(e.detail.message));window.tracks=new Map();engine.addEventListener('track',e=>{const v=document.createElement('video');v.autoplay=true;v.muted=true;v.srcObject=e.detail.stream;v.dataset.broadcast=e.detail.id;document.body.append(v);v.play();tracks.set(e.detail.id,v);});
   // A moving screen marker proves live frames without repainting six unused
   // full screens. Preserve 640x360 captureStream(60) and the real media policy.
   const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;document.body.append(canvas);const c=canvas.getContext('2d');c.fillStyle='#24334a';c.fillRect(0,0,640,360);c.fillStyle='white';c.fillText('Solaris live screen',30,40);window.captureFrames=0;
@@ -64,15 +126,19 @@ try{
   };
   window.peerState=p=>({id:p.id,state:p.pc.connectionState,ice:p.pc.iceConnectionState,gathering:p.pc.iceGatheringState,signal:p.pc.signalingState,local:p.pc.localDescription?.type,remote:p.pc.remoteDescription?.type,queued:p.ice.length,closed:p.closed,epoch:p.epoch,remoteEpoch:p.remoteEpoch,makingOffer:p.makingOffer,ignoreOffer:p.ignoreOffer});
   window.peerDiagnostics=async p=>{const result=peerState(p);try{const stats=await p.pc.getStats();let pair;stats.forEach(s=>{if(s.type==='candidate-pair'&&s.state==='succeeded'&&s.nominated)pair=s;});if(pair){const local=stats.get(pair.localCandidateId),remote=stats.get(pair.remoteCandidateId),localAddress=local?.address??local?.ip,remoteAddress=remote?.address??remote?.ip;result.path={localType:local?.candidateType,remoteType:remote?.candidateType,protocol:local?.protocol,sameAddress:!!localAddress&&localAddress===remoteAddress,localLoopback:/^(127\.|::1$)/.test(localAddress??''),remoteLoopback:/^(127\.|::1$)/.test(remoteAddress??''),rttMs:(pair.currentRoundTripTime??0)*1000};}}catch(e){result.statsError=e.message;}return result;};
+  // Use the production queue: accepting a peer's signal advances its cursor,
+  // while processing that lane may continue independently of polling.
+  window.signalQueue=new SignalQueue({isCurrent:()=>!engine.closed,dispatch:async v=>{
+   try{if(window.transfer&&(v.payload.type.startsWith('file-')||v.payload.peer?.startsWith('files:')))await transfer.handle(v);else await engine.handle(v);}
+   catch(e){remember(signalFailures,{at:Date.now(),id:v.id,type:v.payload.type,peer:v.payload.peer,description:v.payload.description?.type,candidate:!!v.payload.candidate,error:e.message});throw e;}
+  },onError:e=>errors.push(e.message)});
   window.pollOnce=async()=>{
    const started=Date.now();syncStats.runs++;
    try{
     const s=await api.rpc('sync',{cursor});window.snapshot=s;
-    // Match app.mjs: one stale/invalid signal must not starve later file signals.
+    // Match app.mjs: per-peer work cannot block sync or another peer's lane.
     for(const v of s.signals??[]){
-     try{if(window.transfer&&(v.payload.type.startsWith('file-')||v.payload.peer?.startsWith('files:')))await transfer.handle(v);else await engine.handle(v);}
-     catch(e){errors.push(e.message);remember(signalFailures,{at:Date.now(),id:v.id,type:v.payload.type,peer:v.payload.peer,description:v.payload.description?.type,candidate:!!v.payload.candidate,error:e.message});}
-     finally{cursor=Math.max(cursor,v.id);syncStats.signals++;}
+     if(!signalQueue.enqueue(v))break;cursor=Math.max(cursor,v.id);syncStats.signals++;
     }
     await engine.update(s);
     if(window.transfer){await transfer.reconcile(s);if(Date.now()-(transfer.lastRecovery??0)>5000){transfer.lastRecovery=Date.now();syncStats.recoveryRuns++;await transfer.reconnect();}}
@@ -83,13 +149,14 @@ try{
    if(syncPromise){await syncPromise;if(fresh)return sync();return;}
    const task=pollOnce();window.syncPromise=task;try{await task;}finally{if(syncPromise===task)window.syncPromise=null;}
   };
-  window.fixtureState=async()=>({errors,cursor,syncStats,signalFailures,browserTiming,requestTiming,captureFrames,own:engine.broadcast,seen:snapshot?.broadcasts,watching:[...engine.watching.keys()],peers:await Promise.all([...engine.peers.values()].map(peerDiagnostics)),metrics:[...engine.meters.entries()].map(([id,m])=>({id,last:m.last,smoothed:m.smoothed})),transfer:window.transferState?.()});
+  window.fixtureState=async()=>({errors,cursor,syncStats,signalFailures,signalQueue:signalQueue.snapshot(),browserTiming,requestTiming,captureFrames,own:engine.broadcast,seen:snapshot?.broadcasts,watching:[...engine.watching.keys()],peers:await Promise.all([...engine.peers.values()].map(peerDiagnostics)),metrics:[...engine.meters.entries()].map(([id,m])=>({id,last:m.last,smoothed:m.smoothed})),transfer:window.transferState?.()});
   window.interval=setInterval(()=>sync(),350);await sync();
  },{uid});pages.push(p);}
  const broadcast=await pages[0].evaluate(async channel=>await engine.start({kind:'channel',id:channel},'auto'),channel);
  for(const p of pages.slice(1))await p.evaluate(async id=>{await sync(true);await engine.watch(snapshot.broadcasts.find(b=>b.id===id));},broadcast.id);
  for(const p of pages.slice(1))await p.waitForFunction(id=>tracks.get(id)?.readyState>=2&&[...engine.meters.values()].some(m=>m.last?.frames>=30),broadcast.id,{timeout:45000});
  evidence.fiveViewers=await Promise.all(pages.slice(1).map(p=>p.evaluate(()=>[...engine.meters.values()].map(m=>m.smoothed))));console.log('PASS: one browser broadcast decoded by five independent browser peers');
+ evidence.sharingResilience=await sharingLaneAndLeaseRegression(broadcast);console.log('PASS: independent signal lanes and heartbeat preserve live RTP and existing viewer consent while stats/sync are held');
  const reverse=await pages[1].evaluate(async channel=>await engine.start({kind:'channel',id:channel},'latency'),channel);await pages[0].evaluate(async id=>{await sync(true);await engine.watch(snapshot.broadcasts.find(b=>b.id===id));},reverse.id);await pages[0].waitForFunction(id=>tracks.get(id)?.readyState>=2&&[...engine.meters.values()].some(m=>m.last?.frames>=20),reverse.id,{timeout:30000});evidence.bidirectional=true;console.log('PASS: concurrent reverse broadcast while retaining five original viewers');
  // One peer re-enters; the other four must keep their connections and decoding.
  const before=await pages[3].evaluate(()=>[...engine.peers.values()].map(p=>({id:p.id,frames:engine.meters.get(p.id)?.last?.frames??0,epoch:p.epoch})));

@@ -1,5 +1,5 @@
 // Negotiation ordering and stale generation regression tests; no network claim.
-import{test}from'node:test';import assert from'node:assert/strict';import{Peer,Media}from'../shared/media.mjs';
+import{test}from'node:test';import assert from'node:assert/strict';import{Peer,Media,CONNECTION_LIMITS}from'../shared/media.mjs';
 import{Transfers}from'../shared/files.mjs';
 class TestPC{
  constructor(){this.signalingState='stable';this.connectionState='new';this.candidates=[];this.remoteCalls=[];this.senders=[];}
@@ -10,6 +10,7 @@ class TestPC{
  close(){this.connectionState='closed';this.signalingState='closed'}
  getSenders(){return this.senders}
  addTrack(track){const s={track,getParameters:()=>({encodings:[{}]}),setParameters:async()=>{}};this.senders.push(s);return s}
+ restartIce(){this.iceRestarts=(this.iceRestarts??0)+1}
 }
 globalThis.RTCPeerConnection=TestPC;
 class TestStream{constructor(tracks=[]){this.tracks=[...tracks]}getTracks(){return this.tracks}addTrack(track){this.tracks.push(track)}}
@@ -43,4 +44,24 @@ test('a stopped older native capture cannot terminate a replacement broadcast',a
 test('recovering another UID stops the old native broadcaster before credentials are forwarded',async()=>{const{api}=fixture(true),calls=[],bridge=new EventTarget();bridge.native=true;bridge.call=async(c,a)=>calls.push({c,a});const media=new Media(api,bridge,{});try{media.broadcast={id:'old',publisher:'another-uid',transport:'native'};await media.refreshAuth();assert.equal(media.broadcast,null);assert.equal(calls[0].c,'mediaStop');}finally{media.close();}});
 
 test('legacy receiver quality request cannot lower publisher dimensions or FPS',async()=>{const{api}=fixture(true),bridge=new EventTarget(),calls=[];bridge.native=true;bridge.call=async(command,args)=>{calls.push({command,args});return true};const media=new Media(api,bridge,{});try{media.broadcast={id:'broadcast',transport:'native',scope:{kind:'direct',id:'direct'},quality:{width:2560,height:1440,fps:60,mbps:25,maxMbps:60}};media.nativePeers.set('b','current');await media.adjust('b',{width:640,height:360,fps:15,mbps:2},'current');assert.equal(calls[0].args.quality.width,2560);assert.equal(calls[0].args.quality.height,1440);assert.equal(calls[0].args.quality.fps,60);assert.equal(calls[0].args.quality.mbps,8);assert.equal(calls[0].args.viewerID,'b');await media.adjust('b',{mbps:2},'stale');assert.equal(calls.length,1);}finally{media.close();}});
-test('static connected screens remain live and failed connections end watching',async()=>{const{api,sent}=fixture(true),bridge=new EventTarget();bridge.native=false;const media=new Media(api,bridge,{});try{const broadcast={id:'broadcast',publisher:'b',scope_kind:'direct',scope_id:'direct',quality:{width:2560,height:1440,fps:60,mbps:25}};await media.watch(broadcast);const p=media.make('media:broadcast:a','b',{kind:'direct',id:'direct'},'broadcast');p.pc.connectionState='connected';p.pc.getStats=async()=>new Map();media.meters.set(p.id,{measure:()=>({frames:120,active:true,state:'connected',stalled:false,loss:0,rtt:40,jitter:5,fps:0,mbps:0})});Object.assign(media.watching.get('broadcast'),{lastFrame:Date.now()-60000,lastJoin:Date.now()-60000,frames:120});await media.tick();assert.equal(media.reconnects,0);assert.equal(media.peers.get(p.id),p);p.pc.connectionState='failed';await media.tick();assert.equal(media.reconnects,0);assert.equal(media.watching.size,0);assert.equal(p.closed,true);assert(!sent.some(s=>s.type==='media-recover'));}finally{media.close();}});
+test('static connected screens remain live; failed ICE gets bounded recovery before watch teardown',async()=>{
+ const{api,sent}=fixture(true),bridge=new EventTarget();bridge.native=false;const media=new Media(api,bridge,{}),realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{
+  const broadcast={id:'broadcast',publisher:'b',transport:'browser',scope_kind:'direct',scope_id:'direct',quality:{width:2560,height:1440,fps:60,mbps:25}};
+  await media.watch(broadcast);const p=media.make('media:broadcast:a','b',{kind:'direct',id:'direct'},'broadcast');p.pc.connectionState='connected';p.pc.getStats=async()=>new Map();
+  media.meters.set(p.id,{measure:()=>({frames:120,active:true,state:p.pc.connectionState,stalled:false,loss:0,rtt:40,jitter:5,fps:0,mbps:0})});
+  Object.assign(media.watching.get('broadcast'),{lastFrame:now-60000,lastJoin:now-60000,frames:120});await media.tick();
+  assert.equal(media.reconnects,0);assert.equal(media.peers.get(p.id),p);
+  p.pc.connectionState='failed';await media.tick();await media.watching.get('broadcast').recoveryPending;
+  assert.equal(media.watching.size,1);assert.equal(p.closed,false);assert.equal(p.pc.iceRestarts,1);
+  const recoveryStarted=media.watching.get('broadcast').recoveryStarted;
+  for(let attempt=1;attempt<CONNECTION_LIMITS.maxRecoveries;attempt++){now+=CONNECTION_LIMITS.retryInterval;await media.tick();await media.watching.get('broadcast').recoveryPending;}
+  assert.equal(p.pc.iceRestarts,CONNECTION_LIMITS.maxRecoveries);now=recoveryStarted+CONNECTION_LIMITS.recoveryTimeout-1;await media.tick();assert.equal(media.watching.size,1);
+  now++;await media.tick();assert.equal(media.watching.size,0);assert.equal(p.closed,true);assert.equal(p.pc.iceRestarts,CONNECTION_LIMITS.maxRecoveries);
+  assert(!sent.some(s=>s.type==='media-recover'),'Browser ICE restart preserves the current peer instead of asking for a replacement sender');
+ }finally{Date.now=realNow;media.close();}
+});
+test('an explicitly closed browser peer ends watching immediately without retry',async()=>{
+ const{api}=fixture(true),bridge=new EventTarget();bridge.native=false;const media=new Media(api,bridge,{});
+ try{await media.watch({id:'closed-broadcast',publisher:'b',transport:'browser',scope_kind:'direct',scope_id:'direct'});const p=media.make('media:closed-broadcast:a','b',{kind:'direct',id:'direct'},'closed-broadcast');p.pc.connectionState='closed';p.pc.onconnectionstatechange();assert.equal(media.watching.size,0);assert.equal(p.closed,true);assert.equal(p.pc.iceRestarts,undefined);assert.equal(media.reconnects,0);}finally{media.close();}
+});

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UPLOADER = ROOT / "UPLOAD_GIT_BASH.sh"
 BASE_BRANCH = "codex/solaris-build58-20261011-210109-1852"
 SOURCE_DIRS = (".github", "ios", "receiver", "scripts", "tests", "docs",
-               "windows-native", "android", "shared", "backend")
+               "windows-native", "android", "shared", "backend", "supabase")
 
 
 def bash_available():
@@ -83,15 +83,15 @@ class UploadIntegrationTests(unittest.TestCase):
             directory = self.source / name
             directory.mkdir()
             (directory / ".keep").write_text("source fixture\n")
-        (self.source / "README.md").write_text("build66\n")
+        (self.source / "README.md").write_text("build67\n")
         (self.source / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
         (self.source / "UPLOAD_GIT_BASH.sh").write_text(script, encoding="utf-8")
         (self.source / "package.json").write_text('{}\n')
         (self.source / "package-lock.json").write_text('{}\n')
-        (self.source / "shared" / "index.html").write_text("build66 media\n")
-        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '66'\n")
+        (self.source / "shared" / "index.html").write_text("build67 media\n")
+        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '67'\n")
         (self.source / "android" / "app").mkdir()
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 66\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 67\n")
 
     def git(self, *args, cwd=None):
         result = subprocess.run(["git", *args], cwd=cwd or self.folder, env=self.env,
@@ -129,7 +129,7 @@ class UploadIntegrationTests(unittest.TestCase):
         heads = self.heads()
         self.assertEqual(heads["main"], self.main_sha)
         self.assertEqual(heads[BASE_BRANCH], self.base_sha)
-        branches = [name for name in heads if name.startswith("codex/solaris-build66-")]
+        branches = [name for name in heads if name.startswith("codex/solaris-build67-")]
         self.assertEqual(len(branches), 1)
         branch = branches[0]
         self.assertEqual(self.git("--git-dir", str(self.remote), "rev-parse", f"{branch}^").strip(),
@@ -181,11 +181,11 @@ class UploadIntegrationTests(unittest.TestCase):
         (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '56'\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("build66 소스용", result.stderr)
+        self.assertIn("build67 소스용", result.stderr)
         self.assertEqual(len(self.heads()), 2)
 
     def test_wrong_android_build_is_rejected(self):
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 660\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 670\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Android 소스 버전", result.stderr)

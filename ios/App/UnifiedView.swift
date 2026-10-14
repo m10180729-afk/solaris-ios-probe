@@ -222,15 +222,12 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
             case "broadcastPrepare", "broadcastRefresh":
                 guard let group = ProbeShared.group() else { throw UnifiedError("방송 확장과 인증 정보를 공유할 수 없습니다. AltStore 서명에서 앱과 확장의 Solaris App Group이 함께 유지되어야 합니다.") }
                 var context = args; context["updatedAt"] = Date().timeIntervalSince1970
-                let data = try JSONSerialization.data(withJSONObject: context)
-                let url = group.url.appendingPathComponent("unified-broadcast.json")
-                try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-                guard (try Data(contentsOf: url)) == data else { throw UnifiedError("공유 컨테이너 쓰기 확인 실패") }
+                try BroadcastContextStore.replace(context, directory: group.url, refreshOnly: command == "broadcastRefresh")
                 if command == "broadcastPrepare" { showPicker.wrappedValue = true }
                 reply(id, true)
             case "mediaStop":
-                showPicker.wrappedValue = false
-                if let group = ProbeShared.group() { try? FileManager.default.removeItem(at: group.url.appendingPathComponent("unified-broadcast.json")) }
+                guard let bid = args["id"] as? String, UUID(uuidString: bid) != nil else { throw UnifiedError("Invalid broadcast identity") }
+                if let group = ProbeShared.group(), try BroadcastContextStore.remove(group.url, expectedID: bid) { showPicker.wrappedValue = false }
                 reply(id, true)
             default:
                 io.async { [weak self] in
@@ -255,7 +252,8 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         for id in Array(receivers.keys) { removeReceiver(id) }
         showPicker.wrappedValue = false
-        if let group = ProbeShared.group() { try? FileManager.default.removeItem(at: group.url.appendingPathComponent("unified-broadcast.json")) }
+        // A memory-evicted WKWebView is not a user stop. ReplayKit owns its
+        // capture/signaling in the separate extension and survives this reload.
         if let url = appURL { webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent()) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
@@ -396,7 +394,7 @@ final class UnifiedDisk {
                    let shared = try? Data(contentsOf: group.url.appendingPathComponent("shared-session.json")),
                    let latest = (try? JSONSerialization.jsonObject(with: shared)) as? [String: Any],
                    let stored = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                   (latest["user"] as? [String: Any])?["id"] as? String == (stored["user"] as? [String: Any])?["id"] as? String,
+                   BroadcastSessionIdentity.sameSession(latest, stored),
                    (latest["expires_at"] as? Double ?? 0) > (stored["expires_at"] as? Double ?? 0) {
                     let update: [String: Any] = [kSecValueData as String: shared]
                     guard SecItemUpdate(query as CFDictionary, update as CFDictionary) == errSecSuccess else { throw UnifiedError("공유 세션 저장 실패") }
@@ -411,8 +409,16 @@ final class UnifiedDisk {
             guard status == errSecSuccess else { throw UnifiedError("Keychain 저장 실패") }; return true
         }
         if command == "mediaStatus" {
-            guard let group = ProbeShared.group(), let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-diagnostics.json")), let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return ["active": false] }
-            return ["id": value["id"] ?? NSNull(), "active": value["state"] as? String == "active" && Date().timeIntervalSince1970 - (value["updatedAt"] as? Double ?? 0) < 20, "nativeSignaling": true]
+            guard let group = ProbeShared.group(), let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-diagnostics.json")), let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return ["active": false, "nativeAuthRefreshOwner": false, "nativeSignaling": true] }
+            let now = Date().timeIntervalSince1970, age = now - (value["updatedAt"] as? Double ?? 0)
+            let active = value["state"] as? String == "active" && age >= 0 && age < 20
+            var refreshOwner = false
+            if active, let context = BroadcastContextStore.read(group.url),
+               let raw = (try? command("vaultGet", ["key": "session"])) as? String, let stored = raw.data(using: .utf8),
+               let session = (try? JSONSerialization.jsonObject(with: stored)) as? [String: Any] {
+                refreshOwner = BroadcastControlPolicy.refreshOwnedByExtension(now: now, diagnostics: value, context: context, session: session)
+            }
+            return ["id": value["id"] ?? NSNull(), "active": active, "nativeSignaling": true, "nativeAuthRefreshOwner": refreshOwner]
         }
         if command == "diagnostics" {
             var result: [String: Any] = ["platform": "ios", "os": UIDevice.current.systemVersion, "version": ProbeShared.appVersion]

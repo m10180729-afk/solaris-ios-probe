@@ -14,6 +14,18 @@ export function resetVideoFullscreen(doc,bridge){
 }
 
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,Number.isFinite(v)?v:min));
+// Layout events can arrive faster than the native renderer acknowledges them.
+// Send only changed geometry, with one IPC in flight and the newest layout next.
+export class NativeLayoutQueue {
+ constructor({measure,send,schedule=fn=>setTimeout(fn,16),onError=()=>{}}){Object.assign(this,{measure,send,schedule,onError});this.dirty=false;this.scheduled=false;this.inflight=false;this.closed=false;}
+ request(){if(this.closed)return;this.dirty=true;if(this.scheduled||this.inflight)return;this.scheduled=true;this.schedule(()=>{this.scheduled=false;this.flush();});}
+ async flush(){
+  if(this.closed||this.inflight||!this.dirty)return;this.dirty=false;const value=this.measure();if(value===null)return;
+  const key=JSON.stringify(value);if(key===this.lastKey)return;this.inflight=true;
+  try{await this.send(value);if(!this.closed)this.lastKey=key;}catch(error){if(!this.closed)this.onError(error);}finally{this.inflight=false;if(this.dirty&&!this.closed)this.request();}
+ }
+ close(){this.closed=true;this.dirty=false;}
+}
 export function viewportGeometry({scale=1,x=0,y=0,width,height,containerWidth=width,containerHeight=height}){
  scale=clamp(scale,.5,4);
  const mx=Math.max(0,(width*scale-containerWidth)/2),my=Math.max(0,(height*scale-containerHeight)/2);
