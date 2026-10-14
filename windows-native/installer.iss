@@ -1,4 +1,4 @@
-#define AppVersion "0.4.0"
+#define AppVersion "1.0.0"
 [Setup]
 AppId={{0A51BA25-7371-4784-96A7-D3B7353F45E5}
 AppName=Solaris
@@ -10,7 +10,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist\windows
-OutputBaseFilename=Solaris-Windows-build67-Setup
+OutputBaseFilename=Solaris-Windows-1.0-Setup
 Compression=lzma2
 SolidCompression=yes
 UninstallDisplayIcon={app}\SolarisNativeHost.exe

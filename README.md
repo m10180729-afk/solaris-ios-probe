@@ -1,40 +1,13 @@
-# Solaris 0.4.0 build67
+# Solaris 1.0
 
-build67은 시청자별 연결 오류와 늦은 명령이 전체 화면공유를 끝내는 경로, 일시적 연결 손실과 신호 대기열, 시청 동의 갱신, iOS 방송 제어·인증 갱신의 경쟁 문제를 수정한다. 기존 Google 전용 인증과 build54 캡처·전송 엔진은 유지한다. [build67 변경과 검증 범위](docs/BUILD67_KO.md)를 확인하세요.
+Google 계정으로 가입하고 로그인하는 Windows·Android·iPhone·iPad용 화면공유·메시지·파일 전송 앱입니다.
 
-build66은 모든 플랫폼에서 Google 계정으로만 가입·로그인한다. Google 인증 뒤 처음 한 번 프로필 ID와 닉네임을 정하고, 기존 ID는 친구 검색용으로 유지한다. 이메일·비밀번호 가입과 복구 화면은 제거했으며 기존 회원·프로필·서버 데이터를 초기화하지 않는다. [build66 변경과 검증 범위](docs/BUILD66_KO.md)를 확인하세요.
+Windows와 iPad는 화면을 보내고 받을 수 있고 Android는 시청 전용입니다. 공유 화면 확대·축소, 시청자별 연결 진단, 서버와 개인 메시지, 프로필 ID 변경, 접속 상태 선택, 서버 멤버 초대, 로그아웃과 회원 탈퇴를 제공합니다.
 
-build65는 ID·비밀번호 로그인, ID 변경·회원 탈퇴, 접속 상태, 모든 멤버의 서버 초대, 공유 화면 확대와 연결 종료 처리를 추가한다. Android는 화면공유 시청 전용이다. 제공된 은하 이미지로 각 플랫폼의 앱 아이콘을 교체했다. 승인한 기존 테스트 계정과 관련 데이터는 초기화했으므로 새로 가입해야 한다. 서버 마이그레이션과 계정 Edge Function은 배포됐다. [build65 변경과 검증 범위](docs/BUILD65_KO.md)를 확인하세요.
+일시적인 연결 손실에는 제한된 재연결을 시도하며, 복구되지 않는 연결은 자동 종료합니다. 한 시청자의 오류나 느린 신호·영상 통계 조회가 전체 송출을 종료하지 않도록 연결 처리를 분리했습니다. iPad의 방송 유지·인증 갱신은 공유 컨텍스트와 계정 세션을 확인합니다.
 
-build64은 Discord 공식 공개 UI 이미지와 공통 스타일 값을 참고해 기존 기능의 배치·버튼·설정 창을 정리합니다. [build64 UI 변경](docs/BUILD64_UI_KO.md)을 확인하세요.
-build63은 Google 계정 연결 오류가 복귀 뒤 대기 문구로 남는 문제와 인증 초기화 경쟁을 수정한다. 현재 수정·검증 범위는 [build63 인증 수정](docs/BUILD63_AUTH_KO.md)을 따른다. build62 설명은 아래 이전 기능 기록이다.
+[설치와 사용 안내](docs/SOLARIS_1_0_KO.md)를 참고하세요. 앱 화면과 배포 파일에는 공개 버전 1.0을 사용합니다. 플랫폼 업데이트 순서를 위한 내부 버전 코드는 별도로 유지합니다.
 
-Discord와 함께 사용하는 Windows·Android·iOS·iPadOS 화면공유 및 일반 파일 전송 앱이다. build62는 Android 공유 승인·취소·재시작 처리, Google 복귀 처리, 오프라인 로그아웃, Windows 창 조절, PC·모바일 탐색과 진단 화면을 개선했다.
+소스 업로드는 압축을 푼 폴더에서 `bash UPLOAD_GIT_BASH.sh`로 실행합니다. 자동 검증은 플랫폼 컴파일, 권한·계정·영상 연결 회귀, 원본 파일의 전송 무결성, 패키지 리소스와 서명을 확인합니다. Android 배포용 APK는 CI의 release 출력에 보존된 개발자 키로 서명합니다. 서명 키·비밀번호와 개인 자격 증명은 저장소나 소스 ZIP에 포함하지 않습니다.
 
-- [설치·로그인·화면공유 품질 확인](docs/START_BUILD62_KO.md)
-- [구현·실제 검증 범위·미검증 항목](docs/BUILD62_STATUS_KO.md)
-- [Galaxy Quantum2 및 최신 Android 기기 시험](docs/ANDROID_BUILD62_DEVICE_CHECK_KO.md)
-
-기존 Solaris test 프로젝트의 build61 DB 마이그레이션 적용을 확인했다. build62에는 새 DB 변경이 없다. 기존 DB에 001_solaris.sql을 재실행하거나 테이블을 삭제하지 않는다. Google·Manual Linking은 켜져 있었으며 Windows·모바일 Redirect URLs 두 개를 소유자의 승인 후 등록했다. 실제 Google 계정 인증·메일 도착은 기기에서 확인해야 한다.
-
-소스 ZIP 전체를 압축 해제한 폴더에서 Git Bash로 실행한다.
-
-```bash
-bash UPLOAD_GIT_BASH.sh
-```
-
-업로더는 기존 이력을 확인하고 build62 검토 브랜치를 만든다. Actions에서 Windows 설치 EXE, Android APK, iOS 재서명 후보 IPA를 빌드한다. main 강제 덮어쓰기·공식 릴리스는 자동으로 하지 않는다.
-
-공통 UI 원본은 shared다. python3 scripts/prepare_unified.py로 Android/iOS 리소스를 생성하며 Windows도 shared를 포함한다.
-
-```bash
-npm ci
-npm test
-npm run test:database
-node scripts/unified_ui_test.mjs
-python3 scripts/check_build54_engine.py
-python3 scripts/check_build54_capture.py
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-실제 GPU 캡처 품질/FPS·Google 계정 인증·Android/iOS 설치는 별도 검증이 필요하다. Android는 시청 전용이며 가입·로그인에 SMTP가 필요하지 않다. Windows build54 캡처·전송 엔진 해시는 일치한다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 이전 빌드 문서는 당시의 기록이며 현재 공유 수명·서버 변경은 build67 문서를, Google 가입·로그인은 build66 문서를 따른다.
+기존 서비스에는 DB 마이그레이션 001·003·004·005·006·007을 적용 순서대로 관리하며, 사용자 데이터를 삭제하거나 초기화하지 않습니다. 이전 변경 문서는 개발 이력으로 보관합니다. Google 전용 인증에는 SMTP 설정이 필요하지 않습니다.

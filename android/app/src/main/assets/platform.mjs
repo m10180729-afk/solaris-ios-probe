@@ -1,7 +1,7 @@
 import{SHA256}from'./sha256.mjs';
 export const MAX_FILE_BYTES=100*1024**2;
-export const VERSION='0.4.0-build67';
-export function readSettings(text){let v;try{v=JSON.parse(text??'{}');}catch{v={};}if(!v||typeof v!=='object')v={};return{maxReceive:Number.isInteger(v.maxReceive)&&v.maxReceive>=1&&v.maxReceive<=5?v.maxReceive:4,updateChannel:['stable','test'].includes(v.updateChannel)?v.updateChannel:'test',preventDuplicates:v.preventDuplicates!==false};}
+export const VERSION='1.0';
+export function readSettings(text){let v;try{v=JSON.parse(text??'{}');}catch{v={};}if(!v||typeof v!=='object')v={};return{maxReceive:Number.isInteger(v.maxReceive)&&v.maxReceive>=1&&v.maxReceive<=5?v.maxReceive:4,updateChannel:['stable','test'].includes(v.updateChannel)?v.updateChannel:'stable',preventDuplicates:v.preventDuplicates!==false};}
 export const uuid=()=>crypto.randomUUID();
 export const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export function requestTimeout(milliseconds=15000){

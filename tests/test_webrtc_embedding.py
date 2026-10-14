@@ -255,18 +255,18 @@ class EmbeddingTests(unittest.TestCase):
         self.assertIn("revision > negotiationRevision", sender)
         self.assertIn("self.negotiationRevision == revision", sender)
 
-    def test_build67_shell_and_preserved_build54_fixtures_are_consistent(self):
+    def test_release_shell_and_preserved_capture_fixtures_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '67'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '68'", (root / "ios/project.yml").read_text())
         browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("BUILD_NUMBER = '54'", browser_receiver)
         self.assertIn("0.3.2 build54", browser_receiver)
         self.assertNotIn("앱 build40", browser_receiver)
         workflow = (root / ".github/workflows/build-ios-probe.yml").read_text()
-        self.assertIn("Solaris-0.4.0-build67-integrated", workflow)
-        self.assertIn("Solaris-Windows-build67", workflow)
-        self.assertIn("Solaris-Android-build67-debug", workflow)
-        self.assertIn("Solaris-0.4.0-build67-resign.ipa", workflow)
+        self.assertIn("Solaris-iPad-1.0", workflow)
+        self.assertIn("Solaris-Windows-1.0", workflow)
+        self.assertIn("Solaris-Android-1.0-packaging", workflow)
+        self.assertIn("Solaris-1.0.ipa", workflow)
 
     def test_build54_native_diagnostics_expose_real_progress(self):
         root = Path(__file__).resolve().parents[1]

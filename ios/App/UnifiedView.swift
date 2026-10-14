@@ -414,7 +414,7 @@ final class UnifiedDisk {
             let active = value["state"] as? String == "active" && age >= 0 && age < 20
             var refreshOwner = false
             if active, let context = BroadcastContextStore.read(group.url),
-               let raw = (try? command("vaultGet", ["key": "session"])) as? String, let stored = raw.data(using: .utf8),
+               let raw = (try? self.command("vaultGet", ["key": "session"])) as? String, let stored = raw.data(using: .utf8),
                let session = (try? JSONSerialization.jsonObject(with: stored)) as? [String: Any] {
                 refreshOwner = BroadcastControlPolicy.refreshOwnedByExtension(now: now, diagnostics: value, context: context, session: session)
             }

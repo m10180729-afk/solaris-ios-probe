@@ -219,8 +219,7 @@ enum ProbeShared {
     }
     static var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        return "\(version) (build \(build))"
+        return version
     }
     static let configName = "probe-config.json"
     static let p2pConfigName = "p2p-broadcast-config.json"

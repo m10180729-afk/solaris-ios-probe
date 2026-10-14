@@ -14,9 +14,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>0.4.0.67</Version>
-    <FileVersion>0.4.0.67</FileVersion>
-    <AssemblyVersion>0.4.0.67</AssemblyVersion>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Assets/Solaris.ico" LogicalName="SolarisNativeHost.Solaris.ico" />
