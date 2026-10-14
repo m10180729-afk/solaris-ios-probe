@@ -3,22 +3,22 @@ const UID='11111111-1111-4111-8111-111111111111',SID='aaaaaaaa-aaaa-4aaa-8aaa-aa
 const token='fixture.'+Buffer.from(JSON.stringify({sub:UID,session_id:SID})).toString('base64url')+'.sig';
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status});
 const req=(body,bearer)=>new Request('https://fixture.supabase.co/functions/v1/solaris-account',{method:'POST',headers:{'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{})},body:JSON.stringify(body)});
-const setup=handler=>{const calls=[];const handle=createAccountHandler({url:'https://fixture.supabase.co',serviceKey:'server-only-fixture',wait:async()=>{},fetchImpl:async(url,options)=>{calls.push({url,body:options.body&&JSON.parse(options.body),headers:options.headers});return handler(url,options,calls);}});return{handle,calls};};
-test('ID login reveals no mailbox/provider distinction before successful password verification',async()=>{
- for(const exists of[false,true]){
-  const{handle,calls}=setup(url=>url.includes('/rpc/')?json({allowed:true,uid:exists?UID:null,email:exists?'private@example.test':null}):json({error:'Invalid login credentials',email:'private@example.test'},400));
-  const r=await handle(req({action:'login_id',user_id:'alice',password:'wrong'}));assert.equal(r.status,401);assert.deepEqual(await r.json(),{code:'invalid_credentials',message:'아이디 또는 비밀번호를 확인하세요. 이메일 인증도 필요합니다.'});
-  assert.equal(calls.length,2);assert(calls[0].body.args.ip_hash.match(/^[a-f0-9]{64}$/));assert.equal(calls[0].body.args.password,undefined);
+const setup=handler=>{const calls=[];const handle=createAccountHandler({url:'https://fixture.supabase.co',serviceKey:'server-only-fixture',fetchImpl:async(url,options)=>{calls.push({url,body:options.body&&JSON.parse(options.body),headers:options.headers});return handler(url,options,calls);}});return{handle,calls};};
+test('retired ID login rejects all credentials without mailbox lookup or upstream requests',async()=>{
+ const{handle,calls}=setup(()=>{throw Error('Legacy login must never reach Auth or RPC');});
+ for(const body of[{action:'login_id',user_id:'alice',password:'valid-password'}, {action:'login_id',user_id:'missing'}, {action:'login_id',email:'private@example.test',password:''}, {action:'login_id',user_id:UID,uid:SID}]){
+  const response=await handle(req(body,token));assert.equal(response.status,410);
+  assert.deepEqual(await response.json(),{code:'google_only',message:'Solaris는 Google 계정으로만 가입하고 로그인할 수 있습니다. 앱을 업데이트하세요.'});
  }
+ assert.deepEqual(calls,[]);
 });
-test('confirmed password response UID must match private ID lookup; secret/password are not persisted',async()=>{
- const session={user:{id:UID,email_confirmed_at:'2026-10-13'},access_token:'access',refresh_token:'refresh'};
- const{handle}=setup(url=>url.includes('/rpc/')?json({allowed:true,uid:UID,email:'private@example.test'}):json(session));
- const r=await handle(req({action:'login_id',user_id:'alice',password:'password'}));assert.equal(r.status,200);assert.deepEqual(await r.json(),session);
- session.user.id=SID;assert.equal((await handle(req({action:'login_id',user_id:'alice',password:'password'}))).status,401);
-});
-test('durable rate rejection never sends a password attempt upstream',async()=>{
- const{handle,calls}=setup(()=>json({allowed:false}));assert.equal((await handle(req({action:'login_id',user_id:'alice',password:'password'}))).status,401);assert.equal(calls.length,1);
+test('invalid request limits still protect the account service before retired login handling',async()=>{
+ const{handle,calls}=setup(()=>{throw Error('No upstream request expected');});
+ assert.equal((await handle(req({action:'login_id',password:'x'.repeat(9000)}))).status,400);
+ assert.equal((await handle(new Request('https://fixture.supabase.co',{method:'GET'}))).status,405);
+ assert.equal((await handle(new Request('https://fixture.supabase.co',{method:'POST',body:'{"action":"login_id"}'}))).status,400);
+ assert.equal((await handle(new Request('https://fixture.supabase.co',{method:'OPTIONS'}))).status,204);
+ assert.deepEqual(calls,[]);
 });
 test('delete ignores arbitrary target, verifies user/session and removes only own Storage paths before Auth',async()=>{
  const{handle,calls}=setup((url,o)=>{

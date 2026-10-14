@@ -1,7 +1,6 @@
 // Service credentials are injected only into this Edge Function. No external SDK.
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Cache-Control':'no-store'};
 const reply=(status,body)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json'}});
-const invalidLogin=()=>reply(401,{code:'invalid_credentials',message:'아이디 또는 비밀번호를 확인하세요. 이메일 인증도 필요합니다.'});
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 async function input(req){
  if(!req.headers.get('content-type')?.toLowerCase().startsWith('application/json'))throw Error('body');
@@ -11,7 +10,7 @@ async function input(req){
  const body=JSON.parse(new TextDecoder().decode(data));if(!body||typeof body!=='object'||Array.isArray(body))throw Error('body');return body;
 }
 function claims(token){try{return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{return{};}}
-export function createAccountHandler({url,serviceKey,fetchImpl=fetch,now=()=>Date.now(),wait=ms=>new Promise(r=>setTimeout(r,ms))}){
+export function createAccountHandler({url,serviceKey,fetchImpl=fetch}){
  if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url)||!serviceKey)throw Error('Account service configuration required');
  const upstream=async(path,body,token=serviceKey,method='POST')=>{
   const response=await fetchImpl(url+path,{method,headers:{apikey:serviceKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(10000)});
@@ -19,33 +18,13 @@ export function createAccountHandler({url,serviceKey,fetchImpl=fetch,now=()=>Dat
   return{ok:response.ok,status:response.status,value};
  };
  const rpc=(action,args)=>upstream('/rest/v1/rpc/solaris_account_service',{action,args});
- const hashIP=async req=>{
-  // This is defense in depth: ID/global counters remain effective even if an
-  // intermediary does not overwrite the forwarded address header.
-  const ip=(req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')?.split(',').at(-1)||'unknown').trim().slice(0,200);
-  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(serviceKey),{name:'HMAC',hash:'SHA-256'},false,['sign']);
-  return Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(ip))),v=>v.toString(16).padStart(2,'0')).join('');
- };
  return async req=>{
   if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
   if(req.method!=='POST')return reply(405,{message:'허용되지 않은 요청입니다.'});
   let body;try{body=await input(req);}catch{return reply(400,{message:'요청을 확인하세요.'});}
   if(body.action==='login_id'){
-   const start=now();
-   try{
-    const id=typeof body.user_id==='string'?body.user_id.trim().toLowerCase():'';
-    if(!/^[a-z0-9_]{3,32}$/.test(id)||typeof body.password!=='string'||body.password.length<1||body.password.length>1024)return invalidLogin();
-    const lookup=await rpc('login_lookup',{user_id:id,ip_hash:await hashIP(req)});
-    if(!lookup.ok||!lookup.value?.allowed)return invalidLogin();
-    // Unknown IDs still make a password verification request. Neither mailbox
-    // nor provider/existence errors are returned to the unauthenticated caller.
-    const email=lookup.value.email||`solaris-missing-${crypto.randomUUID()}@invalid.example`;
-    const result=await upstream('/auth/v1/token?grant_type=password',{email,password:body.password});
-    const session=result.value;
-    if(!result.ok||!lookup.value.uid||session?.user?.id!==lookup.value.uid||!session?.user?.email_confirmed_at||!session.access_token||!session.refresh_token)return invalidLogin();
-    return reply(200,session);
-   }catch{return reply(503,{code:'account_service_unavailable',message:'로그인을 잠시 후 다시 시도하세요.'});}
-   finally{await wait(Math.max(0,500-(now()-start)));}
+   // Older clients fail before any mailbox lookup or password request.
+   return reply(410,{code:'google_only',message:'Solaris는 Google 계정으로만 가입하고 로그인할 수 있습니다. 앱을 업데이트하세요.'});
   }
   if(body.action!=='delete_account')return reply(400,{message:'요청을 확인하세요.'});
   const token=req.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9._-]{1,8192})$/i)?.[1];

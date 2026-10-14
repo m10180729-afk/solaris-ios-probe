@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {API} from '../shared/api.mjs';
 import {AuthFlow,authURLAllowed,authReturnAllowed} from '../shared/authflow.mjs';
 const project='https://fixture.supabase.co';
-const session=id=>({user:{id},access_token:'fixture-access',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+3600});
+const session=id=>({user:{id,is_anonymous:false,email_confirmed_at:'2026-10-14',app_metadata:{provider:'google',providers:['google']},identities:[{provider:'google',identity_data:{sub:'fixture-'+id,email_verified:true}}]},access_token:'fixture-access',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+3600});
 function fixture(){
  const values=new Map(),calls=[];
  const bridge={native:true,async call(command,args={}){calls.push({command,args});if(command==='platform')return{platform:'windows'};if(command==='vaultGet')return values.get(args.key);if(command==='vaultSet')values.set(args.key,args.value);return true;}};
@@ -29,27 +29,31 @@ test('expired or foreign-state callbacks never exchange a code',async()=>{
 });
 test('Google linking retains UID and verifies user at the authentication server',async()=>{
  const{api,values}=fixture();api.session=session('owner');let exchange;
- api.auth=async(path,body)=>{if(path.startsWith('user/identities/authorize'))return{url:'https://accounts.google.com/o/oauth2/v2/auth'};if(path.startsWith('token')){exchange=body;return session('owner');}return{id:'owner',identities:[{provider:'google'}]};};
+ api.auth=async(path,body)=>{if(path.startsWith('user/identities/authorize'))return{url:'https://accounts.google.com/o/oauth2/v2/auth'};if(path.startsWith('token')){exchange=body;return session('owner');}return session('owner').user;};
  const f=await api.google(true);const result=await api.authReturn(callback(f));assert.equal(result.kind,'google-link');assert.equal(result.session.user.id,'owner');assert.equal(exchange.code_verifier,f.verifier);assert.equal(JSON.parse(values.get('session')).user.id,'owner');assert.equal(values.get('auth-flow'),'null');
 });
 test('a linked account or server user with a different UID is never persisted',async()=>{
  const{api,values}=fixture();api.session=session('owner');const{pending:f}=await api.authFlow.prepare('google-link');api.auth=async()=>session('other');await assert.rejects(api.authReturn(callback(f)),/UID/);assert.equal(api.session.user.id,'owner');assert.equal(values.has('session'),false);
  const second=fixture();const flow=await second.api.authFlow.prepare('google');second.api.auth=async path=>path==='user'?{id:'other'}:session('owner');await assert.rejects(second.api.authReturn(callback(flow.pending)),/확인/);assert.equal(second.values.has('session'),false);
 });
-test('signup resend reuses the original PKCE request',async()=>{
- const{api}=fixture();const{pending:f}=await api.authFlow.prepare('signup',{email:'a@example.test'});let request;api.auth=async(path,body,bearer,options)=>{request={path,body,options};return{};};
- await api.resendVerification(' a@example.test ','signup');assert.equal(request.path,'resend');assert.equal(new URL(request.options.redirectTo).searchParams.get('solaris_state'),f.state);assert.equal((await api.authFlow.read()).verifier,f.verifier);
+test('cold restart retires legacy email PKCE requests without listening or sending a code',async()=>{
+ const{api,values,calls}=fixture();values.set('auth-flow',JSON.stringify({kind:'signup',base:'http://127.0.0.1:43854/auth/callback',state:'legacy-state',verifier:'legacy-verifier',uid:null,expires:Date.now()+60000}));
+ let requests=0;api.auth=async()=>{requests++;throw Error('Legacy flow must not reach Auth');};assert.equal(await api.authFlow.resume(),null);assert.equal(values.get('auth-flow'),'null');assert.equal(requests,0);assert(!calls.some(c=>c.command==='authListen'));
+});
+test('a queued legacy email callback cannot exchange its PKCE code',async()=>{
+ const{api,values}=fixture(),flow={kind:'recovery',base:'http://127.0.0.1:43854/auth/callback',state:crypto.randomUUID(),verifier:'legacy-verifier',uid:null,expires:Date.now()+60000};values.set('auth-flow',JSON.stringify(flow));
+ let exchanges=0;api.auth=async()=>{exchanges++;return session('owner');};await assert.rejects(api.authReturn(callback(flow)),e=>e.code==='google_only');assert.equal(exchanges,0);assert.equal(values.get('auth-flow'),'null');assert.equal(api.session,null);
 });
 test('cancellation during exchange prevents a late session from returning',async()=>{
  const{api,values}=fixture();const{pending:f}=await api.authFlow.prepare('google');let release,started;const gate=new Promise(r=>release=r),ready=new Promise(r=>started=r);
- api.auth=async path=>{if(path.startsWith('token')){started();await gate;return session('owner');}return{id:'owner'};};
+ api.auth=async path=>{if(path.startsWith('token')){started();await gate;return session('owner');}return session('owner').user;};
  const result=api.authReturn(callback(f));await ready;await api.authFlow.cancel();release();await assert.rejects(result,/취소/);assert.equal(values.has('session'),false);assert.equal(api.session,null);
 });
 test('a cold restart restores the verifier from the protected vault',async()=>{
- const{api}=fixture();const{pending:f}=await api.authFlow.prepare('google');const flow=new AuthFlow(api);assert.deepEqual(await flow.read(),f);api.authFlow=flow;api.auth=async path=>path==='user'?{id:'owner'}:session('owner');await api.authReturn(callback(f));assert.equal(api.session.user.id,'owner');
+ const{api}=fixture();const{pending:f}=await api.authFlow.prepare('google');const flow=new AuthFlow(api);assert.deepEqual(await flow.read(),f);api.authFlow=flow;api.auth=async path=>path==='user'?session('owner').user:session('owner');await api.authReturn(callback(f));assert.equal(api.session.user.id,'owner');
 });
-test('manual email verification cannot switch UID without returning session tokens',async()=>{
- const{api,values}=fixture();api.session=session('owner');api.auth=async()=>({user:{id:'other'}});await assert.rejects(api.verifyEmailLink('a@example.test','123456'),/UID/);assert.equal(api.session.user.id,'owner');assert.equal(values.has('session'),false);
+test('manual email verification cannot bypass Google policy or switch UID',async()=>{
+ const{api,values}=fixture();api.session=session('owner');let requests=0;api.auth=async()=>{requests++;return{user:{id:'other'}};};await assert.rejects(api.verifyEmailLink('a@example.test','123456'),e=>e.code==='google_only');assert.equal(api.session.user.id,'owner');assert.equal(values.has('session'),false);assert.equal(requests,0);
 });
 test('a failed native listener or external browser launch clears the saved PKCE request',async()=>{
  for(const failure of ['authListen','authOpen']){

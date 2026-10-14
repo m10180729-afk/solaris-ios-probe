@@ -1,4 +1,6 @@
-# Solaris 0.4.0 build65
+# Solaris 0.4.0 build66
+
+build66은 모든 플랫폼에서 Google 계정으로만 가입·로그인한다. Google 인증 뒤 처음 한 번 프로필 ID와 닉네임을 정하고, 기존 ID는 친구 검색용으로 유지한다. 이메일·비밀번호 가입과 복구 화면은 제거했으며 기존 회원·프로필·서버 데이터를 초기화하지 않는다. [build66 변경과 검증 범위](docs/BUILD66_KO.md)를 확인하세요.
 
 build65는 ID·비밀번호 로그인, ID 변경·회원 탈퇴, 접속 상태, 모든 멤버의 서버 초대, 공유 화면 확대와 연결 종료 처리를 추가한다. Android는 화면공유 시청 전용이다. 제공된 은하 이미지로 각 플랫폼의 앱 아이콘을 교체했다. 승인한 기존 테스트 계정과 관련 데이터는 초기화했으므로 새로 가입해야 한다. 서버 마이그레이션과 계정 Edge Function은 배포됐다. [build65 변경과 검증 범위](docs/BUILD65_KO.md)를 확인하세요.
 
@@ -33,4 +35,4 @@ python3 scripts/check_build54_capture.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-실제 GPU 캡처 품질/FPS·Android 실기기 공유·메일 도착·Google 계정·iOS 설치는 별도 검증이 필요하다. Windows build54 캡처·전송 엔진 해시는 일치한다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 build55–61 문서는 당시의 기록이므로 현재 설정 상태는 build62 문서를 따른다.
+실제 GPU 캡처 품질/FPS·Google 계정 인증·Android/iOS 설치는 별도 검증이 필요하다. Android는 시청 전용이며 가입·로그인에 SMTP가 필요하지 않다. Windows build54 캡처·전송 엔진 해시는 일치한다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 이전 빌드 문서는 당시의 기록이며 현재 가입·로그인과 서버 설정은 build66 문서를 따른다.

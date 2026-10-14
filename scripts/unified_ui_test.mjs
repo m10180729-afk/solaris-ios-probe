@@ -1,30 +1,61 @@
 // Real UI/IndexedDB, isolated SQL backend. No public account or network capture.
-import{chromium}from'playwright';import{PGlite}from'@electric-sql/pglite';import{createServer}from'node:http';import{readFile,mkdir,writeFile}from'node:fs/promises';import{randomUUID}from'node:crypto';import{join,extname}from'node:path';import assert from'node:assert/strict';
-const out='build/ui-evidence';await mkdir(out,{recursive:true});const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}'::jsonb,email_confirmed_at timestamptz default now(),is_anonymous boolean not null default false);create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade);create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`);await db.exec(await readFile('backend/001_solaris.sql','utf8'));await db.exec(await readFile('backend/003_build60_dm.sql','utf8'));await db.exec(await readFile('backend/004_build61_accounts_broadcast.sql','utf8'));await db.exec(await readFile('backend/005_build65_accounts_presence_invites.sql','utf8'));let serial=Promise.resolve();const rpc=(uid,action,args={})=>{const r=serial.then(async()=>{await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",[uid,JSON.stringify({sub:uid,session_id:uid,role:'authenticated'})]);return(await db.query('select public.solaris_action($1,$2::jsonb) result',[action,JSON.stringify(args)])).rows[0].result});serial=r.catch(()=>{});return r;};
-const host=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://local').pathname;if(name.includes('..')||!name.startsWith('/shared/')&&!name.startsWith('/ios/App/Resources/Unified/')){res.writeHead(404).end();return;}res.setHeader('Content-Type',extname(name)==='.mjs'?'text/javascript':extname(name)==='.css'?'text/css':extname(name)==='.png'?'image/png':'text/html');res.end(await readFile(join(process.cwd(),name)));}catch{res.writeHead(404).end();}});await new Promise(r=>host.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+host.address().port;let browser;const contexts=[],pages=[],uids=[],errors=[],photos=new Map(),authUsers=new Map(),passwords=new Map(),results={};
-async function seedUser(uid){await db.query('insert into auth.users(id) values($1)',[uid]);await db.query('insert into auth.sessions(id,user_id) values($1,$1)',[uid]);}
-async function installFixture(ctx,uid){await ctx.route('https://*.supabase.co/**',async route=>{try{const req=route.request(),url=new URL(req.url());let value;if(url.pathname.startsWith('/auth/v1/')){
+import{chromium}from'playwright';import{PGlite}from'@electric-sql/pglite';import{createServer}from'node:http';import{readFile,mkdir,writeFile}from'node:fs/promises';import{randomUUID,createHash}from'node:crypto';import{join,extname}from'node:path';import assert from'node:assert/strict';
+const out='build/ui-evidence';await mkdir(out,{recursive:true});const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}'::jsonb,email_confirmed_at timestamptz default now(),is_anonymous boolean not null default false);create table auth.identities(user_id uuid references auth.users(id) on delete cascade,provider text,primary key(user_id,provider));create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade);create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`);await db.exec(await readFile('backend/001_solaris.sql','utf8'));await db.exec(await readFile('backend/003_build60_dm.sql','utf8'));await db.exec(await readFile('backend/004_build61_accounts_broadcast.sql','utf8'));await db.exec(await readFile('backend/005_build65_accounts_presence_invites.sql','utf8'));await db.exec(await readFile('backend/006_build66_google_only.sql','utf8'));let serial=Promise.resolve();const rpc=(uid,action,args={},authMethod='oauth')=>{const r=serial.then(async()=>{await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",[uid,JSON.stringify({sub:uid,session_id:uid,role:'authenticated',amr:[{method:authMethod,timestamp:Math.floor(Date.now()/1000)}]})]);return(await db.query('select public.solaris_action($1,$2::jsonb) result',[action,JSON.stringify(args)])).rows[0].result});serial=r.catch(()=>{});return r;};
+const host=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://local').pathname;if(name.includes('..')||!name.startsWith('/shared/')&&!name.startsWith('/ios/App/Resources/Unified/')){res.writeHead(404).end();return;}res.setHeader('Content-Type',extname(name)==='.mjs'?'text/javascript':extname(name)==='.css'?'text/css':extname(name)==='.png'?'image/png':'text/html');res.end(await readFile(join(process.cwd(),name)));}catch{res.writeHead(404).end();}});await new Promise(r=>host.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+host.address().port;let browser;const contexts=[],pages=[],uids=[],errors=[],photos=new Map(),authUsers=new Map(),authRequests=[],oauthCodes=new Map(),results={};
+async function seedUser(uid){await db.query('insert into auth.users(id) values($1)',[uid]);await db.query("insert into auth.identities(user_id,provider) values($1,'google')",[uid]);await db.query('insert into auth.sessions(id,user_id) values($1,$1)',[uid]);}
+function fixtureGoogleUser(uid,email='google-'+uid.slice(0,8)+'@example.test'){
+ return{id:uid,email,email_confirmed_at:new Date().toISOString(),is_anonymous:false,identities:[{provider:'google',id:uid,user_id:uid}],app_metadata:{provider:'google',providers:['google']},user_metadata:{}};
+}
+async function installFixture(ctx,uid,{authMethod='oauth'}={}){await ctx.route('https://*.supabase.co/**',async route=>{try{const req=route.request(),url=new URL(req.url());let value;if(url.pathname.startsWith('/auth/v1/')){
  const body=req.method()==='GET'?{}:req.postDataJSON()??{},user=authUsers.get(uid),makeSession=()=>({access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600,user});
- if(url.pathname==='/auth/v1/user'){
-  if(req.method()==='PUT'){if(body.email)user.email=body.email;if(body.password)passwords.set(uid,body.password);}value=user;
- }else if(url.pathname==='/auth/v1/user/identities/authorize'){
-  value={url:'https://accounts.google.com/o/oauth2/v2/auth?solaris_fixture_redirect='+encodeURIComponent(url.searchParams.get('redirect_to'))};
+ const grant=url.searchParams.get('grant_type');authRequests.push({uid,path:url.pathname,method:req.method(),grant});
+ if(url.pathname==='/auth/v1/authorize'){
+  assert.equal(url.searchParams.get('provider'),'google');assert.equal(url.searchParams.get('code_challenge_method'),'s256');
+  const redirect=url.searchParams.get('redirect_to'),challenge=url.searchParams.get('code_challenge');assert.match(challenge,/^[A-Za-z0-9_-]{43}$/);
+  const target=new URL(redirect);assert.equal(target.origin,base);assert.equal(target.searchParams.getAll('solaris_state').length,1);
+  const code='fixture-oauth-'+randomUUID();oauthCodes.set(code,{uid,challenge});
+  // Playwright intercepts only the first URL of an HTTP redirect chain.
+  // Separate document navigations keep both synthetic OAuth origins routed;
+  // otherwise a 302 here could send the fixture to the real Google website.
+  const provider='https://accounts.google.com/o/oauth2/v2/auth?solaris_fixture_redirect='+encodeURIComponent(redirect)+'&solaris_fixture_code='+encodeURIComponent(code);
+  await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><title>Isolated Google authorization fixture</title><script>location.replace('+JSON.stringify(provider)+')</script>'});return;
+ }else if(url.pathname==='/auth/v1/user'){
+  if(req.method()!=='GET')throw Error('Google-only account does not accept password or email changes');
+  if(req.headers().authorization!=='Bearer '+uid){const error=Error('Authentication required');error.status=401;throw error;}
+  if(!user){const error=Error('Deleted account session');error.status=401;throw error;}value=user;
  }else if(url.pathname==='/auth/v1/token'){
-  if(url.searchParams.get('grant_type')==='pkce'){user.identities=[{provider:'google'}];user.is_anonymous=false;value=makeSession();}
-  else {if(body.email!==user.email||body.password!==passwords.get(uid))throw Error('Invalid login credentials');value=makeSession();}
- }else if(url.pathname==='/auth/v1/verify'){
-  if(body.type==='email_change'){user.email=body.email;user.email_confirmed_at=new Date().toISOString();user.is_anonymous=false;}value=makeSession();
- }else if(url.pathname==='/auth/v1/signup'){
-  if(body.email){user.email=body.email;user.email_confirmed_at=new Date().toISOString();user.is_anonymous=false;user.user_metadata=body.data;passwords.set(uid,body.password);}value=makeSession();
- }else value={};
+  if(!user){const error=Error('Deleted account session');error.status=401;throw error;}
+  if(grant==='pkce'){
+   if(body.auth_code==='fixture-cold-code')assert.match(body.code_verifier,/^fixture-protected-verifier-/);
+   else{const proof=oauthCodes.get(body.auth_code);assert(proof&&proof.uid===uid&&proof.providerReached===true,'Only an issued code returned by the isolated Google provider may be exchanged');assert.equal(createHash('sha256').update(body.code_verifier).digest('base64url'),proof.challenge,'PKCE verifier must match its authorization challenge');oauthCodes.delete(body.auth_code);}
+   authMethod='oauth';value=makeSession();
+  }else if(grant==='refresh_token'){assert.equal(body.refresh_token,'fixture-only');value=makeSession();}
+  else throw Error('Google-only account does not accept password authentication');
+ }else if(url.pathname==='/auth/v1/settings')value={external:{google:true},disable_signup:false};
+ else if(url.pathname==='/auth/v1/logout')value={};
+ else throw Error('Google-only account does not expose email/password/anonymous authentication');
 }else if(url.pathname==='/functions/v1/solaris-account'){
- const body=req.postDataJSON(),user=authUsers.get(uid);
- if(body.action==='login_id'){const profile=await rpc(uid,'profile');if(!profile||body.user_id!==profile.user_id||body.password!==passwords.get(uid)||!user.email_confirmed_at)throw Error('ID 또는 비밀번호가 올바르지 않습니다.');value={access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600,user};}
- else if(body.action==='delete_account'){if(req.headers().authorization!=='Bearer '+uid)throw Error('Authentication required');await db.query('delete from auth.users where id=$1',[uid]);value={deleted:true};}
- else throw Error('Invalid account action');
-}else if(url.pathname.startsWith('/storage/')){const path=url.pathname.split('solaris-avatars/')[1];if(req.method()==='POST'){photos.set(path,req.postDataBuffer());value={};}else if(req.method()==='DELETE'){photos.delete(path);value={};}else{await route.fulfill({status:photos.has(path)?200:404,body:photos.get(path)??Buffer.alloc(0),contentType:'image/jpeg'});return;}}else{const b=req.postDataJSON();value=await rpc(uid,b.action,b.args);}await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(value)});}catch(e){await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:e.message})});}});
- await ctx.route('https://accounts.google.com/**',async route=>{const source=new URL(route.request().url()),returned=new URL(source.searchParams.get('solaris_fixture_redirect'));returned.searchParams.set('code','fixture-oauth-code');await route.fulfill({status:302,headers:{Location:returned.href},body:''});});
+ const body=req.postDataJSON();
+ if(body.action==='delete_account'){if(req.headers().authorization!=='Bearer '+uid)throw Error('Authentication required');await db.query('delete from auth.users where id=$1',[uid]);authUsers.delete(uid);value={deleted:true};}
+ else throw Error('Google-only account function does not provide password login');
+}else if(url.pathname.startsWith('/storage/')){const path=url.pathname.split('solaris-avatars/')[1];if(req.method()==='POST'){photos.set(path,req.postDataBuffer());value={};}else if(req.method()==='DELETE'){photos.delete(path);value={};}else{await route.fulfill({status:photos.has(path)?200:404,body:photos.get(path)??Buffer.alloc(0),contentType:'image/jpeg'});return;}}else{if(req.headers().authorization!=='Bearer '+uid)throw Error('Authentication required');const b=req.postDataJSON();value=await rpc(uid,b.action,b.args,authMethod);}await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(value)});}catch(e){await route.fulfill({status:e.status??403,contentType:'application/json',body:JSON.stringify({message:e.message,code:e.code})});}});
+ await ctx.route('https://accounts.google.com/**',async route=>{const source=new URL(route.request().url()),code=source.searchParams.get('solaris_fixture_code'),proof=oauthCodes.get(code);assert(proof&&proof.uid===uid,'Only the context-owned synthetic Google flow is allowed');proof.providerReached=true;const returned=new URL(source.searchParams.get('solaris_fixture_redirect'));assert.equal(returned.origin,base);returned.searchParams.set('code',code);await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><title>Isolated Google return fixture</title><script>location.replace('+JSON.stringify(returned.href)+')</script>'});});
  await ctx.route('https://api.github.com/repos/**/releases',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
+}
+async function signInWithGoogle(page,{userID,nickname}={}){
+ await page.locator('#google-login').waitFor({state:'visible'});
+ assert.equal(await page.locator('#login,#email-register,#recover,#verify,input[type=password]').count(),0,'Onboarding must expose only Google authentication');
+ const requested=page.waitForRequest(r=>r.url().endsWith('/auth/v1/token?grant_type=pkce'));
+ await page.locator('#google-login').click();const request=await requested;assert.match(request.postDataJSON().code_verifier,/^[A-Za-z0-9_-]{64}$/);
+ if(userID){await page.locator('#register').waitFor({state:'visible'});await page.locator('#register [name=user_id]').fill(userID);await page.locator('#register [name=nickname]').fill(nickname);await page.locator('#register button.primary').click();}
+ await page.locator('#workspace').waitFor({state:'visible'});assert(await page.locator('#auth-pending').isHidden());
+}
+async function verifyGoogleAccountOnly(page){
+ await page.getByRole('button',{name:'내 프로필',exact:true}).click();await page.locator('#dialog [data-action=profile-tab][data-id=account]').click();
+ await page.getByRole('button',{name:'Google 계정 사용 중',exact:true}).waitFor();assert(await page.getByRole('button',{name:'Google 계정 사용 중',exact:true}).isDisabled());
+ assert.equal(await page.locator('#dialog input[type=password],#password-edit,#recovery-link,#link-verify,#dialog [data-action=google-link]').count(),0);
+ assert.equal(await page.locator('#dialog [data-profile-pane=account] input,#dialog [data-profile-pane=account] form').count(),0,'Google account settings must be read-only');
+ await page.locator('#dialog-close').click();
 }
 // Playwright's page-side poller constructs a Function, which the real app CSP
 // correctly rejects. Keep predicates on page.evaluate and waiting in Node.
@@ -32,6 +63,11 @@ async function waitProbe(page,predicate,label,timeout=30000,arg){
  const deadline=Date.now()+timeout;
  while(Date.now()<deadline){if(await page.evaluate(predicate,arg))return;await new Promise(resolve=>setTimeout(resolve,100));}
  assert.fail('Timed out waiting for '+label);
+}
+async function submitProfile(page){
+ const original=await page.locator('#profile-edit').elementHandle();
+ try{await page.locator('#profile-edit button').click();await waitProbe(page,form=>!form.isConnected,'completed profile save and refreshed form',30000,original);}
+ finally{await original.dispose();}
 }
 async function verifyScriptCSP(page,path){
  const policy=await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
@@ -44,23 +80,71 @@ async function verifyScriptCSP(page,path){
  assert.equal(await page.evaluate(()=>window.scriptCSPProbeResult),true,'The actual document must block unsafe eval');
  (results.scriptCSP??=[]).push({path,unsafeEvalBlocked:true,bundledHashRequired:path.includes('/Unified/')});
 }
+async function profileSaveClosedBeforeResponse(page,ctx,uid){
+ await page.getByRole('button',{name:'내 프로필',exact:true}).click();
+ const nickname='지연 저장 '+uid.slice(0,6);await page.locator('#profile-edit [name=nickname]').fill(nickname);
+ const endpoint='https://*.supabase.co/rest/v1/rpc/solaris_action';let release,started;
+ const held=new Promise(resolve=>started=resolve),gate=new Promise(resolve=>release=resolve);
+ const isSave=r=>r.url().endsWith('/rest/v1/rpc/solaris_action')&&r.postDataJSON()?.action==='profile'&&r.postDataJSON()?.args?.nickname===nickname;
+ const hold=async route=>{if(isSave(route.request())){started();await gate;}await route.fallback();};await ctx.route(endpoint,hold);
+ try{
+  const saved=page.waitForResponse(r=>isSave(r.request())&&r.status()===200);
+  await page.locator('#profile-edit button').click();await held;
+  await page.locator('#dialog-close').click();await page.locator('#dialog').waitFor({state:'hidden'});
+  release();const response=await saved;await response.finished();
+  await waitProbe(page,nickname=>document.querySelector('#self-profile')?.textContent.includes(nickname),'late profile save reflected in live account',30000,nickname);
+  assert(await page.locator('#dialog').isHidden(),'A closed profile editor must not reopen after a late save');
+  assert.equal((await rpc(uid,'profile')).nickname,nickname,'Closing the modal must not discard the acknowledged profile save');
+  await page.getByRole('button',{name:'내 프로필',exact:true}).click();assert.equal(await page.locator('#profile-edit [name=nickname]').inputValue(),nickname);await page.locator('#dialog-close').click();
+  return{passed:true,closedWhileRPCPending:true,lateResponseDoesNotReopen:true,acknowledgedSavePreserved:true,profileCanBeOpenedAgain:true};
+ }finally{release();await ctx.unroute(endpoint,hold);}
+}
+async function savedGooglePasswordSessionRecovery(path){
+ const uid=randomUUID(),other=randomUUID(),user=fixtureGoogleUser(uid),id='restore_'+uid.slice(0,8);
+ authUsers.set(uid,user);authUsers.set(other,fixtureGoogleUser(other));await seedUser(uid);await seedUser(other);
+ const profile=await rpc(uid,'profile',{user_id:id,nickname:'복구 보존 계정',bio:'기존 계정 소개'});await rpc(other,'profile',{user_id:'stored_friend_'+other.slice(0,8),nickname:'저장된 친구'});
+ await rpc(uid,'friend_request',{target:other});await rpc(other,'friend_accept',{target:uid});const server=await rpc(uid,'server_create',{name:'Google 재로그인 보존 서버'}),before=await rpc(uid,'sync',{cursor:0});
+ const ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid,{authMethod:'password'});
+ const page=await ctx.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));
+ try{
+  await page.goto(base+'/shared/index.html');await page.locator('#google-login').waitFor({state:'visible'});
+  await page.evaluate(async({uid,user})=>{const{Ledger}=await import('/shared/platform.mjs');await new Ledger().set('auth',{access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600,user});},{uid,user});
+  const rejected=page.waitForResponse(r=>r.url().endsWith('/rest/v1/rpc/solaris_action')&&r.request().postDataJSON()?.action==='profile'&&r.status()===403);
+  await page.goto(base+path);const response=await rejected,body=await response.json();assert.equal(body.code,'42501');assert.equal(body.message,'Authentication required','The actual SQL OAuth guard must reject the stored password-authenticated session');
+  await page.locator('#google-login').waitFor({state:'visible'});await waitProbe(page,()=>!document.querySelector('#google-login').disabled,'Google reauthentication after server session rejection');
+  assert(await page.locator('#workspace').isHidden());assert(await page.locator('#register').isHidden());
+  assert.equal(await page.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return new Ledger().get('auth');}),null,'The rejected local session must be retired');
+  assert.equal((await rpc(uid,'profile')).uid,uid);assert((await rpc(uid,'sync',{cursor:0})).servers.some(s=>s.id===server.id),'Session rejection must preserve server data');
+  await signInWithGoogle(page);assert.equal(await page.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return(await new Ledger().get('auth')).user.id;}),uid);
+  const after=await rpc(uid,'sync',{cursor:0});assert.equal(after.me.uid,uid);assert.equal(after.me.user_id,profile.user_id);assert.equal(after.me.nickname,profile.nickname);assert.equal(after.me.bio,profile.bio);
+  assert.deepEqual(after.friends.map(f=>f.profile.uid).sort(),before.friends.map(f=>f.profile.uid).sort());assert.deepEqual(after.servers.map(s=>s.id).sort(),before.servers.map(s=>s.id).sort());
+  const lateSave=await profileSaveClosedBeforeResponse(page,ctx,uid);
+  return{recovery:{path,passed:true,actualSQLOAuth42501:true,rejectedLocalSessionCleared:true,googleLoginReachable:true,sameUIDAndProfilePreserved:true,friendsAndOwnedServerPreserved:true,realGoogleAccount:false},lateSave:{path,...lateSave}};
+ }finally{await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(page),1);}
+}
 async function account65Deletion(){
- const uid=randomUUID(),id='delete_'+uid.slice(0,8),user={id:uid,email:'delete@example.test',email_confirmed_at:new Date().toISOString(),is_anonymous:false};
- authUsers.set(uid,user);passwords.set(uid,'fixture-delete-password');await seedUser(uid);await rpc(uid,'profile',{user_id:id,nickname:'삭제 확인 계정'});
+ const uid=randomUUID(),id='delete_'+uid.slice(0,8),user=fixtureGoogleUser(uid,'delete@example.test');
+ authUsers.set(uid,user);await seedUser(uid);await rpc(uid,'profile',{user_id:id,nickname:'삭제 확인 계정'});
  const own=await rpc(uid,'server_create',{name:'탈퇴 소유 서버'}),ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid);
  const p=await ctx.newPage();pages.push(p);p.on('pageerror',e=>errors.push(e.message));
  try{
-  await p.goto(base+'/shared/index.html');await p.locator('#login [name=user_id]').fill(id);await p.locator('#login [name=password]').fill('fixture-delete-password');await p.locator('#login button.primary').click();await p.locator('#workspace').waitFor({state:'visible'});
+  await p.goto(base+'/shared/index.html');await signInWithGoogle(p);
   const openDeletion=async()=>{await p.getByRole('button',{name:'내 프로필',exact:true}).click();await p.locator('#dialog [data-action=profile-tab][data-id=account]').click();await p.locator('#dialog [data-action=account-delete]').click();};
   await openDeletion();await p.locator('#delete-account-form input').fill('wrong_id');await p.locator('#delete-account-form button').click();await p.locator('#error').filter({hasText:'ID를 정확히'}).waitFor();assert.equal((await rpc(uid,'profile')).uid,uid);await p.locator('#dialog-close').click();
   const endpoint='https://*.supabase.co/functions/v1/solaris-account',fail=route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'삭제 시작 전 일시 오류',code:'account_delete_incomplete',deletionStarted:false})});
   await ctx.route(endpoint,fail);await openDeletion();await p.locator('#delete-account-form input').fill(id);await p.locator('#delete-account-form button').click();await p.locator('#error').filter({hasText:'삭제 시작 전'}).waitFor();await p.locator('#workspace').waitFor({state:'visible'});assert.equal((await rpc(uid,'profile')).uid,uid);await ctx.unroute(endpoint,fail);
   const partial=async route=>{await db.query('insert into solaris_private.account_deletions(uid) values($1)',[uid]);await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'삭제 정리를 다시 시도하세요.',code:'account_delete_incomplete',deletionStarted:true})});};
-  await ctx.route(endpoint,partial);await openDeletion();await p.locator('#delete-account-form input').fill(id);await p.locator('#delete-account-form button').click();await p.getByRole('button',{name:'계정 삭제 다시 시도',exact:true}).waitFor();assert(await p.locator('#workspace').isHidden());
-  const retained=await p.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return(await new Ledger().get('auth'))?.user.id;});assert.equal(retained,uid,'Partial deletion retains only the same account session for cleanup retry');await ctx.unroute(endpoint,partial);
-  await p.getByRole('button',{name:'계정 삭제 다시 시도',exact:true}).click();await p.locator('#onboarding-status').filter({hasText:'계정 탈퇴가 완료'}).waitFor();assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[uid])).rows[0].n,0);assert.equal((await db.query('select count(*)::int n from solaris_private.servers where id=$1',[own.id])).rows[0].n,0);assert.equal(await p.locator('#self-profile').textContent(),'');assert.equal(await p.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return new Ledger().get('auth');}),null);
-  await p.locator('#login [name=user_id]').fill(id);await p.locator('#login [name=password]').fill('fixture-delete-password');await p.locator('#login button.primary').click();await p.locator('#error').waitFor({state:'visible'});assert(await p.locator('#workspace').isHidden());
-  return{passed:true,wrongConfirmationPreservesAccount:true,preCleanupFailurePreservesUID:true,partialCleanupRetrySameUID:true,ownedServerDeleted:true,protectedSessionCleared:true,deletedLoginRejected:true,edgeFunctionMock:true};
+  await ctx.route(endpoint,partial);await openDeletion();await p.locator('#delete-account-form input').fill(id);await p.locator('#delete-account-form button').click();
+  const retry=p.locator('#deletion-pending-panel [data-action=account-delete-confirm]');await retry.waitFor({state:'visible'});assert(await p.locator('#workspace').isHidden());
+  await p.keyboard.press('Escape');assert(await retry.isVisible(),'Closing a dialog must not remove the deletion retry');assert(await p.locator('#google-login').isHidden());assert(await p.locator('#register').isHidden());
+  const retained=await p.evaluate(async uid=>{const{Ledger}=await import('/shared/platform.mjs'),ledger=new Ledger();return{uid:(await ledger.get('auth'))?.user.id,pending:await ledger.get('delete-pending:'+uid)};},uid);assert.equal(retained.uid,uid,'Partial deletion retains only the same account session for cleanup retry');assert.equal(retained.pending,true);
+  await ctx.unroute(endpoint,partial);let profileRequests=0;const observe=r=>{if(r.url().endsWith('/rest/v1/rpc/solaris_action')&&r.postDataJSON()?.action==='profile')profileRequests++;};ctx.on('request',observe);
+  await p.reload();await retry.waitFor({state:'visible'});assert(await p.locator('#workspace').isHidden());assert(await p.locator('#google-login').isHidden());ctx.off('request',observe);assert.equal(profileRequests,0,'Pending deletion must be restored before private profile requests');
+  assert.equal(await p.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return(await new Ledger().get('auth'))?.user.id;}),uid);
+  await retry.click();await p.locator('#onboarding-status').filter({hasText:'계정 탈퇴가 완료'}).waitFor();assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[uid])).rows[0].n,0);assert.equal((await db.query('select count(*)::int n from solaris_private.servers where id=$1',[own.id])).rows[0].n,0);assert.equal(await p.locator('#self-profile').textContent(),'');assert.equal(await p.evaluate(async()=>{const{Ledger}=await import('/shared/platform.mjs');return new Ledger().get('auth');}),null);
+  assert.equal(await p.evaluate(async uid=>{const{Ledger}=await import('/shared/platform.mjs');return new Ledger().get('delete-pending:'+uid);},uid),null);assert(await p.locator('#deletion-pending-panel').isHidden());
+  await p.reload();await p.locator('#google-login').waitFor({state:'visible'});assert(await p.locator('#workspace').isHidden());assert.equal(await p.locator('#register').isHidden(),true);
+  return{passed:true,wrongConfirmationPreservesAccount:true,preCleanupFailurePreservesUID:true,partialCleanupRetrySameUID:true,retrySurvivesEscapeAndReload:true,pendingMarkerCleared:true,noPrivateProfileUntilCleanup:true,ownedServerDeleted:true,protectedSessionCleared:true,deletedUIDRemoved:true,postDeletionGoogleOnboarding:true,edgeFunctionMock:true};
  }finally{await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(p),1);}
 }
 async function presence65(a,b){
@@ -201,9 +285,9 @@ async function responsiveExistingActions(page){
   await page.locator('#avatar-file').scrollIntoViewIfNeeded();
   const upload=await page.locator('.upload-photo-button').boundingBox();assert(upload&&upload.y>=0&&upload.y+upload.height<=height+1,'profile upload must be reachable by scrolling');
   await page.locator('#dialog [data-action=profile-tab][data-id=account]').click();
-  await page.locator('#password-edit').waitFor();await captureResponsive(page,'account-'+device,{dialog:true});
-  await page.locator('#password-edit button').scrollIntoViewIfNeeded();
-  const save=await page.locator('#password-edit button').boundingBox();assert(save&&save.y>=0&&save.y+save.height<=height+1,'account save must be reachable by scrolling');
+  await page.getByRole('button',{name:'Google 계정 사용 중',exact:true}).waitFor();assert(await page.getByRole('button',{name:'Google 계정 사용 중',exact:true}).isDisabled());assert.equal(await page.locator('#password-edit,#recovery-link,#link-verify,#dialog input[type=password],#dialog [data-action=google-link]').count(),0);await captureResponsive(page,'account-'+device,{dialog:true});
+  await page.locator('#dialog [data-action=account-delete]').scrollIntoViewIfNeeded();
+  const deletion=await page.locator('#dialog [data-action=account-delete]').boundingBox();assert(deletion&&deletion.y>=0&&deletion.y+deletion.height<=height+1,'account deletion must be reachable by scrolling');
   await page.locator('#dialog [data-action=settings]').click();await page.locator('#settings-edit').waitFor();
   await captureResponsive(page,'settings-'+device,{dialog:true});
   assert.equal(await page.locator('#dialog').evaluate(n=>getComputedStyle(n).resize),phone?'none':'both');
@@ -228,9 +312,9 @@ async function acceptIncomingScreenRequest(page){
  await page.locator('#incoming-request').waitFor({state:'hidden'});
 }
 async function installNativeAuthProbe(ctx,{state,verifier,platform='ios',uid=null,providerError=false}){
- await ctx.addInitScript(({state,verifier,platform,uid,providerError})=>{
+ await ctx.addInitScript(({state,verifier,platform,uid,user,providerError})=>{
   const flow={kind:uid?'google-link':'google',base:platform==='windows'?'http://127.0.0.1:43854/auth/callback':'solaris://auth/callback',state,verifier,email:null,uid,expires:Date.now()+600000};
-  const session=uid?{user:{id:uid,is_anonymous:true,identities:[]},access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600}:null;
+  const session=uid?{user,access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600}:null;
   const vault=new Map([['session',JSON.stringify(session)],['auth-flow',JSON.stringify(flow)]]),calls=[];
   const emit=detail=>window.dispatchEvent(new CustomEvent('solaris-native',{detail}));let heldResume=false,pendingReturn=null;
   const returned=flow.base+'?solaris_state='+state+(providerError?'&error=oauth_callback_error&error_code=identity_already_exists':'&code=fixture-cold-code');
@@ -252,11 +336,11 @@ async function installNativeAuthProbe(ctx,{state,verifier,platform='ios',uid=nul
    if(m.command==='mediaStatus')result={active:false};
    queueMicrotask(()=>emit({requestId:m.requestId,result}));
   }}}};
- },{state,verifier,platform,uid,providerError});
+ },{state,verifier,platform,uid,user:uid?authUsers.get(uid):null,providerError});
 }
 async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=false,platform='ios',foregroundReturn=false}={}){
  const uid=randomUUID(),state=randomUUID(),verifier='fixture-protected-verifier-'.repeat(3);
- authUsers.set(uid,{id:uid,identities:[{provider:'google'}],is_anonymous:false});
+ authUsers.set(uid,fixtureGoogleUser(uid));
  await seedUser(uid);await rpc(uid,'profile',{user_id:'cold_'+uid.slice(0,8),nickname:'복귀 계정'});
  const ctx=await browser.newContext({viewport:{width:390,height:844}});contexts.push(ctx);await installFixture(ctx,uid);
  let releasePKCE,exchangeStarted,exchangeCalls=0;
@@ -284,6 +368,11 @@ async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=fa
    await p.locator('#google-login').click();await p.locator('#auth-pending').waitFor({state:'visible'});
    assert(await p.evaluate(()=>window.authProbe.calls.includes('authOpen')));
    assert.notEqual(await p.evaluate(()=>window.authProbeSavedFlow().state),state);
+   const freshState=await p.evaluate(()=>window.authProbeSavedFlow().state);
+   await p.evaluate(()=>window.deliverAuthCallback());
+   await waitProbe(p,()=>window.authProbePendingReturn()===null,'retired failure callback acknowledgement');
+   assert.equal(await p.evaluate(()=>window.authProbeSavedFlow().state),freshState,'An old failed callback must not erase a fresh Google request');
+   assert(await p.locator('#auth-pending').isVisible());assert.equal(exchangeCalls,1);
   }else{
    await p.locator('#workspace').waitFor({state:'visible'});assert(await p.locator('#error').isHidden());assert(await p.locator('#auth-pending').isHidden());
    assert.equal(await p.evaluate(()=>window.authProbeSavedSession().user.id),uid);
@@ -292,12 +381,12 @@ async function coldNativeAuthReturn(path,{failExchange=false,failBeforeResume=fa
   }
   await waitProbe(p,()=>window.authProbe.acknowledgements>0&&window.authProbePendingReturn()===null,'processed callback acknowledgement');
   assert.equal(await p.evaluate(()=>window.authProbe.sessionReads),1,'Startup must not reread the vault and invalidate the callback exchange');
-  return{path,platform,passed:true,failureThenFreshRetry:failExchange,failureBeforeResume:failBeforeResume,recoveredViaForeground:foregroundReturn,processedReturnAcknowledged:true};
+  return{path,platform,passed:true,retiredFailureCannotCancelFreshRequest:failExchange,failureThenFreshRetry:failExchange,failureBeforeResume:failBeforeResume,recoveredViaForeground:foregroundReturn,processedReturnAcknowledged:true};
  }finally{releasePKCE();await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(p),1);}
 }
 async function nativeLinkedIdentityFailure(path,platform='ios'){
  const uid=randomUUID(),state=randomUUID(),verifier='fixture-protected-verifier-'.repeat(3);
- authUsers.set(uid,{id:uid,identities:[],is_anonymous:true});
+ authUsers.set(uid,fixtureGoogleUser(uid));
  await seedUser(uid);const profile=await rpc(uid,'profile',{user_id:'linked_'+uid.slice(0,8),nickname:'연결 유지 계정'});
  const server=await rpc(uid,'server_create',{name:'기존 계정 서버'});
  const ctx=await browser.newContext({viewport:{width:390,height:844}});contexts.push(ctx);await installFixture(ctx,uid);
@@ -316,23 +405,29 @@ async function nativeLinkedIdentityFailure(path,platform='ios'){
   assert.equal(await p.evaluate(()=>window.authProbe.calls.includes('authCancel')),false,'Conflict must not cancel or sign out the current account');
   assert.equal((await rpc(uid,'profile')).user_id,profile.user_id);assert((await rpc(uid,'sync',{cursor:0})).servers.some(s=>s.id===server.id));
   await p.getByRole('button',{name:'내 프로필',exact:true}).click();await p.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();
-  assert.equal(await p.getByRole('button',{name:'Google 계정 연결',exact:true}).isEnabled(),true);
-  // The durable session initially lacks Google; the account tab must verify
-  // identities with the server instead of offering a redundant linking flow.
-  await p.locator('#dialog-close').click();authUsers.get(uid).identities=[{provider:'google'}];
-  await p.getByRole('button',{name:'내 프로필',exact:true}).click();await p.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();
-  assert.equal(await p.getByRole('button',{name:'Google 연결됨',exact:true}).isDisabled(),true);assert.equal(await p.getByRole('button',{name:'Google 계정 연결',exact:true}).count(),0);
+  assert.equal(await p.getByRole('button',{name:'Google 계정 사용 중',exact:true}).isDisabled(),true);
+  assert.equal(await p.locator('#dialog [data-action=google-link],#password-edit,#recovery-link').count(),0);
   return{path,platform,passed:true,identityConflictVisible:true,processedReturnAcknowledged:true,originalAccountAndServerPreserved:true,verifiedGoogleIdentityDisablesLink:true};
  }finally{await ctx.close();contexts.splice(contexts.indexOf(ctx),1);pages.splice(pages.indexOf(p),1);}
 }
-try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{})});for(let i=0;i<2;i++){const uid=randomUUID();uids.push(uid);authUsers.set(uid,{id:uid,is_anonymous:true});await seedUser(uid);const ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid);const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));pages.push(p);const path=i?'/ios/App/Resources/Unified/unified.html':'/shared/index.html';await p.goto(base+path);await verifyScriptCSP(p,path);if(i)await p.getByRole('button',{name:'계정 만들기',exact:true}).first().click();
- if(i){await p.locator('#email-register [name=user_id]').fill('bob');await p.locator('#email-register [name=nickname]').fill('지구');await p.locator('#email-register [name=email]').fill('bob@example.test');await p.locator('#email-register [name=password]').fill('fixture-bob-password');await p.locator('#email-register button.primary').click();results.emailSignupWithoutAnonymous=true;}
- else{await rpc(uid,'profile',{user_id:'alice',nickname:'솔라'});await p.evaluate(async({uid,user})=>{const{Ledger}=await import('/shared/platform.mjs');await new Ledger().set('auth',{access_token:uid,refresh_token:'fixture-only',expires_at:Date.now()/1000+3600,user});},{uid,user:authUsers.get(uid)});await p.reload();}await p.locator('#workspace').waitFor({state:'visible'});}
+try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{})});for(let i=0;i<2;i++){
+ const uid=randomUUID();uids.push(uid);authUsers.set(uid,fixtureGoogleUser(uid));await seedUser(uid);
+ const ctx=await browser.newContext({viewport:{width:1280,height:900}});contexts.push(ctx);await installFixture(ctx,uid);
+ const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));pages.push(p);const path=i?'/ios/App/Resources/Unified/unified.html':'/shared/index.html';await p.goto(base+path);await verifyScriptCSP(p,path);
+ await p.locator('#google-login').waitFor({state:'visible'});assert(await p.locator('#register').isHidden());assert.equal(await rpc(uid,'profile'),null,'A signed-out page must not create an ID profile');
+ if(i){
+  const requested=p.waitForRequest(r=>r.url().endsWith('/auth/v1/token?grant_type=pkce'));await p.locator('#google-login').click();await requested;await p.locator('#register').waitFor({state:'visible'});
+  await p.locator('#register [name=user_id]').fill('alice');await p.locator('#register [name=nickname]').fill('지구');await p.locator('#register button.primary').click();await p.locator('#error').waitFor({state:'visible'});assert.equal(await rpc(uid,'profile'),null,'Duplicate ID rejection must not claim another profile');
+  await p.locator('#register [name=user_id]').fill('bob');await p.locator('#register button.primary').click();await p.locator('#workspace').waitFor({state:'visible'});
+ }else await signInWithGoogle(p,{userID:'alice',nickname:'솔라'});
+ assert.equal((await rpc(uid,'profile')).uid,uid);
+ (results.googleOnlyOnboarding??={passed:true,realGoogleAccount:false,pkceChallengeVerified:true,newIDClaimAfterGoogle:true,duplicateIDCannotTakeAnotherProfile:true,cases:[]}).cases.push({path,uidPreserved:true});
+ }
  const[a,b]=pages;
- // An ID-only account has a visible sign-out action with an explicit recovery warning.
- await a.getByRole('button',{name:'설정',exact:true}).click();await a.locator('#dialog [data-action=logout]').click();await a.getByText(/계정에 다시 접근하지 못할 수/).waitFor();await a.getByRole('button',{name:'취소',exact:true}).click();assert(await a.locator('#workspace').isVisible());assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);if(await a.locator('#dialog').isVisible())await a.locator('#dialog-close').click();results.anonymousLogoutVisibleAndCancelable=true;
+ // A Google account can cancel sign-out without losing its current UID.
+ await a.getByRole('button',{name:'설정',exact:true}).click();await a.locator('#dialog [data-action=logout]').click();await a.getByText(/같은 Google 계정으로 다시 로그인/).waitFor();await a.getByRole('button',{name:'취소',exact:true}).click();assert(await a.locator('#workspace').isVisible());assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);if(await a.locator('#dialog').isVisible())await a.locator('#dialog-close').click();results.googleLogoutVisibleAndCancelable=true;
  await a.getByRole('button',{name:'친구 추가',exact:true}).click();await a.locator('#friend-search input').fill('bob');await new Promise(r=>setTimeout(r,2500));assert.equal(await a.locator('#friend-search input').inputValue(),'bob');await a.locator('#friend-search button').click();await a.getByRole('button',{name:'친구 요청 보내기',exact:true}).click();await b.getByRole('button',{name:'대기 중',exact:true}).click();await b.getByRole('button',{name:'수락',exact:true}).click();await a.getByRole('button',{name:'모두',exact:true}).click();await b.getByRole('button',{name:'모두',exact:true}).click();await a.locator('#panel [data-action=friend-menu]').first().click();await a.getByRole('button',{name:'화면공유 요청',exact:true}).click();await acceptIncomingScreenRequest(b);await a.locator('#scope-title').filter({hasText:'지구'}).waitFor();assert((await rpc(uids[1],'sync',{cursor:0})).sessions.some(s=>s.state==='accepted'&&s.a===uids[0]&&s.b===uids[1]||s.state==='accepted'&&s.a===uids[1]&&s.b===uids[0]));results.accountFriendsDirect=true;
- await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#profile-edit [name=nickname]').fill('태양');await a.locator('#profile-edit textarea').fill('태양처럼 밝게 🌞');await a.locator('#profile-edit button').click();await a.locator('#dialog-close').click();await b.locator('#panel strong').filter({hasText:'태양'}).waitFor();await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#avatar-file').setInputFiles({name:'profile.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH4sAAAAASUVORK5CYII=','base64')});await a.locator('#dialog').waitFor({state:'hidden'});await b.locator('#panel img').waitFor();assert.equal(photos.size,1);results.profileAvatar=true;results.presence65=await presence65(a,b);
+ await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#profile-edit [name=nickname]').fill('태양');await a.locator('#profile-edit textarea').fill('태양처럼 밝게 🌞');await submitProfile(a);await a.locator('#dialog-close').click();await b.locator('#panel strong').filter({hasText:'태양'}).waitFor();await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#avatar-file').setInputFiles({name:'profile.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH4sAAAAASUVORK5CYII=','base64')});await a.locator('#dialog').waitFor({state:'hidden'});await b.locator('#panel img').waitFor();assert.equal(photos.size,1);results.profileAvatar=true;results.presence65=await presence65(a,b);
  await a.reload();await a.locator('#workspace').waitFor({state:'visible'});results.restartPersistence=true;
  await a.getByRole('button',{name:'설정',exact:true}).click();await a.locator('select[name=updateChannel]').selectOption('stable');await a.locator('input[name=maxReceive]').fill('3');await a.getByRole('button',{name:'설정 저장',exact:true}).click();results.settings=true;
  await a.getByRole('button',{name:'설정',exact:true}).click();await a.getByRole('button',{name:'프로필',exact:true}).click();await a.locator('#profile-edit').waitFor();await a.getByRole('button',{name:'앱 설정',exact:true}).click();await a.locator('#settings-edit').waitFor();assert.equal(await a.locator('#dialog').evaluate(n=>getComputedStyle(n).resize),'both');await a.getByRole('button',{name:'업데이트 확인',exact:true}).click();await a.getByText('선택한 업데이트 채널에 공개된 버전이 없습니다.',{exact:true}).waitFor();await a.locator('#dialog-close').click();
@@ -343,25 +438,22 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  await b.getByRole('button',{name:'Solaris UI test',exact:true}).click();await b.locator('#channels [data-action="channel"]').first().click();assert.equal(await b.locator('#server-tools [data-action="server-leave"]').count(),0);assert.equal(await b.locator('#channels [data-action="server-leave"]').count(),0);
  await b.locator('#server-tools [data-action=server-invite]').click();await b.locator('#server-invite-code').waitFor();assert.equal(await b.locator('#server-invite-code').inputValue(),server.invite);assert(await b.locator('#server-invite-code').getAttribute('readonly')!==null);await b.getByRole('button',{name:'초대코드 복사',exact:true}).click();await b.locator('#invite-status').filter({hasText:/복사/}).waitFor();await b.locator('#dialog-close').click();results.memberInvite65={passed:true,memberCanOpenStableCode:true,copyOrSelectFallbackReachable:true};
  await b.getByRole('button',{name:'서버 메뉴',exact:true}).click();const leave=b.getByRole('button',{name:'서버 탈퇴',exact:true});assert(await leave.evaluate(n=>n.closest('.danger-zone')&&n.classList.contains('danger')));await leave.click();await b.getByRole('button',{name:'취소',exact:true}).click();assert((await rpc(uids[1],'sync',{cursor:0})).servers.some(s=>s.id===serverID));await b.getByRole('button',{name:'서버 탈퇴',exact:true}).click();await b.locator('#confirm-action').click();await b.locator('#dialog').waitFor({state:'hidden'});assert(!(await rpc(uids[1],'sync',{cursor:0})).servers.some(s=>s.id===serverID));results.serverLeaveSeparatedAndConfirmed=true;
- // Account upgrade retains the UID, friends and accepted direct session.
- await a.getByRole('button',{name:'내 프로필',exact:true}).click();
- await a.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();await a.locator('#recovery-link input').fill('alice@example.test');await a.locator('#recovery-link button').click();
- await a.locator('#link-verify [name=token]').fill('424242');await a.locator('#link-verify button').click();
- await a.locator('#password-edit input').fill('fixture-password');await a.locator('#password-edit button').click();
- await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#profile-edit [name=user_id]').fill('alice65');await a.locator('#profile-edit button').click();assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);await a.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();
- const offline=route=>route.abort('internetdisconnected');await contexts[0].route('https://*.supabase.co/**',offline);await a.getByRole('button',{name:'로그아웃',exact:true}).click();await a.locator('#confirm-action').click();await a.locator('#login').waitFor({state:'visible'});await a.getByText(/서버의 로그인 종료 확인은 받지 못했습니다/).waitFor();assert.equal(await a.locator('#self-profile').textContent(),'');assert.equal(await a.locator('#messages').textContent(),'');assert.equal(await a.locator('#channels').textContent(),'');await a.reload();await a.locator('#login').waitFor({state:'visible'});assert(await a.locator('#workspace').isHidden());await contexts[0].unroute('https://*.supabase.co/**',offline);results.offlineLogoutClearsPrivateUIAndStaysSignedOut=true;
- await a.locator('#login [name=user_id]').fill('alice65');await a.locator('#login [name=password]').fill('wrong-password');await a.locator('#login button.primary').click();await a.locator('#error').waitFor({state:'visible'});assert(await a.locator('#workspace').isHidden());
- await a.locator('#login [name=password]').fill('fixture-password');await a.locator('#login button.primary').click();await a.locator('#workspace').waitFor({state:'visible'});await a.locator('#scope-title').filter({hasText:'지구'}).waitFor();assert.equal((await rpc(uids[0],'profile')).user_id,'alice65');results.idPasswordLoginSameUID=true;
- // Simulated provider: production PKCE flow and redirect reload, no real Google login.
- await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();
- await Promise.all([a.waitForNavigation({waitUntil:'domcontentloaded'}),a.getByRole('button',{name:'Google 계정 연결',exact:true}).click()]);
- await a.locator('#workspace').waitFor({state:'visible'});await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#dialog-content').getByRole('button',{name:'내 계정',exact:true}).click();await a.getByRole('button',{name:'Google 연결됨',exact:true}).waitFor();assert.equal(await a.getByRole('button',{name:'Google 연결됨',exact:true}).isDisabled(),true);assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);await a.locator('#dialog-close').click();results.googlePKCEWithSimulatedProvider={passed:true,realGoogleAccount:false,connectedLinkDisabled:true};
+ // Google relogin retains the UID, mutable display ID, friends and direct consent.
+ await verifyGoogleAccountOnly(a);results.googleAccountSettingsReadOnly=true;
+ await a.getByRole('button',{name:'내 프로필',exact:true}).click();await a.locator('#profile-edit [name=user_id]').fill('alice_google');await submitProfile(a);assert.equal((await rpc(uids[0],'profile')).uid,uids[0]);
+ const retainedBefore=await rpc(uids[0],'sync',{cursor:0});
+ await a.locator('#dialog [data-action=profile-tab][data-id=account]').click();
+ const offline=route=>route.abort('internetdisconnected');await contexts[0].route('https://*.supabase.co/**',offline);await a.getByRole('button',{name:'로그아웃',exact:true}).click();await a.locator('#confirm-action').click();await a.locator('#google-login').waitFor({state:'visible'});await a.getByText(/서버의 로그인 종료 확인은 받지 못했습니다/).waitFor();assert.equal(await a.locator('#self-profile').textContent(),'');assert.equal(await a.locator('#messages').textContent(),'');assert.equal(await a.locator('#channels').textContent(),'');await a.reload();await a.locator('#google-login').waitFor({state:'visible'});assert(await a.locator('#workspace').isHidden());await contexts[0].unroute('https://*.supabase.co/**',offline);results.offlineLogoutClearsPrivateUIAndStaysSignedOut=true;
+ await signInWithGoogle(a);await a.locator('#scope-title').filter({hasText:'지구'}).waitFor();const restored=await rpc(uids[0],'sync',{cursor:0});
+ assert.equal(restored.me.uid,uids[0]);assert.equal(restored.me.user_id,'alice_google');assert.deepEqual(restored.friends.map(f=>f.profile.uid).sort(),retainedBefore.friends.map(f=>f.profile.uid).sort());assert.deepEqual(restored.sessions.map(v=>v.id).sort(),retainedBefore.sessions.map(v=>v.id).sort());
+ await verifyGoogleAccountOnly(a);results.googleReloginSameUID={passed:true,idProfilePreserved:true,friendsAndConsentPreserved:true};
+ results.googlePKCEWithSimulatedProvider={passed:true,realGoogleAccount:false,connectedLinkDisabled:true,readOnlyAccount:true,noEmailPasswordControls:true,reloginSameUID:true};
  // A selected DM is a dedicated conversation, and channel changes preserve privacy.
  await b.getByRole('button',{name:'태양 개인 메시지',exact:true}).click();await a.locator('#chat textarea').fill('친구 전용 메시지');await a.locator('#chat-send').click();await b.locator('#messages').filter({hasText:'친구 전용 메시지'}).waitFor();
  await a.getByRole('button',{name:'서버 만들기',exact:true}).click();await a.locator('#server-create-form input').fill('함께하는 공간');await a.locator('#server-create-form button').click();
  await a.locator('#scope-title').filter({hasText:'일반'}).waitFor();assert(!(await a.locator('#messages').textContent()).includes('친구 전용 메시지'));
  const createdState=await rpc(uids[0],'sync',{cursor:0}),own=createdState.servers.find(s=>s.name==='함께하는 공간');assert(own&&own.owner===uids[0]);assert(createdState.members.some(m=>m.profile.uid===uids[0]&&m.server_id===own.id&&m.channel_id));
- await a.getByRole('button',{name:'서버 메뉴',exact:true}).click();await a.locator('#dialog').getByRole('button',{name:'채널 만들기',exact:true}).click();await a.locator('#channel-create-form input').fill('게임');await a.locator('#channel-create-form button').click();await a.locator('#dialog-close').click();await a.locator('#channels [data-action=channel]').filter({hasText:'게임'}).click();await a.locator('#scope-title').filter({hasText:'게임'}).waitFor();
+ await a.getByRole('button',{name:'서버 메뉴',exact:true}).click();await a.locator('#dialog').getByRole('button',{name:'채널 만들기',exact:true}).click();await a.locator('#channel-create-form input').fill('게임');await a.locator('#channel-create-form button').click();await a.locator('#channel-create-form').waitFor({state:'hidden'});await a.locator('#dialog-close').click();await a.locator('#channels [data-action=channel]').filter({hasText:'게임'}).click();await a.locator('#scope-title').filter({hasText:'게임'}).waitFor();
  await a.getByRole('button',{name:'친구',exact:true}).first().click();await a.getByRole('button',{name:'지구 개인 메시지',exact:true}).click();await a.locator('#panel[data-page=direct]').waitFor();assert((await a.locator('#messages').textContent()).includes('친구 전용 메시지'));
  const left=await rpc(uids[0],'sync',{cursor:0});assert(left.members.filter(m=>m.profile.uid===uids[0]).every(m=>!m.channel_id));results.serverCreateChannelAndDMNavigation=true;results.navigation65=await navigation65(a,own);
  // A friend DM does not need screen-sharing consent, and survives offline delivery.
@@ -395,7 +487,7 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  const nativeBroadcast=await rpc(uids[1],'broadcast_start',{scope_kind:'direct',scope_id:personal.id,transport:'replaykit'});await rpc(uids[1],'broadcast_touch',{id:nativeBroadcast.id});
  await a.locator('#video-'+nativeBroadcast.id+' video').waitFor({state:'visible'});
  await a.evaluate(async id=>{const receiver=nativeProbe.nativeReceivers.get(id);await nativeProbe.nativeEvent({type:'media-receiver-stats',id,connectionID:receiver.connectionID,stats:{active:true,state:'connected',frames:12,fps:60,width:1920,height:1080,qualityMeasured:false}});await nativeProbe.tick();},nativeBroadcast.id);
- const zoomViewport=a.locator('#video-'+nativeBroadcast.id+' .video-viewport');await zoomViewport.hover();await a.mouse.wheel(0,-500);await a.waitForFunction(id=>Number(document.querySelector('#video-'+id+' .video-viewport').dataset.zoom)>100,nativeBroadcast.id);await a.locator('#video-'+nativeBroadcast.id).getByRole('button',{name:'화면 확대 초기화',exact:true}).click();await a.waitForFunction(id=>document.querySelector('#video-'+id+' .video-viewport').dataset.zoom==='100',nativeBroadcast.id);results.zoom65={passed:true,wheelChangesZoom:true,resetReturnsFit:true,physicalPinch:false};
+ const zoomViewport=a.locator('#video-'+nativeBroadcast.id+' .video-viewport');await zoomViewport.hover();await a.mouse.wheel(0,-500);await waitProbe(a,id=>Number(document.querySelector('#video-'+id+' .video-viewport').dataset.zoom)>100,'wheel video zoom',30000,nativeBroadcast.id);await a.locator('#video-'+nativeBroadcast.id).getByRole('button',{name:'화면 확대 초기화',exact:true}).click();await waitProbe(a,id=>document.querySelector('#video-'+id+' .video-viewport').dataset.zoom==='100','video zoom reset',30000,nativeBroadcast.id);results.zoom65={passed:true,wheelChangesZoom:true,resetReturnsFit:true,physicalPinch:false};
  await a.locator('#video-'+nativeBroadcast.id).getByRole('button',{name:'전체화면',exact:true}).click();await a.locator('#native-fullscreen-probe').waitFor();
  await a.evaluate(id=>nativeProbe.failWatch(id,new Error('Injected native connection failure')),nativeBroadcast.id);
  assert.equal(await a.locator('#native-fullscreen-probe').count(),0);assert.equal(await a.locator('#video-'+nativeBroadcast.id+' video').count(),0);
@@ -412,7 +504,7 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  // A separate touch context uses actual coarse-pointer media queries.
  const touch=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,storageState:await contexts[0].storageState({indexedDB:true})});contexts.push(touch);await installFixture(touch,uids[0]);const mobile=await touch.newPage();pages.push(mobile);mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(base+'/shared/index.html');await mobile.locator('#workspace').waitFor({state:'visible'});
  await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.getByRole('button',{name:'지구 개인 메시지',exact:true}).click();const composer=mobile.locator('#chat textarea');await composer.fill('모바일 첫 줄');await composer.press('Enter');assert.equal(await composer.inputValue(),'모바일 첫 줄\n');await composer.type('둘째 줄');await mobile.locator('#chat-send').click();await mobile.locator('#messages').filter({hasText:'모바일 첫 줄\n둘째 줄'}).waitFor();assert.equal(await composer.inputValue(),'');assert.equal(await composer.evaluate(n=>n.style.height),'auto');assert(await mobile.locator('#share').isVisible());assert(await mobile.locator('#share').isEnabled());assert.match(await mobile.locator('#share').getAttribute('aria-label'),/화면공유/);assert.equal(await mobile.locator('#share').getAttribute('title'),await mobile.locator('#share').getAttribute('aria-label'));assert.equal(await mobile.locator('#share .ui-icon').count(),1);assert(await mobile.locator('#compose-attach').isVisible());await mobile.locator('#mobile-tabs [data-action=mobile-menu]').click();await mobile.keyboard.press('Escape');assert.equal(await mobile.locator('#nav-toggle').getAttribute('aria-expanded'),'false');results.mobileShareLabelAndDrawerEscape=true;
- await mobile.locator('#mobile-tabs [data-action=mobile-profile]').click();await mobile.locator('#profile-edit [name=bio]').fill('🌞'.repeat(190));assert.equal(await mobile.locator('.field-counter').textContent(),'190 / 190');await captureResponsive(mobile,'profile-touch-phone',{dialog:true});await mobile.locator('#profile-edit button').click();await mobile.locator('#dialog-close').click();assert.equal((await rpc(uids[0],'profile')).bio,'🌞'.repeat(190));await captureResponsive(mobile,'dm-touch-phone',{conversation:true,touch:true});results.mobileTouchComposerAndProfile={passed:true,physicalDevice:false};
+ await mobile.locator('#mobile-tabs [data-action=mobile-profile]').click();await mobile.locator('#profile-edit [name=bio]').fill('🌞'.repeat(190));assert.equal(await mobile.locator('.field-counter').textContent(),'190 / 190');await captureResponsive(mobile,'profile-touch-phone',{dialog:true});await submitProfile(mobile);await mobile.locator('#dialog-close').click();assert.equal((await rpc(uids[0],'profile')).bio,'🌞'.repeat(190));await captureResponsive(mobile,'dm-touch-phone',{conversation:true,touch:true});results.mobileTouchComposerAndProfile={passed:true,physicalDevice:false};
  await touch.close();contexts.splice(contexts.indexOf(touch),1);pages.pop();
  // Exercise shared Windows controls against an injected bridge, including an
  // event that arrives before the command reply and a native Escape/F11 exit.
@@ -444,5 +536,5 @@ try{browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER
  await responsiveExistingActions(a);
   results.coldNativeGoogleReturnDuringStartup={passed:true,nativeBridgeInjected:true,physicalDevice:false,realGoogleAccount:false,cases:[await coldNativeAuthReturn('/shared/index.html'),await coldNativeAuthReturn('/ios/App/Resources/Unified/unified.html'),await coldNativeAuthReturn('/shared/index.html',{failExchange:true}),await coldNativeAuthReturn('/ios/App/Resources/Unified/unified.html',{failExchange:true}),await coldNativeAuthReturn('/shared/index.html',{failExchange:true,failBeforeResume:true}),await coldNativeAuthReturn('/shared/index.html',{foregroundReturn:true}),await coldNativeAuthReturn('/shared/index.html',{platform:'android',foregroundReturn:true}),await coldNativeAuthReturn('/shared/index.html',{platform:'windows',foregroundReturn:true})]};
   results.nativeLinkedIdentityFailures={passed:true,nativeBridgeInjected:true,physicalDevice:false,realGoogleAccount:false,cases:[await nativeLinkedIdentityFailure('/shared/index.html'),await nativeLinkedIdentityFailure('/ios/App/Resources/Unified/unified.html')]};
-  results.account65Deletion=await account65Deletion();if(errors.length)throw Error(errors.join('; '));results.success=true;console.log('PASS: canonical and bundled UI, secure account, native cold-return PKCE race, friend/session consent, profile/avatar, persisted restart, settings, responsive layouts');
+  results.account65Deletion=await account65Deletion();const recovered=[await savedGooglePasswordSessionRecovery('/shared/index.html'),await savedGooglePasswordSessionRecovery('/ios/App/Resources/Unified/unified.html')];results.googleStoredPasswordSessionRecovery={passed:true,cases:recovered.map(c=>c.recovery)};results.profileSaveClosedBeforeResponse={passed:true,cases:recovered.map(c=>c.lateSave)};assert(!authRequests.some(r=>['/auth/v1/signup','/auth/v1/verify','/auth/v1/recover','/auth/v1/otp','/auth/v1/resend','/auth/v1/user/identities/authorize'].includes(r.path)||r.path==='/auth/v1/token'&&!['pkce','refresh_token'].includes(r.grant)||r.path==='/auth/v1/user'&&r.method!=='GET'),'UI must never call removed password/email/anonymous authentication');results.googleOnlyAuthRequests={passed:true,noEmailPasswordAnonymousRequests:true,isolatedProvider:true};if(errors.length)throw Error(errors.join('; '));results.success=true;console.log('PASS: canonical and bundled UI, secure account, native cold-return PKCE race, friend/session consent, profile/avatar, persisted restart, settings, responsive layouts');
 }catch(e){results.success=false;results.error=e.message;console.error(e);process.exitCode=1;for(const[i,p]of pages.entries())await p.screenshot({path:join(out,'failure'+i+'.png'),fullPage:true}).catch(()=>{});}finally{results.errors=errors;await writeFile(join(out,'results.json'),JSON.stringify(results,null,2));for(const c of contexts)await c.close();await browser?.close();await db.close();await new Promise(r=>host.close(r));}

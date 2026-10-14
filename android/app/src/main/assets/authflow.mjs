@@ -46,6 +46,7 @@ export class AuthFlow {
   const u=new URL(globalThis.location.href);if(!/^https?:$/.test(u.protocol))throw new Error('로그인은 설치된 Solaris 앱에서 진행하세요.');u.search='';u.hash='';return u.href;
  }
  async prepare(kind,{email=null,uid=this.api.session?.user?.id??null}={}){
+  if(!['google','google-link'].includes(kind)){const error=new Error('Google 계정으로만 가입하고 로그인할 수 있어요.');error.code='google_only';throw error;}
   const generation=++this.generation;
   const base=await this.redirect(),state=crypto.randomUUID(),verifier=authBase64(crypto.getRandomValues(new Uint8Array(48)));
   const challenge=authBase64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
@@ -63,7 +64,7 @@ export class AuthFlow {
  async resume(){
   const generation=this.generation;
   const f=await this.read();if(!f)return null;
-  if(!Number.isFinite(f.expires)||typeof f.kind!=='string'||Date.now()>f.expires||(this.api.session?.user?.id??null)!==f.uid){await this.cancel();return null;}
+  if(!Number.isFinite(f.expires)||!['google','google-link'].includes(f.kind)||Date.now()>f.expires||(this.api.session?.user?.id??null)!==f.uid){await this.cancel();return null;}
   const base=await this.redirect();
   if(generation!==this.generation||this.pending?.state!==f.state)return null;
   if(f.base!==base||typeof f.state!=='string'||typeof f.verifier!=='string'){await this.cancel();return null;}
@@ -75,7 +76,7 @@ export class AuthFlow {
   if(link){
    const revision=this.api.revision,uid=this.api.session?.user?.id;await this.api.ensure();
    if(!uid||revision!==this.api.revision||this.api.session?.user?.id!==uid)throw new Error('계정이 변경되어 Google 연결 요청을 취소했습니다.');
-  }else if(this.api.session)throw new Error('내 프로필에서 Google 계정 연결을 이용하세요.');
+  }else if(this.api.session)throw new Error('계정을 바꾸려면 먼저 로그아웃한 뒤 Google 로그인을 이용하세요.');
   const f=await this.prepare(link?'google-link':'google'),query=new URLSearchParams({provider:'google',redirect_to:f.redirectTo,code_challenge:f.challenge,code_challenge_method:'s256'});
   let url=this.api.config.url+'/auth/v1/authorize?'+query;
   try{
@@ -88,18 +89,18 @@ export class AuthFlow {
  }
  complete(value){const task=this.serial.then(()=>this.consume(value));this.serial=task.catch(()=>{});return task;}
  async consume(value){
-  const f=await this.read();if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
+  const f=await this.read();if(f&&!['google','google-link'].includes(f.kind)){await this.cancel();const error=new Error('Google 로그인을 새로 시작하세요.');error.code='google_only';throw error;}if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
   if(!authReturnAllowed(value,f.base))throw new Error('잘못된 인증 반환 주소입니다.');
   const u=new URL(value);if(u.searchParams.getAll('solaris_state').length!==1||u.searchParams.get('solaris_state')!==f.state)throw new Error('다른 로그인 요청의 반환입니다. 다시 시작하세요.');
   if((this.api.session?.user?.id??null)!==f.uid)throw new Error('계정이 변경되어 이전 인증 요청을 취소했습니다.');
-  const code=u.searchParams.get('code');if(!u.searchParams.has('error')&&(u.searchParams.getAll('code').length!==1||!code||code.length>4096))throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
+  const code=u.searchParams.get('code');if(!u.searchParams.has('error')&&(u.searchParams.getAll('code').length!==1||!code||code.length>4096))throw new Error('인증 코드가 없습니다. Google 로그인을 다시 시작하세요.');
   try{
   if(u.searchParams.has('error'))throw authCallbackFailure(u.searchParams.get('error_code'));
   const revision=++this.api.revision,s=await this.api.auth('token?grant_type=pkce',{auth_code:code,code_verifier:f.verifier});
   if(f.uid&&s.user?.id!==f.uid)throw new Error('계정 연결은 기존 UID를 유지해야 합니다.');
   const user=await this.api.auth('user',undefined,s.access_token);if(user.id!==s.user?.id)throw new Error('인증된 계정을 확인하지 못했습니다.');s.user=user;
   if(revision!==this.api.revision||this.pending?.state!==f.state)throw new Error('로그인 요청이 취소되었습니다.');
-  await this.api.acceptSession(s,revision);await this.write(null);
+  await this.api.acceptSession(s,revision);if(revision!==this.api.revision||this.pending?.state!==f.state||this.api.session?.user?.id!==s.user.id)throw new Error('로그인 요청이 취소되었습니다.');await this.write(null);
   return{kind:f.kind,session:s};
   }catch(error){
    // Retire only this validated return. A failed request cannot be resumed after

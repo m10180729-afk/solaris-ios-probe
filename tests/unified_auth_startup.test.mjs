@@ -8,9 +8,10 @@ import {API} from '../shared/api.mjs';
 // fixture. The browser gate additionally exercises their actual DOM and bridge.
 const app=await readFile(new URL('../shared/app.mjs',import.meta.url),'utf8');
 const bootCode=app.slice(app.indexOf('async function boot(){'),app.indexOf('async function notify('));
-const callbackCode=app.slice(app.indexOf('async function ackNativeAuthReturn('),app.indexOf("bridge.addEventListener('event',e=>"));
+const googleControlsCode=app.slice(app.indexOf('function refreshGoogleLogin(){'),app.indexOf('function conversationKey('));
+const callbackCode=googleControlsCode+app.slice(app.indexOf('async function ackNativeAuthReturn('),app.indexOf("bridge.addEventListener('event',e=>"));
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-const session=()=>({user:{id:'returning-user'},access_token:'fixture-access',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+3600});
+const session=()=>({user:{id:'returning-user',is_anonymous:false,email_confirmed_at:'2026-10-14',app_metadata:{provider:'google',providers:['google']},identities:[{provider:'google',identity_data:{sub:'fixture-returning-user',email_verified:true}}]},access_token:'fixture-access',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+3600});
 function fixture(){
  const vault=new Map([['session','null']]),calls=[];
  const bridge={native:true,async call(command,args={}){
@@ -54,14 +55,14 @@ test('failed native callback ends the waiting UI and restores a visible retry st
  const{api,vault}=fixture();await api.init();const{pending}=await api.authFlow.prepare('google');
  const failure=new Error('fixture authentication failed');api.auth=async()=>{throw failure;};
  const nodes=new Map([
-  ['#auth-pending',{hidden:false}],['#google-login',{disabled:true}],
-  ['#onboarding-status',{textContent:''}],['#account-auth-status',{textContent:''}]
+  ['#auth-pending',{hidden:false}],['#google-login',{disabled:true}],['#google-session-recovery',{hidden:true}],['#google-panel',{hidden:false}],
+  ['#onboarding-status',{textContent:''}]
  ]);
  const context=createContext({api,bridge:api.bridge,authReady:Promise.resolve(),loggingOut:false,accountUIEpoch:0,googleBusy:true,providers:null,authReturnQueue:Promise.resolve(),authReturnSeen:false,authReturns:new Set(),$:selector=>nodes.get(selector)});
  runInContext(callbackCode,context);
  await assert.rejects(context.receiveAuthReturn(pending.base+'?solaris_state='+pending.state+'&code=fixture-code'),e=>e===failure);
  assert.equal(nodes.get('#auth-pending').hidden,true);assert.equal(nodes.get('#google-login').disabled,false);assert.equal(context.googleBusy,false);
- assert.match(nodes.get('#onboarding-status').textContent,/다시 시도/);assert.match(nodes.get('#account-auth-status').textContent,/다시 시도/);
+ assert.match(nodes.get('#onboarding-status').textContent,/다시 시도/);
  assert.equal(api.session,null);assert.equal(JSON.parse(vault.get('auth-flow')),null);
  assert.equal(await api.authFlow.resume(),null,'A processed failure must not return to waiting after restart');
  const duplicate=await context.receiveAuthReturn(pending.base+'?solaris_state='+pending.state+'&code=fixture-code');
@@ -73,7 +74,7 @@ test('foreground recovers a queued native callback, acknowledges its exact URL a
  const returned=pending.base+'?solaris_state='+pending.state+'&code=fixture-code';let queued=returned;
  const nativeCall=api.bridge.call;api.bridge.call=async(command,args)=>{if(command==='authTake'){calls.push({command});return queued;}if(command==='authAck'){calls.push({command,url:args.url});if(queued===args.url)queued=null;return true;}return nativeCall(command,args);};
  const failure=new Error('fixture authentication failed');api.auth=async()=>{throw failure;};
- const nodes=new Map([['#auth-pending',{hidden:false}],['#google-login',{disabled:true}],['#onboarding-status',{textContent:''}]]),errors=[];let polls=0;
+ const nodes=new Map([['#auth-pending',{hidden:false}],['#google-login',{disabled:true}],['#google-session-recovery',{hidden:true}],['#google-panel',{hidden:false}],['#onboarding-status',{textContent:''}]]),errors=[];let polls=0;
  const context=createContext({api,bridge:api.bridge,authReady:Promise.resolve(),loggingOut:false,accountUIEpoch:0,googleBusy:true,providers:null,authReturnQueue:Promise.resolve(),authReturnSeen:false,authReturns:new Set(),$:selector=>nodes.get(selector),error:e=>errors.push(e),poll:async()=>polls++});
  runInContext(callbackCode,context);await context.foreground();
  assert.equal(queued,null);assert.deepEqual(errors,[failure]);assert.equal(polls,1);assert.equal(nodes.get('#auth-pending').hidden,true);

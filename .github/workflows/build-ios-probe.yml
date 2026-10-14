@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build65-rtp-test-evidence
+          name: Solaris-build66-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -98,10 +98,10 @@ jobs:
       - name: Upload Windows Solaris app
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-build65
+          name: Solaris-Windows-build66
           path: |
             dist/native/
-            dist/windows/Solaris-Windows-build65-Setup.exe
+            dist/windows/Solaris-Windows-build66-Setup.exe
           if-no-files-found: error
           retention-days: 7
   browser-test:
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build65-unified-test-evidence
+          name: Solaris-build66-unified-test-evidence
           path: |
             build/build54-capture-evidence/results.json
             build/build54-engine-evidence/results.json
@@ -172,40 +172,40 @@ jobs:
           python3 scripts/prepare_unified.py
           gradle -p android :app:testDebugUnitTest :app:assembleDebug
           mkdir -p dist/android
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build65-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/android/Solaris-Android-build65-debug.apk > dist/android/Solaris-Android-build65-signature.txt
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/android/Solaris-Android-build65-debug.apk > dist/android/Solaris-Android-build65-metadata.txt
-          python3 -m unittest discover -s tests -p 'test_android_pages.py' -v 2>&1 | tee dist/android/Solaris-Android-build65-16kb-tests.txt
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build66-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/android/Solaris-Android-build66-debug.apk > dist/android/Solaris-Android-build66-signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/android/Solaris-Android-build66-debug.apk > dist/android/Solaris-Android-build66-metadata.txt
+          python3 -m unittest discover -s tests -p 'test_android_pages.py' -v 2>&1 | tee dist/android/Solaris-Android-build66-16kb-tests.txt
           SOLARIS_ELF_EXIT=0
-          python3 scripts/check_android_pages.py --phone-apk --receive-only --apk dist/android/Solaris-Android-build65-debug.apk --output dist/android/Solaris-Android-build65-16kb-elf.json || SOLARIS_ELF_EXIT=$?
+          python3 scripts/check_android_pages.py --phone-apk --receive-only --apk dist/android/Solaris-Android-build66-debug.apk --output dist/android/Solaris-Android-build66-16kb-elf.json || SOLARIS_ELF_EXIT=$?
           SOLARIS_ZIP_EXIT=0
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 dist/android/Solaris-Android-build65-debug.apk > dist/android/Solaris-Android-build65-16kb-zip.txt || SOLARIS_ZIP_EXIT=$?
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 dist/android/Solaris-Android-build66-debug.apk > dist/android/Solaris-Android-build66-16kb-zip.txt || SOLARIS_ZIP_EXIT=$?
           if [ "$SOLARIS_ELF_EXIT" -ne 0 ] || [ "$SOLARIS_ZIP_EXIT" -ne 0 ]; then exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Android-build65-debug
+          name: Solaris-Android-build66-debug
           path: |
-            dist/android/Solaris-Android-build65-debug.apk
-            dist/android/Solaris-Android-build65-signature.txt
-            dist/android/Solaris-Android-build65-metadata.txt
-            dist/android/Solaris-Android-build65-16kb-elf.json
-            dist/android/Solaris-Android-build65-16kb-zip.txt
-            dist/android/Solaris-Android-build65-16kb-tests.txt
+            dist/android/Solaris-Android-build66-debug.apk
+            dist/android/Solaris-Android-build66-signature.txt
+            dist/android/Solaris-Android-build66-metadata.txt
+            dist/android/Solaris-Android-build66-16kb-elf.json
+            dist/android/Solaris-Android-build66-16kb-zip.txt
+            dist/android/Solaris-Android-build66-16kb-tests.txt
           if-no-files-found: error
           retention-days: 7
       - name: Keep Android test and signing evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Android-build65-test-evidence
+          name: Solaris-Android-build66-test-evidence
           path: |
             android/app/build/test-results/testDebugUnitTest/
             android/app/build/reports/tests/testDebugUnitTest/
-            dist/android/Solaris-Android-build65-signature.txt
-            dist/android/Solaris-Android-build65-metadata.txt
-            dist/android/Solaris-Android-build65-16kb-elf.json
-            dist/android/Solaris-Android-build65-16kb-zip.txt
-            dist/android/Solaris-Android-build65-16kb-tests.txt
+            dist/android/Solaris-Android-build66-signature.txt
+            dist/android/Solaris-Android-build66-metadata.txt
+            dist/android/Solaris-Android-build66-16kb-elf.json
+            dist/android/Solaris-Android-build66-16kb-zip.txt
+            dist/android/Solaris-Android-build66-16kb-tests.txt
           if-no-files-found: warn
           retention-days: 7
   build:
@@ -252,7 +252,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build65-xcode-evidence
+          name: Solaris-build66-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -261,9 +261,9 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.4.0-build65-integrated
+          name: Solaris-0.4.0-build66-integrated
           path: |
-            dist/Solaris-0.4.0-build65-resign.ipa
+            dist/Solaris-0.4.0-build66-resign.ipa
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3

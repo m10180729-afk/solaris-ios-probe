@@ -7,7 +7,7 @@ import vm from 'node:vm';
 
 test('linked identity failure explains the conflict without accepting or moving an account',async()=>{
  const records=new Map(),api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},{native:true,async call(command,args){if(command==='platform')return{platform:'ios'};if(command==='vaultSet')records.set(args.key,args.value);if(command==='vaultGet')return records.get(args.key);return true;}},{});
- api.session={user:{id:'current'},access_token:'fixture',expires_at:Date.now()/1000+3600};
+api.session={user:{id:'current',is_anonymous:false,email_confirmed_at:'2026-10-14',identities:[{provider:'google'}]},access_token:'fixture',expires_at:Date.now()/1000+3600};
  const {pending:f}=await api.authFlow.prepare('google-link');let exchanges=0;api.auth=async()=>{exchanges++;};
  await assert.rejects(api.authReturn(f.base+'?solaris_state='+f.state+'&error=oauth_callback_error&error_code=identity_already_exists'),e=>e.code==='identity_already_exists'&&/자동으로 합쳐지지/.test(e.message));
  assert.equal(exchanges,0);assert.equal(api.session.user.id,'current');assert.equal(api.authFlow.pending,null);
@@ -17,10 +17,10 @@ test('linked identity failure explains the conflict without accepting or moving 
 
 test('foreign provider failure preserves the current pending request and account',async()=>{
  const api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},{native:true,async call(command){if(command==='platform')return{platform:'android'};return true;}},{});
- api.session={user:{id:'current'}};const{pending:f}=await api.authFlow.prepare('google-link');
+ api.session={user:{id:'current',is_anonymous:false,email_confirmed_at:'2026-10-14',identities:[{provider:'google'}]}};const{pending:f}=await api.authFlow.prepare('google-link');
  await assert.rejects(api.authReturn(f.base+'?solaris_state='+crypto.randomUUID()+'&error=oauth_callback_error&error_code=identity_already_exists'),/다른 로그인 요청/);
  assert.equal(api.authFlow.pending.state,f.state);assert.equal(api.session.user.id,'current');
- api.session={user:{id:'changed'}};
+ api.session={user:{id:'changed',is_anonymous:false,email_confirmed_at:'2026-10-14',identities:[{provider:'google'}]}};
  await assert.rejects(api.authReturn(f.base+'?solaris_state='+f.state+'&error=oauth_callback_error'),/계정이 변경/);
  assert.equal(api.authFlow.pending.state,f.state);assert.equal(api.session.user.id,'changed');
 });

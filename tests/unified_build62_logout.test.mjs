@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {API} from '../shared/api.mjs';
 
-const session=(seconds=3600)=>({user:{id:'existing-uid'},access_token:'fixture-token',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+seconds});
+const session=(seconds=3600)=>({user:{id:'existing-uid',is_anonymous:false,email_confirmed_at:'2026-10-14',app_metadata:{provider:'google',providers:['google']},identities:[{provider:'google',identity_data:{sub:'fixture-existing-uid',email_verified:true}}]},access_token:'fixture-token',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+seconds});
 function fixture(){
  const records=new Map([['messages:existing-uid',{text:'private history'}],['auth-flow',{state:'pending',verifier:'fixture-verifier'}]]);
  const api=new API({url:'https://fixture.supabase.co',key:'sb_publishable_fixture'},{native:false},{get:async k=>structuredClone(records.get(k)),set:async(k,v)=>records.set(k,structuredClone(v))});
@@ -24,10 +24,10 @@ test('late account inspection cannot persist a session after sign-out',async()=>
  const{api,records}=fixture(),pending=deferred(),started=deferred();api.auth=async()=>{started.resolve();await pending.promise;return{id:'existing-uid'};};
  const result=api.account();const rejected=assert.rejects(result,/취소/);await started.promise;await api.clearSession();pending.resolve();await rejected;assert.equal(api.session,null);assert.equal(records.get('auth'),null);
 });
-test('late profile update cannot resurrect authentication after sign-out',async()=>{
- const{api,records}=fixture(),pending=deferred(),started=deferred();const original=globalThis.fetch;
- globalThis.fetch=async()=>{started.resolve();await pending.promise;return Response.json({id:'existing-uid',email:'fixture@example.test'});};
- try{const result=api.updateUser({email:'fixture@example.test'}),rejected=assert.rejects(result,/취소/);await started.promise;await api.clearSession();pending.resolve();await rejected;assert.equal(api.session,null);assert.equal(records.get('auth'),null);}finally{globalThis.fetch=original;}
+test('late unique-ID profile update cannot persist results after sign-out',async()=>{
+ const{api,records}=fixture(),pending=deferred(),started=deferred(),original=globalThis.fetch;
+ globalThis.fetch=async()=>{started.resolve();await pending.promise;return Response.json({uid:'existing-uid',user_id:'new_id'});};
+ try{const result=api.changeID('new_id'),rejected=assert.rejects(result,/취소/);await started.promise;await api.clearSession();pending.resolve();await rejected;assert.equal(api.session,null);assert.equal(records.get('auth'),null);}finally{globalThis.fetch=original;}
 });
 test('late stored-session read is invalidated by sign-out',async()=>{
  const{api,records}=fixture(),pending=deferred();api.ledger.get=async()=>{await pending.promise;return session();};const init=api.init();await api.clearSession();pending.resolve();await init;assert.equal(api.session,null);assert.equal(records.get('auth'),null);
@@ -66,8 +66,7 @@ test('logging back into the same UID cannot accept an earlier session response',
  };
  try{
   const request=api.rpc('profile'),rejected=assert.rejects(request,/인증 상태가 변경.*취소/);
-  await started.promise;await api.logout();api.accountFunction=async()=>({...session(),access_token:'new-login-token'});
-  await api.login('fixture_id','fixture-password');pending.resolve();await rejected;
+  await started.promise;await api.logout();await api.acceptSession({...session(),access_token:'new-login-token'},++api.revision);pending.resolve();await rejected;
   assert.equal(api.session.user.id,'existing-uid');assert.equal(api.session.access_token,'new-login-token');
   assert.deepEqual(await api.rpc('profile'),{nickname:'current session result'});
  }finally{globalThis.fetch=original;}
@@ -76,11 +75,10 @@ test('logging back into the same UID cannot accept an earlier session response',
 test('an old request waiting for refresh cannot be sent under a later same-UID login',async()=>{
  const{api}=fixture(),pending=deferred(),started=deferred(),original=globalThis.fetch;let rpcCalls=0;api.session=session(-1);
  api.auth=async path=>{if(path.includes('refresh_token')){started.resolve();await pending.promise;return session();}return{...session(),access_token:'new-login-token'};};
- api.accountFunction=async()=>({...session(),access_token:'new-login-token'});
  globalThis.fetch=async(url,options)=>{if(String(url).includes('/rest/v1/rpc/')&&JSON.parse(options.body).action!=='presence_leave')rpcCalls++;return new Response(null,{status:204});};
  try{
   const request=api.rpc('friend_request',{target:'old-friend'}),rejected=assert.rejects(request,/인증 상태가 변경.*취소/);
-  await started.promise;await api.logout();await api.login('fixture_id','fixture-password');pending.resolve();await rejected;
+  await started.promise;await api.logout();await api.acceptSession({...session(),access_token:'new-login-token'},++api.revision);pending.resolve();await rejected;
   assert.equal(rpcCalls,0);assert.equal(api.session.access_token,'new-login-token');
  }finally{globalThis.fetch=original;}
 });

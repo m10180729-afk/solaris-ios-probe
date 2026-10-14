@@ -107,7 +107,7 @@ def inspect_apk(path, phone_apk=False, receive_only=False):
             phone_errors.append("Phone APK must contain arm64-v8a native libraries")
         if abis - PHONE_ABIS:
             phone_errors.append("Phone APK must exclude non-phone ABIs: " + ", ".join(sorted(abis - PHONE_ABIS)))
-    return {"build": 65, "apk": Path(path).name, "page_size": PAGE_SIZE, "libraries": libraries,
+    return {"build": 66, "apk": Path(path).name, "page_size": PAGE_SIZE, "libraries": libraries,
             "receive_only": receive_only,"receive_only_policy_passed":receive_only and not libraries,
             "native_alignment_required":not receive_only,
             "required_16kb_abis": sorted(REQUIRED_ABIS), "native_elf_integrity": integrity,

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-7yxA8LD6hMhVczsWvJ2gCaTnECKv+6FBOiBfqz/LgSY='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-o26Fwg/aSD8nN4PaX8K9Zh6FjTOqIYKexGvE5j7AS7E='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Solaris</title><style>:root{color-scheme:dark;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#1e1f22;color:#f2f3f5;--muted:#949ba4;--accent:#5865f2;--line:#3f4147;--top:32px}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid transparent;border-radius:4px;padding:8px 12px;background:#41434b;color:inherit;transition:background .12s}button:hover{background:#50535d}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fa9ff;outline-offset:2px}input,select{border:0;border-radius:4px;padding:10px 12px;background:#1e1f22;color:inherit;max-width:100%;min-width:0}h1{font-size:17px;margin:0}h2{font-size:12px;color:var(--muted);margin:18px 0 8px}p{margin:10px 0}.spacer{flex:1}.muted{color:var(--muted);font-size:12px}.primary{background:var(--accent)}.primary:hover{background:#4752c4}.file-action{background:#3f4659}.danger{color:#ff9fa6;background:#f0717812;border-color:#b95b6355}.danger:hover{background:#a43844;color:#fff}.text-button{color:#aab1ff;background:transparent}.text-button:hover{background:#35373e}.count-badge{border-radius:10px;background:#da373c;color:#fff;font-size:10px;padding:1px 6px}.app-header{display:flex;align-items:center;gap:10px;height:var(--top);padding:0 12px;background:#1e1f22;font-size:12px;user-select:none}.brand-mark{color:#b1b7ff}.version-tag{font-size:10px;color:var(--muted)}[hidden]{display:none!important}#workspace{display:grid;grid-template-columns:72px 240px minmax(0,1fr) 232px;height:calc(100dvh - var(--top));min-height:0}#error{background:#71363e;color:#fff0f0;padding:10px 16px;white-space:pre-wrap;position:fixed;top:var(--top);right:12px;max-width:min(600px,94vw);z-index:30;border-radius:5px;box-shadow:0 6px 20px #0005}
 #server-rail{background:#1e1f22;padding:12px 10px;display:flex;align-items:center;flex-direction:column;gap:8px;overflow:auto}#server-rail button{display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;border-radius:50%;background:#313338;font-size:19px;font-weight:650;position:relative;flex-shrink:0}#server-rail button:hover,#server-rail button.active{background:var(--accent);border-radius:16px}#server-rail button.active:before{content:"";position:absolute;left:-10px;height:30px;width:4px;border-radius:0 4px 4px 0;background:#f2f3f5}#server-rail .home-icon{color:#c5caff}#server-rail .rail-add{color:#3ba55c}#server-rail .rail-add:hover{background:#24805e;color:#fff}#servers{display:flex;flex-direction:column;gap:8px}.rail-divider{width:32px;height:2px;background:#35363c;margin:2px 0;flex-shrink:0}
@@ -291,6 +291,8 @@ dialog.context-dialog #dialog-close{width:28px;height:28px;padding:4px}.context-
 .context-actions button,.context-menu .action-menu>button{display:flex;align-items:center;justify-content:space-between!important;min-height:36px;padding:8px 10px;background:transparent;font-size:14px;border-radius:6px;text-align:left}
 .context-actions button:hover,.context-menu .action-menu>button:hover{background:#5865f2;color:#fff}.context-actions .danger:hover{background:#da373c}.context-actions p{font-size:12px;line-height:1.5;padding:4px 10px;color:var(--muted)}
 .auth-card{background:#242429;border-color:#373740;border-radius:12px;padding:32px;max-width:480px}.auth-card h1{font-size:24px}.auth-card>p{font-size:14px}.auth-logo{font-size:42px}.auth-tabs{gap:8px}.auth-tabs button{min-height:36px;border-radius:6px}.auth-tabs button.active{background:#3a3a42}
+.google-login-help{color:var(--muted);font-size:14px;line-height:1.6;text-align:center;margin:20px 0 18px}#google-login{width:100%;min-height:48px}#register{margin-top:24px}#register>.text-button{min-height:44px;font-weight:500}.account-summary{overflow-wrap:anywhere}
+#deletion-pending-panel{margin-top:22px;padding-top:16px;border-top:1px solid #66343d}#deletion-pending-title{font-size:17px;color:#ff9fa6;margin:0 0 12px}#deletion-pending-panel p{font-size:14px;line-height:1.6}#deletion-pending-panel .form-help{font-size:12px}.deletion-pending-actions{display:flex;flex-direction:column;gap:8px;margin:18px 0}.deletion-pending-actions button{min-height:44px}
 .auth-divider{font-size:12px}.auth-divider:before,.auth-divider:after{background:var(--line)}.google-button{border-radius:8px;min-height:44px}
 @media(max-width:1180px) and (min-width:761px){
  #workspace,#workspace:has(#stage[data-page=friends]){grid-template-columns:72px 224px minmax(0,1fr)}.self-profile,.sidebar-connection{width:280px}
@@ -356,13 +358,10 @@ dialog.context-dialog::backdrop{background:transparent}
 <header class="app-header"><strong><img class="brand-logo" src="logo.png" alt=""> Solaris</strong><span class="spacer"></span><nav id="window-controls" aria-label="Windows 창 조절" hidden><button data-action="window-minimize" data-icon="minimize" aria-label="창 최소화" title="창 최소화"></button><button id="window-maximize" data-action="window-maximize" data-icon="maximize" aria-label="창 최대화" title="창 최대화"></button><button id="window-fullscreen" data-action="window-fullscreen" data-icon="full" aria-label="앱 전체화면" title="앱 전체화면 · F11"></button><button data-action="window-close" data-icon="close" aria-label="창 닫기" title="창 닫기"></button></nav></header>
 <div id="error" role="alert" hidden></div>
 <section id="onboarding" class="auth-card" hidden>
-<img class="auth-logo" src="logo.png" alt="Solaris 로고"><h1>Solaris에 오신 것을 환영해요</h1><p class="muted">친구와 화면을 공유하고 원본 파일을 주고받으세요.</p>
-<nav class="auth-tabs" aria-label="계정"><button data-action="auth-login">로그인</button><button data-action="auth-signup">계정 만들기</button><button data-action="auth-recover">계정 복구</button></nav><div id="google-panel"><button id="google-login" data-action="google-login" class="google-button"><span class="google-mark" aria-hidden="true">G</span> Google로 계속하기</button><div class="auth-divider"><span>또는 ID로 계속하기</span></div></div><p id="onboarding-status" role="status"></p><div id="auth-pending" role="status" hidden>브라우저에서 인증을 마치면 Solaris로 돌아와요. <button data-action="auth-cancel-flow" class="text-button">인증 요청 취소</button></div>
-<form id="login" class="stack-form"><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="가입할 때 정한 ID" required></label><label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">로그인</button><button type="button" data-action="auth-reset" class="text-button">비밀번호를 잊으셨나요?</button></form>
-<form id="email-register" class="stack-form" hidden><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문·숫자·밑줄 3–32자" required></label><label>닉네임<input name="nickname" maxlength="32" autocomplete="nickname" required></label><label>비밀번호<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><label>인증·복구 이메일<input name="email" type="email" autocomplete="email" required></label><p class="form-help">ID와 비밀번호로 로그인해요. 이메일은 가입 확인과 계정 복구에 사용합니다.</p><button class="primary">계정 만들기</button></form>
-<form id="register" class="stack-form" hidden><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" placeholder="영문·숫자·밑줄 3–32자" required></label><label>닉네임<input name="nickname" maxlength="32" required></label><p class="muted" id="quick-help">로그인한 계정에 사용할 ID와 닉네임을 설정하세요.</p><button class="primary">프로필 저장</button></form>
-<form id="recover" class="stack-form" hidden><label>등록한 이메일<input name="email" type="email" autocomplete="email" required></label><button class="primary">인증 코드 받기</button></form>
-<form id="verify" class="stack-form" hidden><h2 id="verify-title">이메일 인증</h2><label>이메일<input name="email" type="email" required></label><label>이메일 인증 코드<input name="token" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6,10}" minlength="6" maxlength="10" required></label><p class="form-help">메일의 인증 링크를 열거나, 메일에 표시된 인증 코드를 입력하세요.</p><button class="primary">인증 완료</button><button type="button" data-action="auth-resend" class="text-button">인증 메일 다시 받기</button></form>
+<img class="auth-logo" src="logo.png" alt="Solaris 로고"><h1 id="onboarding-title">Solaris에 오신 것을 환영해요</h1><p class="muted">친구와 화면을 공유하고 원본 파일을 주고받으세요.</p>
+<div id="google-panel"><p class="google-login-help">Google 계정으로 가입하고 로그인하세요.<br>다른 기기에서도 같은 Google 계정으로 계속할 수 있어요.</p><button id="google-login" data-action="google-login" class="google-button"><span class="google-mark" aria-hidden="true">G</span> Google로 계속하기</button><div id="google-session-recovery" class="stack-form" hidden><p class="form-help">이 기기에 이전 로그인 정보가 남아 있어요. 다시 인증하려면 로그아웃한 뒤 같은 Google 계정으로 계속하세요. 친구·서버·메시지는 삭제되지 않습니다.</p><button type="button" data-action="logout" class="text-button">이 기기에서 로그아웃</button></div></div><p id="onboarding-status" role="status"></p><div id="auth-pending" role="status" hidden>브라우저에서 인증을 마치면 Solaris로 돌아와요. <button data-action="auth-cancel-flow" class="text-button">인증 요청 취소</button></div>
+<form id="register" class="stack-form" hidden><label>고유 ID<input name="user_id" minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]{3,32}" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="영문·숫자·밑줄 3–32자" required></label><label>닉네임<input name="nickname" maxlength="32" autocomplete="nickname" required></label><p class="form-help" id="quick-help">고유 ID는 프로필과 친구 검색에 사용합니다. 로그인에는 Google 계정을 사용해요.</p><button class="primary">프로필 저장</button><button type="button" data-action="logout" class="text-button">다른 Google 계정 사용</button></form>
+<section id="deletion-pending-panel" aria-labelledby="deletion-pending-title" hidden><h2 id="deletion-pending-title">계정 삭제 정리가 필요해요</h2><p>삭제가 시작됐지만 서버 정리가 완료되지 않았어요. 일부 데이터가 이미 삭제됐을 수 있습니다. 같은 계정의 삭제를 다시 시도하세요.</p><div class="deletion-pending-actions"><button type="button" data-action="account-delete-confirm" class="danger">계정 삭제 다시 시도</button><button type="button" data-action="logout" class="text-button">이 기기에서 로그아웃</button></div><p class="form-help">앱을 다시 열어도 이 화면에서 계속할 수 있어요. 로그아웃한 경우 같은 Google 계정으로 로그인하면 정리를 이어서 처리할 수 있습니다.</p></section>
 </section>
 <main id="workspace" hidden>
 <nav id="server-rail" aria-label="서버 탐색"><button data-action="friends" class="home-icon" aria-label="친구" title="친구"><img src="logo.png" alt="" class="rail-logo"></button><div class="rail-divider"></div><div id="servers"></div><button data-action="server-create" class="rail-add" aria-label="서버 만들기" title="서버 만들기">＋</button><button data-action="server-join" class="rail-add" aria-label="초대코드로 참여" title="초대코드로 참여">↪</button></nav>
@@ -374,8 +373,8 @@ dialog.context-dialog::backdrop{background:transparent}
 <nav id="mobile-tabs" class="mobile-tabs" aria-label="주요 메뉴" hidden><button data-action="mobile-menu" data-icon="message" aria-label="대화와 채널 목록"><span>대화</span></button><button data-action="mobile-friends" data-icon="friends" aria-label="친구 목록"><span>친구</span></button><button data-action="mobile-files" data-icon="files" aria-label="파일 전송 기록"><span>파일</span></button><button data-action="mobile-profile" data-icon="user" aria-label="내 프로필"><span>나</span></button></nav>
 <dialog id="dialog" aria-labelledby="dialog-title"><button id="dialog-close" class="close" aria-label="대화상자 닫기">✕</button><div id="dialog-content"></div></dialog>
 <script>(async()=>{
-// Public project key, never a service-role key. Use verified Google or ID/password Auth and apply backend/001 through 005.
-const config={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',version:'0.4.0-build65',repository:'m10180729-afk/solaris-ios-probe'};
+// Public project key, never a service-role key. Use verified Google OAuth only and apply backend/001 through 006.
+const config={url:'https://lfwjkaipghctigswxoxq.supabase.co',key:'sb_publishable_9l6DiLw0Rk3kf3Sdci7tyQ_PW44fH17',version:'0.4.0-build66',repository:'m10180729-afk/solaris-ios-probe'};
 
 // Incremental SHA-256. A checkpoint is <400 bytes, regardless of file size.
 const K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
@@ -390,7 +389,7 @@ class SHA256 {
 
 
 const MAX_FILE_BYTES=100*1024**2;
-const VERSION='0.4.0-build65';
+const VERSION='0.4.0-build66';
 function readSettings(text){let v;try{v=JSON.parse(text??'{}');}catch{v={};}if(!v||typeof v!=='object')v={};return{maxReceive:Number.isInteger(v.maxReceive)&&v.maxReceive>=1&&v.maxReceive<=5?v.maxReceive:4,updateChannel:['stable','test'].includes(v.updateChannel)?v.updateChannel:'test',preventDuplicates:v.preventDuplicates!==false};}
 const uuid=()=>crypto.randomUUID();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -478,6 +477,7 @@ class AuthFlow {
   const u=new URL(globalThis.location.href);if(!/^https?:$/.test(u.protocol))throw new Error('로그인은 설치된 Solaris 앱에서 진행하세요.');u.search='';u.hash='';return u.href;
  }
  async prepare(kind,{email=null,uid=this.api.session?.user?.id??null}={}){
+  if(!['google','google-link'].includes(kind)){const error=new Error('Google 계정으로만 가입하고 로그인할 수 있어요.');error.code='google_only';throw error;}
   const generation=++this.generation;
   const base=await this.redirect(),state=crypto.randomUUID(),verifier=authBase64(crypto.getRandomValues(new Uint8Array(48)));
   const challenge=authBase64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
@@ -495,7 +495,7 @@ class AuthFlow {
  async resume(){
   const generation=this.generation;
   const f=await this.read();if(!f)return null;
-  if(!Number.isFinite(f.expires)||typeof f.kind!=='string'||Date.now()>f.expires||(this.api.session?.user?.id??null)!==f.uid){await this.cancel();return null;}
+  if(!Number.isFinite(f.expires)||!['google','google-link'].includes(f.kind)||Date.now()>f.expires||(this.api.session?.user?.id??null)!==f.uid){await this.cancel();return null;}
   const base=await this.redirect();
   if(generation!==this.generation||this.pending?.state!==f.state)return null;
   if(f.base!==base||typeof f.state!=='string'||typeof f.verifier!=='string'){await this.cancel();return null;}
@@ -507,7 +507,7 @@ class AuthFlow {
   if(link){
    const revision=this.api.revision,uid=this.api.session?.user?.id;await this.api.ensure();
    if(!uid||revision!==this.api.revision||this.api.session?.user?.id!==uid)throw new Error('계정이 변경되어 Google 연결 요청을 취소했습니다.');
-  }else if(this.api.session)throw new Error('내 프로필에서 Google 계정 연결을 이용하세요.');
+  }else if(this.api.session)throw new Error('계정을 바꾸려면 먼저 로그아웃한 뒤 Google 로그인을 이용하세요.');
   const f=await this.prepare(link?'google-link':'google'),query=new URLSearchParams({provider:'google',redirect_to:f.redirectTo,code_challenge:f.challenge,code_challenge_method:'s256'});
   let url=this.api.config.url+'/auth/v1/authorize?'+query;
   try{
@@ -520,18 +520,18 @@ class AuthFlow {
  }
  complete(value){const task=this.serial.then(()=>this.consume(value));this.serial=task.catch(()=>{});return task;}
  async consume(value){
-  const f=await this.read();if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
+  const f=await this.read();if(f&&!['google','google-link'].includes(f.kind)){await this.cancel();const error=new Error('Google 로그인을 새로 시작하세요.');error.code='google_only';throw error;}if(!f||Date.now()>f.expires)throw new Error('로그인 요청이 만료되었습니다. 다시 시작하세요.');
   if(!authReturnAllowed(value,f.base))throw new Error('잘못된 인증 반환 주소입니다.');
   const u=new URL(value);if(u.searchParams.getAll('solaris_state').length!==1||u.searchParams.get('solaris_state')!==f.state)throw new Error('다른 로그인 요청의 반환입니다. 다시 시작하세요.');
   if((this.api.session?.user?.id??null)!==f.uid)throw new Error('계정이 변경되어 이전 인증 요청을 취소했습니다.');
-  const code=u.searchParams.get('code');if(!u.searchParams.has('error')&&(u.searchParams.getAll('code').length!==1||!code||code.length>4096))throw new Error('인증 코드가 없습니다. 이메일의 코드로 인증하거나 다시 요청하세요.');
+  const code=u.searchParams.get('code');if(!u.searchParams.has('error')&&(u.searchParams.getAll('code').length!==1||!code||code.length>4096))throw new Error('인증 코드가 없습니다. Google 로그인을 다시 시작하세요.');
   try{
   if(u.searchParams.has('error'))throw authCallbackFailure(u.searchParams.get('error_code'));
   const revision=++this.api.revision,s=await this.api.auth('token?grant_type=pkce',{auth_code:code,code_verifier:f.verifier});
   if(f.uid&&s.user?.id!==f.uid)throw new Error('계정 연결은 기존 UID를 유지해야 합니다.');
   const user=await this.api.auth('user',undefined,s.access_token);if(user.id!==s.user?.id)throw new Error('인증된 계정을 확인하지 못했습니다.');s.user=user;
   if(revision!==this.api.revision||this.pending?.state!==f.state)throw new Error('로그인 요청이 취소되었습니다.');
-  await this.api.acceptSession(s,revision);await this.write(null);
+  await this.api.acceptSession(s,revision);if(revision!==this.api.revision||this.pending?.state!==f.state||this.api.session?.user?.id!==s.user.id)throw new Error('로그인 요청이 취소되었습니다.');await this.write(null);
   return{kind:f.kind,session:s};
   }catch(error){
    // Retire only this validated return. A failed request cannot be resumed after
@@ -549,13 +549,40 @@ class AuthFlow {
 
 
 
+function googleOnlyError(){const e=new Error('Solaris는 Google 계정으로만 가입하고 로그인할 수 있어요. Google로 계속하기를 눌러주세요.');e.code='google_only';return e;}
+function isGoogleUser(user){
+ if(!user?.id||user.is_anonymous===true||!user.email_confirmed_at)return false;
+ if(Array.isArray(user.identities))return user.identities.some(identity=>identity.provider==='google');
+ return user.app_metadata?.provider==='google'||user.app_metadata?.providers?.includes('google')===true;
+}
 class API extends EventTarget {
- constructor(config,bridge,ledger){super();if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.url)||!/^sb_publishable_/.test(config.key))throw new Error('Invalid project configuration');this.config=config;this.bridge=bridge;this.ledger=ledger;this.session=null;this.revision=0;this.saveQueue=Promise.resolve();this.authFlow=new AuthFlow(this);this.deviceId=crypto.randomUUID();}
+ constructor(config,bridge,ledger){super();if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.url)||!/^sb_publishable_/.test(config.key))throw new Error('Invalid project configuration');this.config=config;this.bridge=bridge;this.ledger=ledger;this.session=null;this.revision=0;this.saveQueue=Promise.resolve();this.authFlow=new AuthFlow(this);this.deviceId=crypto.randomUUID();this.deletionPending=false;}
  async save(){const session=this.session,revision=this.revision;if(session&&!session.expires_at)session.expires_at=Date.now()/1000+(session.expires_in??3600);const next=this.saveQueue.then(async()=>{if(revision!==this.revision||session!==this.session)return;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:JSON.stringify(session)});else await this.ledger.set('auth',session);this.dispatchEvent(new Event('auth'));});this.saveQueue=next.catch(()=>{});await next;}
- async init(){const revision=++this.revision;let stored=this.bridge.native?await this.bridge.call('vaultGet',{key:'session'}):await this.ledger.get('auth');if(revision!==this.revision)return;this.session=typeof stored==='string'?JSON.parse(stored):stored;if(this.session)await this.ensure();}
- async auth(path,body,bearer=false,options={}){const url=new URL(this.config.url+'/auth/v1/'+path);if(options.redirectTo)url.searchParams.set('redirect_to',options.redirectTo);const token=typeof bearer==='string'?bearer:bearer?this.session?.access_token:null;const r=await fetch(url.href,{method:options.method??(body?'POST':'GET'),headers:{apikey:this.config.key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined,redirect:'error',signal:requestTimeout()});const v=await r.json();if(!r.ok){const e=new Error(v.msg||v.message||v.error_description||'인증 실패');e.code=v.code??v.error_code;e.status=r.status;throw e;}return v;}
- async signup(){const revision=++this.revision,session=await this.auth('signup',{});return this.acceptSession(session,revision);}
- async ensure(){if(!this.session)throw new Error('Authentication required');if(this.session.expires_at*1000>Date.now()+90000)return;if(this.bridge.native){const raw=await this.bridge.call('vaultGet',{key:'session'});const s=typeof raw==='string'?JSON.parse(raw):raw;if(s?.user?.id===this.session.user.id&&s.expires_at>this.session.expires_at)this.session=s;}if(this.session.expires_at*1000>Date.now()+90000)return;if(!this.refreshing){const revision=this.revision,uid=this.session.user.id;this.refreshing=(async()=>{const session=await this.auth('token?grant_type=refresh_token',{refresh_token:this.session.refresh_token});if(revision!==this.revision)return;if(session.user?.id!==uid)throw new Error('갱신된 계정이 일치하지 않습니다.');this.session=session;await this.save();})().finally(()=>this.refreshing=null);}await this.refreshing;}
+ async init(){const revision=++this.revision;let stored=this.bridge.native?await this.bridge.call('vaultGet',{key:'session'}):await this.ledger.get('auth');if(revision!==this.revision)return;this.session=typeof stored==='string'?JSON.parse(stored):stored;if(!this.session)return;if(!isGoogleUser(this.session.user)){await Promise.all([this.clearSession(),this.authFlow.cancel()]);return;}await this.ensure();if(revision!==this.revision||!this.session)return;const current=this.session,pending=await this.ledger.get?.('delete-pending:'+current.user.id);if(revision===this.revision&&this.session===current)this.deletionPending=pending===true;}
+ async auth(path,body,bearer=false,options={}){const url=new URL(this.config.url+'/auth/v1/'+path),method=(options.method??(body?'POST':'GET')).toUpperCase(),name=url.pathname.slice('/auth/v1/'.length);
+  const allowed=method==='GET'&&!body&&['settings','user'].includes(name)||method==='POST'&&name==='token'&&['pkce','refresh_token'].includes(url.searchParams.get('grant_type'))||method==='GET'&&!body&&name==='user/identities/authorize'&&url.searchParams.get('provider')==='google';
+  if(!allowed)throw googleOnlyError();if(options.redirectTo)url.searchParams.set('redirect_to',options.redirectTo);const token=typeof bearer==='string'?bearer:bearer?this.session?.access_token:null;const r=await fetch(url.href,{method,headers:{apikey:this.config.key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined,redirect:'error',signal:requestTimeout()});const v=await r.json();if(!r.ok){const e=new Error(v.msg||v.message||v.error_description||'인증 실패');e.code=v.code??v.error_code;e.status=r.status;throw e;}return v;
+ }
+ async signup(){throw googleOnlyError();}
+ async invalidateSession(session,revision,error){
+  if(revision!==this.revision||this.session!==session)return;
+  await Promise.all([this.clearSession(),this.authFlow.cancel()]);error.localSignedOut=true;
+ }
+ async ensure(){
+  const revision=this.revision,original=this.session;if(!original)throw new Error('Authentication required');
+  if(!isGoogleUser(original.user)){await this.clearSession();throw googleOnlyError();}
+  if(original.expires_at*1000>Date.now()+90000)return;
+  if(this.bridge.native){const raw=await this.bridge.call('vaultGet',{key:'session'});if(revision!==this.revision||this.session!==original)return;const saved=typeof raw==='string'?JSON.parse(raw):raw;
+   if(saved?.user?.id===original.user.id&&saved.expires_at>original.expires_at){if(!isGoogleUser(saved.user)){await this.clearSession();throw googleOnlyError();}this.session=saved;}
+  }
+  if(revision!==this.revision||!this.session||this.session.expires_at*1000>Date.now()+90000)return;
+  const current=this.session,uid=current.user.id;
+  if(!this.refreshing||this.refreshingOwner?.revision!==revision||this.refreshingOwner?.uid!==uid){
+   const task=(async()=>{let session;try{session=await this.auth('token?grant_type=refresh_token',{refresh_token:current.refresh_token});}catch(error){if(error.status===401||error.status===400&&['invalid_grant','invalid_refresh_token','refresh_token_not_found','refresh_token_already_used','session_not_found'].includes(error.code))await this.invalidateSession(current,revision,error);throw error;}if(revision!==this.revision||this.session!==current)return;if(session.user?.id!==uid)throw new Error('갱신된 계정이 일치하지 않습니다.');if(!isGoogleUser(session.user)){await this.clearSession();throw googleOnlyError();}this.session=session;await this.save();})();
+   this.refreshingOwner={revision,uid};this.refreshing=task;task.then(()=>{if(this.refreshing===task){this.refreshing=null;this.refreshingOwner=null;}},()=>{if(this.refreshing===task){this.refreshing=null;this.refreshingOwner=null;}});
+  }
+  await this.refreshing;
+ }
  async rpc(action,args={}){
   const revision=this.revision,uid=this.session?.user?.id;
   const assertCurrent=()=>{if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('인증 상태가 변경되어 이전 계정 요청이 취소되었습니다. 현재 계정에서 다시 시도하세요.');};
@@ -563,15 +590,16 @@ class API extends EventTarget {
   if(action==='sync')args={...args,device_id:this.deviceId};
   const r=await fetch(this.config.url+'/rest/v1/rpc/solaris_action',{method:'POST',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({action,args}),redirect:'error',signal:requestTimeout()});
   const v=await r.json();assertCurrent();
-  if(!r.ok)throw new Error(v.message||'서버 요청 실패');return v;
+  if(!r.ok){const error=new Error(v.message||'서버 요청 실패');error.status=r.status;error.code=v.code;if(r.status===401||v.code==='42501'&&/^Authentication required$/i.test(v.message??''))await this.invalidateSession(this.session,revision,error);throw error;}return v;
  }
- async emailFlow(kind,email){const f=await this.authFlow.prepare(kind,{email:email.trim()});return{redirectTo:f.redirectTo,challenge:f.challenge};}
- async recoverEmail(email){await this.ensure();const f=await this.emailFlow('email-change',email);return this.auth('user',{email:email.trim(),code_challenge:f.challenge,code_challenge_method:'s256'},true,{method:'PUT',redirectTo:f.redirectTo});}
- async verifyEmailLink(email,token){const uid=this.session?.user?.id,revision=++this.revision,s=await this.auth('verify',{email,token,type:'email_change'});if(revision!==this.revision)return s;if(s.user?.id&&s.user.id!==uid)throw new Error('복구 이메일은 기존 계정의 UID에 연결되어야 합니다.');if(s.access_token){if(!uid||s.user?.id!==uid)throw new Error('복구 이메일은 기존 계정의 UID에 연결되어야 합니다.');this.session=s;await this.save();}return s;}
- async emailOTP(email){const f=await this.emailFlow('email',email);return this.auth('otp',{email:email.trim(),create_user:false,code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});}
- async verifyOTP(email,token){return this.verifyAccount(email,token,'email');}
- async acceptSession(session,revision){if(!session?.access_token||!session?.refresh_token||!session?.user?.id)throw new Error('인증 응답이 유효하지 않습니다. 다시 로그인하세요.');if(revision!==this.revision)return this.session;this.session=session;await this.save();return session;}
+ async emailFlow(){throw googleOnlyError();}
+ async recoverEmail(){throw googleOnlyError();}
+ async verifyEmailLink(){throw googleOnlyError();}
+ async emailOTP(){throw googleOnlyError();}
+ async verifyOTP(){throw googleOnlyError();}
+ async acceptSession(session,revision){if(!session?.access_token||!session?.refresh_token||!session?.user?.id)throw new Error('인증 응답이 유효하지 않습니다. 다시 로그인하세요.');if(revision!==this.revision)return this.session;if(!isGoogleUser(session.user))throw googleOnlyError();const pending=await this.ledger.get?.('delete-pending:'+session.user.id);if(revision!==this.revision)return this.session;this.session=session;this.deletionPending=pending===true;await this.save();return session;}
  async accountFunction(body,authenticated=false){
+  if(body?.action==='login_id')throw googleOnlyError();
   const revision=this.revision,uid=this.session?.user?.id;
   const assertCurrent=()=>{if(authenticated&&(revision!==this.revision||uid!==this.session?.user?.id))throw new Error('계정 요청이 취소되었습니다.');};
   if(authenticated){await this.ensure();assertCurrent();}
@@ -580,8 +608,8 @@ class API extends EventTarget {
   if(!response.ok){const error=new Error(value.message||'계정 요청을 완료하지 못했습니다.');error.code=value.code;error.status=response.status;error.deletionStarted=value.deletionStarted===true;throw error;}
   return value;
  }
- async login(userID,password){const id=userID.trim().toLowerCase();if(!/^[a-z0-9_]{3,32}$/.test(id))throw new Error('아이디는 영문 소문자, 숫자, 밑줄 3~32자로 입력하세요.');const revision=++this.revision,session=await this.accountFunction({action:'login_id',user_id:id,password});return this.acceptSession(session,revision);}
- async registerEmail(email,password,profile){if(password.length<8)throw new Error('비밀번호는 8자 이상으로 설정하세요.');const id=profile.user_id.trim().toLowerCase();if(!/^[a-z0-9_]{3,32}$/.test(id))throw new Error('아이디는 영문 소문자, 숫자, 밑줄 3~32자로 입력하세요.');const f=await this.emailFlow('signup',email),revision=++this.revision,value=await this.auth('signup',{email:email.trim(),password,data:{solaris_user_id:id,solaris_nickname:profile.nickname},code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});if(value.access_token)return{session:await this.acceptSession(value,revision),confirmationRequired:false};return{confirmationRequired:true,email:email.trim()};}
+ async login(){throw googleOnlyError();}
+ async registerEmail(){throw googleOnlyError();}
  changeID(userID){return this.rpc('profile',{user_id:userID.trim().toLowerCase()});}
  setPresence(status){if(!['online','away','dnd','invisible'].includes(status))throw new Error('유효하지 않은 접속 상태입니다.');return this.rpc('presence_set',{status,device_id:this.deviceId});}
  async leavePresence(session=this.session){
@@ -594,23 +622,24 @@ class API extends EventTarget {
    const result=await this.accountFunction({action:'delete_account'},true);
    if(result.deleted!==true)throw new Error('탈퇴 완료 응답을 확인하지 못했습니다. 다시 시도하세요.');
    if(revision!==this.revision||uid!==this.session?.user?.id)throw new Error('계정 요청이 취소되었습니다.');
-   await Promise.all([this.clearSession(),this.authFlow.cancel()]);return result;
+   await this.ledger.set('delete-pending:'+uid,null);if(revision!==this.revision||uid!==this.session?.user?.id)throw new Error('계정 요청이 취소되었습니다.');await Promise.all([this.clearSession(),this.authFlow.cancel()]);return result;
   }catch(error){
    // A lost successful deletion response may be followed by 401 on retry.
    // Keep credentials on transient failure so server cleanup remains retryable.
-   if(error.status===401&&revision===this.revision&&uid===this.session?.user?.id){await Promise.all([this.clearSession(),this.authFlow.cancel()]);error.localSignedOut=true;}
+   if(error.deletionStarted===true&&revision===this.revision&&uid===this.session?.user?.id){this.deletionPending=true;await this.ledger.set('delete-pending:'+uid,true);}
+   if(error.status===401&&revision===this.revision&&uid===this.session?.user?.id){await this.ledger.set('delete-pending:'+uid,null);if(revision===this.revision&&uid===this.session?.user?.id){await Promise.all([this.clearSession(),this.authFlow.cancel()]);error.localSignedOut=true;}}
    throw error;
   }
  }
- async verifyAccount(email,token,type='signup'){if(!['signup','email','recovery'].includes(type))throw new Error('유효하지 않은 인증 방식입니다.');const revision=++this.revision,session=await this.auth('verify',{email:email.trim(),token:token.trim(),type});return this.acceptSession(session,revision);}
- async passwordReset(email){const f=await this.emailFlow('recovery',email);return this.auth('recover',{email:email.trim(),code_challenge:f.challenge,code_challenge_method:'s256'},false,{redirectTo:f.redirectTo});}
- async resendVerification(email,type){if(type==='signup'){const f=await this.authFlow.read();if(!f||f.kind!=='signup'||f.email!==email.trim()||Date.now()>f.expires)throw new Error('가입을 시작한 기기에서 인증 메일을 다시 요청하세요. 이미 받은 코드는 직접 입력할 수 있어요.');const url=new URL(f.base);url.searchParams.set('solaris_state',f.state);if(this.bridge.native)await this.bridge.call('authListen',{redirectTo:url.href});return this.auth('resend',{email:email.trim(),type:'signup'},false,{redirectTo:url.href});}if(type==='recovery')return this.passwordReset(email);return this.emailOTP(email);}
+ async verifyAccount(){throw googleOnlyError();}
+ async passwordReset(){throw googleOnlyError();}
+ async resendVerification(){throw googleOnlyError();}
  google(link=false){return this.authFlow.google(link);}
  authReturn(url){return this.authFlow.complete(url);}
  authSettings(){return this.auth('settings');}
- async updateUser(value){const revision=this.revision,uid=this.session?.user?.id;await this.ensure();if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');const response=await fetch(this.config.url+'/auth/v1/user',{method:'PUT',headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(value),redirect:'error',signal:requestTimeout()});const user=await response.json();if(!response.ok)throw new Error(user.msg||user.message||'계정 변경 실패');if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');if(user.id!==uid)throw new Error('계정 UID가 일치하지 않습니다.');this.session={...this.session,user};await this.save();return user;}
- async account(){const revision=this.revision,uid=this.session?.user?.id;await this.ensure();if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');const user=await this.auth('user',undefined,true);if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');if(user.id!==uid)throw new Error('계정 UID가 일치하지 않습니다.');this.session={...this.session,user};await this.save();return user;}
- async setPassword(password){if(password.length<8)throw new Error('비밀번호는 8자 이상으로 설정하세요.');const user=await this.account();if(!user.email_confirmed_at)throw new Error('이메일 인증을 먼저 완료하세요.');return this.updateUser({password});}
+ async updateUser(){throw googleOnlyError();}
+ async account(){const revision=this.revision,uid=this.session?.user?.id;await this.ensure();if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');const current=this.session;let user;try{user=await this.auth('user',undefined,true);}catch(error){if(error.status===401)await this.invalidateSession(current,revision,error);throw error;}if(revision!==this.revision||this.session?.user?.id!==uid)throw new Error('계정 요청이 취소되었습니다.');if(user.id!==uid)throw new Error('계정 UID가 일치하지 않습니다.');if(!isGoogleUser(user)){await this.clearSession();throw googleOnlyError();}this.session={...this.session,user};await this.save();return user;}
+ async setPassword(){throw googleOnlyError();}
  logout(){
   if(this.loggingOut)return this.loggingOut;
   const session=this.session;
@@ -628,7 +657,7 @@ class API extends EventTarget {
   })();
   this.loggingOut=task.finally(()=>{this.loggingOut=null;});return this.loggingOut;
  }
- async clearSession(){this.revision++;this.session=null;await this.saveQueue;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:'null'});else await this.ledger.set('auth',null);this.dispatchEvent(new Event('auth'));}
+ async clearSession(){this.revision++;this.session=null;this.deletionPending=false;await this.saveQueue;if(this.bridge.native)await this.bridge.call('vaultSet',{key:'session',value:'null'});else await this.ledger.set('auth',null);this.dispatchEvent(new Event('auth'));}
  async avatar(path,blob){await this.ensure();const h={apikey:this.config.key,Authorization:'Bearer '+this.session.access_token};const r=await fetch(this.config.url+'/storage/v1/object/solaris-avatars/'+path,{method:blob?'POST':'DELETE',headers:{...h,...(blob?{'Content-Type':blob.type}:{})},body:blob,redirect:'error',signal:requestTimeout()});if(!r.ok)throw new Error('프로필 사진 저장 실패');}
  async avatarURL(path){await this.ensure();const r=await fetch(this.config.url+'/storage/v1/object/authenticated/solaris-avatars/'+path,{headers:{apikey:this.config.key,Authorization:'Bearer '+this.session.access_token},redirect:'error',signal:requestTimeout()});if(!r.ok)return null;return URL.createObjectURL(await r.blob());}
  async signal(scope,recipient,payload){return this.rpc('signal',{scope_kind:scope.kind,scope_id:scope.id,recipient,payload});}
@@ -1405,9 +1434,9 @@ const emptySnapshot=()=>({friends:[],servers:[],channels:[],members:[],sessions:
 let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
 let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
-let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
+let nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
 let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve(),authReturnSeen=false;const authReturns=new Set();
-let loggingOut=false,accountUIEpoch=0,bootPromise=null,dialogReturnFocus=null,dialogAnchor=null,windowState={platform:'browser',state:'normal',fullscreen:false};
+let loggingOut=false,accountUIEpoch=0,bootPromise=null,signedOutCleanup=null,dialogReturnFocus=null,dialogAnchor=null,windowState={platform:'browser',state:'normal',fullscreen:false};
 let navigationEpoch=0,navigationSerial=Promise.resolve(),navigationBusy=false,joinedChannel=null,capabilities={canPublish:true,systemTitlebar:false};
 let nativeBackground=false;
 let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
@@ -1435,19 +1464,15 @@ function setButtonLabel(n,text,glyph){n.replaceChildren(...(glyph?[icon(glyph,18
 function error(e){
  let text=e.message??String(e);
  if(e.name==='AbortError'&&/화면공유/.test(text))return;
- if(e.code==='email_address_not_authorized'||/Email address not authorized/i.test(text))text='이메일 발송이 제한되어 있어요. 프로젝트 소유자가 Supabase의 SMTP 설정을 확인해야 합니다.';
- if(e.status===429||/rate limit|over_email_send_rate_limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 인증 메일을 다시 요청하세요.';
- if(/manual linking|manual_linking_disabled/i.test(text))text='기존 계정에 Google을 연결하려면 Supabase에서 Manual Linking을 활성화해야 합니다.';
+ if(e.status===429||/rate limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 Google 로그인을 다시 시도하세요.';
  if(/provider.*(disabled|not enabled)|Unsupported provider/i.test(text))text='Google 로그인이 아직 설정되지 않았어요. Supabase의 Google 제공자 설정을 확인하세요.';
- if(e.code==='otp_expired'||/Token has expired|invalid.*otp/i.test(text))text='인증 코드가 만료되었거나 일치하지 않아요. 메일을 다시 요청하세요.';
- if(/Anonymous sign-ins are disabled/i.test(text))text='ID로 시작하려면 익명 인증을 활성화해야 합니다. 이메일 계정 만들기는 익명 인증 없이 사용할 수 있어요.';
  if(/Unknown action.*dm_|Unknown Solaris action|Unknown action/i.test(text))text='개인 메시지 업데이트가 필요합니다. Supabase SQL Editor에서 backend/003_build60_dm.sql을 실행하세요.';
  if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 처음 설정하는 프로젝트는 backend/001_solaris.sql을 실행하세요. 이미 사용 중인 DB는 테이블을 삭제하거나 001을 재실행하지 말고 빌드61 안내의 업데이트 SQL과 스키마 새로고침을 확인하세요.';
  text=String(text).replace(/https?:\/\/\S+/g,'[주소 숨김]');log?.record('error',{message:text});$('#error').replaceChildren(el('span',text),button('닫기','dismiss-error',null,{'aria-label':'오류 안내 닫기'}));$('#error').hidden=false;
 }
 async function run(fn,control){
  try{$('#error').hidden=true;if(control){control.disabled=true;control.setAttribute('aria-busy','true');}await fn();}
- catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');}}
+ catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');if(control.id==='google-login')refreshGoogleLogin();}}
 }
 function presenceFor(p,online){
  if(online===false)return 'offline';
@@ -1511,13 +1536,14 @@ function formModal(title,id,fields,submitText,data={}){
 }
 function showAuth(mode='login',status=''){
  $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#mobile-tabs').hidden=true;$('#onboarding-status').textContent=status;
- const active=mode==='signup'?'email-register':mode==='quick'||mode==='claim'?'register':mode==='recover'||mode==='reset'?'recover':mode==='verify'?'verify':'login';
- for(const f of $('#onboarding').querySelectorAll('form'))f.hidden=f.id!==active;
- for(const b of $('.auth-tabs').children)b.classList.toggle('active',b.dataset.action==='auth-'+mode);
- $('#onboarding').dataset.mode=mode;
- $('#google-panel').hidden=['claim','verify'].includes(mode);$('#google-login').disabled=googleBusy||providers?.external?.google===false;
- $('#verify-title').textContent=verification.type==='recovery'?'비밀번호 복구 인증':'이메일 인증';
- $('#quick-help').textContent=mode==='claim'?'로그인이 완료되었습니다. 사용할 고유 ID와 닉네임을 설정하세요.':'이 기기에 계정이 저장됩니다. 내 프로필에서 이메일과 비밀번호를 연결하면 다른 기기에서도 로그인할 수 있어요.';
+ const pending=api.deletionPending===true,claim=!pending&&mode==='claim';$('#register').hidden=!claim;$('#deletion-pending-panel').hidden=!pending;$('#onboarding').dataset.mode=pending?'deletion':claim?'claim':'google';
+ $('#onboarding-title').textContent=pending?'계정 삭제를 완료해 주세요':claim?'프로필을 만들어 주세요':'Solaris에 오신 것을 환영해요';
+ $('#google-panel').hidden=claim||pending;$('#google-login').disabled=pending||googleBusy||providers?.external?.google===false;if(pending)$('#auth-pending').hidden=true;
+ refreshGoogleLogin();
+}
+function refreshGoogleLogin(){
+ const retained=!!api.session;$('#google-session-recovery').hidden=!retained||$('#google-panel').hidden;
+ $('#google-login').disabled=retained||api.deletionPending||googleBusy||providers?.external?.google===false;
 }
 function conversationKey(s=scope,f=friend){return s?.kind==='channel'?'channel:'+s.id:f?'friend:'+f.uid:'activity';}
 function renderMessages(){
@@ -1685,7 +1711,7 @@ async function pollOnce(){
    }
   }
   render();
- }catch(e){if(!loggingOut){$('#connection').textContent='재연결 중';showSelf(false);if(Date.now()-lastPoll>15000)error(e);}}
+ }catch(e){if(!loggingOut){if(e.localSignedOut){await recoverSignedOut();}else if(api.session){$('#connection').textContent='재연결 중';showSelf(false);if(Date.now()-lastPoll>15000)error(e);}}}
  finally{polling=false;}
 }
 async function boot(){
@@ -1697,6 +1723,7 @@ async function bootOnce(){
  const current=()=>!loggingOut&&accountUIEpoch===epoch&&(!uid||api.session?.user?.id===uid);
  try{
   if(!current())return;if(!api.session){showAuth('login',authReturnSeen?$('#onboarding-status').textContent:'');return;}uid=api.session.user.id;
+  if(api.deletionPending){await deletionRetryScreen();return;}
   let me=await api.rpc('profile');if(!current())return;
   if(!me){
    const m=api.session.user?.user_metadata??{};
@@ -1750,7 +1777,7 @@ async function bootOnce(){
    if(saved?.page==='transfers'){page='transfers';renderTransfers();}
   }
   if(current()){render();timer=setInterval(poll,2000);}
- }catch(e){if(current()){showAuth('login','계정 데이터는 유지되어 있습니다. 네트워크를 확인하거나 기존 계정으로 로그인하세요.');error(e);}}
+ }catch(e){if(e.localSignedOut&&!loggingOut&&!api.session)await recoverSignedOut();else if(current()){showAuth('login','계정 데이터는 유지되어 있습니다. 네트워크를 확인하거나 같은 Google 계정으로 다시 로그인하세요.');error(e);}}
  finally{booting=false;}
 }
 async function notify(title,body){if(bridge.native&&snapshot.me?.presence_preference!=='dnd')await bridge.call('notify',{title,body}).catch(()=>{});}
@@ -1986,23 +2013,37 @@ async function profileModal(tab='profile'){
  const user=api.session?.user??{},body=el('div',null,{class:'profile-settings'}),nav=settingsNavigation(tab),content=el('div',null,{class:'settings-content'});body.append(nav,content);
  const profile=el('section',null,{'data-profile-pane':'profile'});profile.hidden=tab!=='profile';
  const edit=el('form',null,{id:'profile-edit',class:'stack-form'}),preview=profileCard(snapshot.me,true);
- edit.append(field('로그인 ID','user_id',{value:snapshot.me.user_id,minlength:'3',maxlength:'32',pattern:'[a-zA-Z0-9_]{3,32}',autocomplete:'username',autocapitalize:'none',spellcheck:'false',required:'true'}),el('p','ID를 변경하면 새 ID로 로그인하세요. 친구·서버·메시지는 같은 계정에 유지됩니다.',{class:'form-help'}),field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
+ edit.append(field('고유 ID','user_id',{value:snapshot.me.user_id,minlength:'3',maxlength:'32',pattern:'[a-zA-Z0-9_]{3,32}',autocomplete:'username',autocapitalize:'none',spellcheck:'false',required:'true'}),el('p','고유 ID는 친구 검색과 프로필에 사용합니다. 변경해도 Google 로그인과 친구·서버·메시지는 유지됩니다.',{class:'form-help'}),field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
  const label=el('label','내 소개'),bio=el('textarea',null,{name:'bio',rows:'4',maxlength:'380',placeholder:'좋아하는 것, 지금 하고 있는 일… 나를 소개해 보세요.'}),count=el('span',null,{class:'field-counter'});bio.value=snapshot.me.bio??'';label.append(bio,count);edit.append(label);
  const updatePreview=()=>{if(Array.from(bio.value).length>190)bio.value=Array.from(bio.value).slice(0,190).join('');count.textContent=Array.from(bio.value).length+' / 190';preview.querySelector('.profile-bio').textContent=bio.value||'아직 소개가 없어요.';preview.querySelector('.profile-card-content strong').textContent=edit.elements.nickname.value||snapshot.me.nickname;};bio.addEventListener('input',updatePreview);edit.elements.nickname.addEventListener('input',updatePreview);updatePreview();
  edit.append(el('button','변경사항 저장',{class:'primary'}));profile.append(preview,button('상태 변경 · '+presenceLabels[snapshot.me.presence_preference??'online'],'presence-menu',null,{'aria-haspopup':'dialog'}),el('h2','프로필 편집'),edit,el('h2','프로필 사진'));
  const photos=el('div',null,{class:'profile-photo-actions'}),upload=el('label','프로필 사진 변경',{class:'upload-photo-button'});upload.append(el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file','aria-label':'프로필 사진 변경'}));photos.append(upload,button('사진 삭제','avatar-delete'));profile.append(photos);
- const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';account.append(el('h2','로그인 및 계정 복구'),el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일이나 Google을 연결해 같은 계정으로 다시 로그인할 수 있어요.',{class:'account-summary'}));
- const google=user.identities?.some(i=>i.provider==='google');account.append(el('h2','연결된 계정'),el('p',google?'Google 계정 연결됨':'Google 계정을 연결하면 기존 친구와 서버가 유지돼요.',{class:'form-help'}));
- if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('button','Google 연결됨',{type:'button',class:'google-button linked-account',disabled:'true','aria-disabled':'true'}));
- const status=el('p',null,{id:'account-auth-status',role:'status',class:'form-help'});account.append(status);
- if(!user.email_confirmed_at){
-  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));account.append(rec);
-  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',inputmode:'numeric',pattern:'[0-9]{6,10}',required:'true'}),el('p','메일의 인증 링크를 열거나, 메일에 적힌 코드를 입력하세요.',{class:'form-help'}),el('button','이메일 연결 완료'));account.append(verify);
- }else{
-  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));account.append(pw);
- }
- const recoverable=user.email_confirmed_at||google;account.append(el('p',recoverable?'다른 기기에서도 ID와 비밀번호 또는 Google로 로그인하면 같은 계정이 열립니다.':'이메일이나 Google을 연결하기 전에 로그아웃하면 이 계정에 다시 접근하지 못할 수 있어요.',{class:'form-help'+(recoverable?'':' account-warning')}));
+ const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';
+ account.append(el('h2','Google 계정'),el('p',user.email?'로그인한 Google 계정: '+user.email:'Google 계정으로 로그인했습니다.',{class:'account-summary'}),el('button','Google 계정 사용 중',{type:'button',class:'google-button linked-account',disabled:'true','aria-disabled':'true'}),el('p','모든 기기에서 같은 Google 계정으로 로그인하면 친구·서버·프로필이 유지됩니다. 다른 Google 계정을 사용하려면 로그아웃하세요.',{class:'form-help'}));
  const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','계정 탈퇴'),el('p','계정과 서버에 저장된 프로필·친구 관계·메시지·소유 서버 및 파일이 삭제됩니다. 복구할 수 없어요.',{class:'form-help'}),button('계정 탈퇴','account-delete',null,{class:'danger'}));account.append(danger);content.append(profile,account);modal('사용자 설정',body);
+}
+function clearPrivateUI(){
+   snapshot=emptySnapshot();loadedUID=null;conversations={};drafts={};diagnostics={};scope=null;server=null;friend=null;page='friends';uiKey='';messageKey='';cursor=0;lastPoll=0;log=null;googleBusy=false;autoWatchDisabled.clear();autoWatchAttempt.clear();
+   for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();
+   clearVideos();$('#dialog').close();for(const id of ['videos','messages','panel','channels','servers','participants','requests','broadcast-list','self-profile'])$('#'+id).replaceChildren();
+   $('#chat').reset();$('#chat').dataset.conversation='';$('#chat textarea').style.height='auto';$('#share-state').hidden=true;$('#incoming-request').hidden=true;$('#auth-pending').hidden=true;$('#register').reset();localStorage.removeItem('solaris-verification');closeNav();closePeople();
+ senderDiagnostics={};joinedChannel=null;$('#scope-title').textContent='';delete $('#scope-title').dataset.id;delete $('#scope-title').dataset.action;$('#scope-avatar').replaceChildren();$('#scope-avatar').removeAttribute('data-identity');$('#self-profile').removeAttribute('data-identity');$('#scope-status').textContent='';$('#sidebar-connection').replaceChildren();$('#server-title').textContent='개인 메시지';$('#server-tools').replaceChildren();$('#channel-add').dataset.id='';$('#chat textarea').placeholder='메시지';
+}
+async function deletionRetryScreen(mode='deletion',status=''){
+ const uid=api.session?.user?.id,revision=api.revision,epoch=++accountUIEpoch,storedUID=loadedUID,ownedMedia=media,ownedFiles=files,ownedDM=dm,ownedLog=log,storedMessages=structuredClone(conversations);
+ navigationEpoch++;navigationBusy=false;clearInterval(timer);clearTimeout(message.saveTimer);showAuth(mode,status);$('#dialog').close();
+ await Promise.allSettled([ownedMedia?.stop(),ownedFiles?.suspend(),ownedDM?.close(),...(ownedMedia?[...ownedMedia.watching.keys()].map(id=>ownedMedia.unwatch(id)):[])]);
+ ownedFiles?.close();ownedMedia?.close();
+ await Promise.allSettled([storedUID?ledger.set('messages:'+storedUID,storedMessages):Promise.resolve(),ownedLog?.flush(),chatSave]);
+ if(loggingOut||epoch!==accountUIEpoch||revision!==api.revision||api.session?.user?.id!==uid)return false;
+ if(files===ownedFiles)files=null;if(media===ownedMedia)media=null;if(dm===ownedDM)dm=null;exitViewingFullscreen();nativeScreens.clear();clearPrivateUI();showAuth(mode,status);return true;
+}
+function recoverSignedOut(){
+ if(loggingOut||api.session)return Promise.resolve(false);
+ const revision=api.revision,uid=loadedUID;
+ if(signedOutCleanup?.revision===revision&&signedOutCleanup.uid===uid)return signedOutCleanup.promise;
+ const cleanup={revision,uid};cleanup.promise=deletionRetryScreen('login','로그인 정보가 만료됐어요. 같은 Google 계정으로 다시 로그인하세요.');signedOutCleanup=cleanup;
+ cleanup.promise.then(()=>{if(signedOutCleanup===cleanup)signedOutCleanup=null;},()=>{if(signedOutCleanup===cleanup)signedOutCleanup=null;});return cleanup.promise;
 }
 async function action(a,id,anchor=null){
  if(loggingOut&&!a.startsWith('window-'))return;
@@ -2049,12 +2090,11 @@ async function action(a,id,anchor=null){
   const current=VERSION.replace(/^v/,''),tag=latest?.tag_name?.replace(/^v/,'');body.append(el('p',!latest?'선택한 업데이트 채널에 공개된 버전이 없습니다.':tag===current?'현재 공개된 버전을 사용하고 있어요.':'최근 공개 버전: '+latest.tag_name+' · '+(latest.name??'')));
   if(latest&&/^https:\/\/github\.com\//.test(latest.html_url))body.append(el('a','배포 안내 보기',{href:latest.html_url,target:'_blank',rel:'noopener noreferrer',class:'release-link'}));modal('업데이트 확인',body);return;
  }
- if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;return;}
- if(a==='auth-resend'){const email=$('#verify [name=email]').value.trim();if(!email)throw new Error('이메일을 입력하세요.');if(Date.now()-(verification.requestedAt??0)<60000)throw new Error('인증 메일은 1분 뒤 다시 요청할 수 있어요.');await api.resendVerification(email,verification.type);verification.requestedAt=Date.now();localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#onboarding-status').textContent='인증 메일을 다시 요청했어요. 받은 편지함과 스팸함을 확인하세요.';return;}
- if(a==='google-login'||a==='google-link'){
-  if(googleBusy)return;googleBusy=true;$('#onboarding-status').textContent='';try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
+ if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();return;}
+ if(a==='google-login'){
+  if(api.deletionPending){showAuth('deletion');throw new Error('현재 계정의 삭제 정리를 먼저 완료하거나 이 기기에서 로그아웃하세요.');}
+  if(googleBusy)return;googleBusy=true;$('#onboarding-status').textContent='';try{await api.google(false);$('#auth-pending').hidden=false;}catch(e){googleBusy=false;throw e;}return;
  }
- if(a.startsWith('auth-')){showAuth(a.slice(5));return;}
  if(a==='toggle-nav'){const on=$('#workspace').classList.toggle('nav-open');$('#nav-toggle').setAttribute('aria-expanded',String(on));$('#nav-scrim').hidden=!on;return;}
  if(a==='close-nav'){closeNav();return;}
  if(a==='toggle-people'){const on=$('#workspace').classList.toggle('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded',String(on));return;}
@@ -2170,8 +2210,8 @@ if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{la
  if(a==='avatar-delete'){const path=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:null});if(path)await api.avatar(path);await poll(true);$('#dialog').close();return;}
  if(a==='logout'||a==='account-delete-confirm'){
   const deleting=a==='account-delete-confirm';let incomplete=false;
-  if(loggingOut)return;const user=api.session?.user??{},recoverable=user.email_confirmed_at||user.identities?.some(i=>i.provider==='google');
-  if(!deleting&&!await confirmAction('로그아웃',recoverable?'이 기기에서 로그아웃할까요? 화면공유와 진행 중인 파일 전송은 중지됩니다. 다시 로그인하면 친구·서버·메시지가 그대로 돌아옵니다.':'아직 이메일이나 Google을 연결하지 않았어요. 로그아웃하면 이 계정에 다시 접근하지 못할 수 있습니다. 계정 연결을 권장해요. 그래도 이 기기에서 로그아웃할까요?'))return;
+  if(loggingOut)return;
+  if(!deleting&&!await confirmAction('로그아웃',api.deletionPending?'계정 삭제 정리는 아직 완료되지 않았어요. 이 기기에서 로그아웃할까요? 같은 Google 계정으로 로그인하면 삭제를 다시 시도할 수 있습니다.':'이 기기에서 로그아웃할까요? 화면공유와 진행 중인 파일 전송은 중지됩니다. 같은 Google 계정으로 다시 로그인하면 친구·서버·메시지가 그대로 돌아옵니다.'))return;
   loggingOut=true;accountUIEpoch++;navigationEpoch++;navigationBusy=false;clearInterval(timer);$('#dialog').close();$('#workspace').inert=true;$('#onboarding').inert=true;showAuth('login',deleting?'화면공유와 전송을 정리하고 계정을 삭제하고 있어요…':'화면공유와 전송을 정리하고 로그아웃하고 있어요…');clearTimeout(message.saveTimer);let result;
   try{
    await Promise.allSettled([api.authFlow.cancel(),pollPromise,bootPromise]);log?.record('account-logout');
@@ -2179,14 +2219,11 @@ if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{la
    files?.close();media?.close();files=null;media=null;dm=null;exitViewingFullscreen();nativeScreens.clear();
    await Promise.allSettled([loadedUID?ledger.set('messages:'+loadedUID,structuredClone(conversations)):Promise.resolve(),log?.flush(),chatSave]);
    try{result=deleting?await api.deleteAccount():await api.logout();}catch(e){if(e.localSignedOut)result={localSignedOut:true};else{incomplete=!!e.deletionStarted;throw e;}}
-   snapshot=emptySnapshot();loadedUID=null;conversations={};drafts={};diagnostics={};scope=null;server=null;friend=null;page='friends';uiKey='';messageKey='';cursor=0;lastPoll=0;log=null;googleBusy=false;autoWatchDisabled.clear();autoWatchAttempt.clear();authReturns.clear();
-   for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();
-   clearVideos();$('#dialog').close();for(const id of ['videos','messages','panel','channels','servers','participants','requests','broadcast-list','self-profile'])$('#'+id).replaceChildren();
-   $('#chat').reset();$('#chat').dataset.conversation='';$('#chat textarea').style.height='auto';$('#share-state').hidden=true;$('#incoming-request').hidden=true;$('#auth-pending').hidden=true;$('#login [name=password]').value='';$('#register').reset();$('#email-register').reset();localStorage.removeItem('solaris-verification');closeNav();closePeople();
-   showAuth('login',deleting?result?.localSignedOut?'이 계정의 로그인 세션이 종료됐어요. 삭제 완료 여부는 네트워크 복구 후 확인하세요.':'계정 탈퇴가 완료됐어요. 삭제된 계정으로는 다시 로그인할 수 없습니다.':result?.remoteRevoked===false?'이 기기에서 로그아웃했어요. 네트워크 문제로 서버의 로그인 종료 확인은 받지 못했습니다. 다시 로그인할 수 있어요.':'로그아웃했어요. 같은 계정으로 로그인하면 친구·서버·메시지가 유지됩니다.');$('#login [name=user_id]').focus();
+   authReturns.clear();clearPrivateUI();
+   showAuth('login',deleting?result?.localSignedOut?'이 계정의 로그인 세션이 종료됐어요. 삭제 완료 여부는 네트워크 복구 후 확인하세요.':'계정 탈퇴가 완료됐어요. 삭제된 계정으로는 다시 로그인할 수 없습니다.':result?.remoteRevoked===false?'이 기기에서 로그아웃했어요. 네트워크 문제로 서버의 로그인 종료 확인은 받지 못했습니다. 다시 로그인할 수 있어요.':'로그아웃했어요. 같은 Google 계정으로 로그인하면 친구·서버·메시지가 유지됩니다.');$('#google-login').focus();
   }finally{
    loggingOut=false;$('#workspace').inert=false;$('#onboarding').inert=false;
-   if(api.session&&!media){if(incomplete){showAuth('login','계정 삭제가 시작됐지만 정리가 완료되지 않았어요. 같은 계정으로 삭제를 다시 시도하세요.');const body=el('div');body.append(el('p','일부 데이터가 이미 삭제됐을 수 있습니다. 삭제 정리가 끝날 때까지 일반 기능을 이용할 수 없어요.'),button('계정 삭제 다시 시도','account-delete-confirm',null,{class:'danger'}),button('이 기기에서 로그아웃','logout'));modal('계정 삭제 정리 필요',body);}else await boot();}
+   if(api.session&&!media){if(incomplete||api.deletionPending)await deletionRetryScreen();else await boot();}
   }return;
  }
  if(a==='settings'){
@@ -2216,34 +2253,14 @@ document.addEventListener('submit',e=>{
  e.preventDefault();const form=e.target,data=Object.fromEntries(new FormData(form)),control=form.querySelector('button[type=submit],button:not([type])');
  run(async()=>{
   switch(form.id){
-   case 'login':await api.login(data.user_id.trim().toLowerCase(),data.password);form.querySelector('[name=password]').value='';await boot();break;
-   case 'email-register':{
-    const value=await api.registerEmail(data.email,data.password,data);form.querySelector('[name=password]').value='';
-    if(value.confirmationRequired){verification={type:'signup',reset:false,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
-    else{try{await api.rpc('profile',{user_id:data.user_id,nickname:data.nickname});}catch(e){showAuth('claim','가입한 계정은 유지되어 있습니다. 사용할 고유 ID를 다시 설정하세요.');$('#register [name=nickname]').value=data.nickname;throw e;}await boot();}
-    break;
-   }
-   case 'register':if(!api.session)throw new Error('먼저 Google 또는 ID·비밀번호로 가입하세요.');await api.rpc('profile',data);await boot();break;
-   case 'recover':{
-    const reset=true;await api.passwordReset(data.email);
-    verification={type:reset?'recovery':'email',reset,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','인증 메일을 요청했어요. 메일의 링크를 열거나 인증 코드를 입력하세요.');break;
-   }
-   case 'verify':{
-    await api.verifyAccount(data.email,data.token,verification.type);await api.authFlow.cancel();$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');await boot();
-    if(verification.reset)formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호','name':'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');break;
-   }
+   case 'register':if(!api.session)throw new Error('먼저 Google 계정으로 로그인하세요.');await api.rpc('profile',{user_id:data.user_id.trim().toLowerCase(),nickname:data.nickname.trim()});await boot();break;
    case 'friend-search':{
     const p=await api.rpc('search',data);if(!p)throw new Error('사용자를 찾지 못했습니다.');
     if(p.uid===loadedUID)throw new Error('내 ID입니다. 친구의 고유 ID를 입력하세요.');
     const row=identity(p);row.append(button('친구 요청 보내기','friend-request-send',p.uid,{class:'primary'}));modal('검색 결과',row);break;
    }
-   case 'profile-edit':{data.user_id=data.user_id.trim().toLowerCase();await api.rpc('profile',data);await poll(true);await profileModal();break;}
+   case 'profile-edit':{const epoch=accountUIEpoch,uid=loadedUID;data.user_id=data.user_id.trim().toLowerCase();await api.rpc('profile',data);if(loggingOut||epoch!==accountUIEpoch||api.session?.user?.id!==uid)return;await poll(true);if(!loggingOut&&epoch===accountUIEpoch&&api.session?.user?.id===uid&&form.isConnected&&$('#dialog').open)await profileModal();break;}
    case 'delete-account-form':if(data.confirm_id.trim().toLowerCase()!==snapshot.me.user_id)throw new Error('현재 계정의 ID를 정확히 입력하세요.');await action('account-delete-confirm');break;
-   case 'recovery-link':
-    await api.recoverEmail(data.email);$('#link-verify [name=email]').value=data.email;
-    $('#account-auth-status').textContent='인증 메일을 요청했어요. 메일의 링크를 열거나 아래에 받은 코드를 입력하세요.';break;
-   case 'link-verify':await api.verifyEmailLink(data.email,data.token);{const user=await api.account();if(!user.email_confirmed_at||user.email?.toLowerCase()!==data.email.trim().toLowerCase())throw new Error('이메일 인증을 완료한 뒤 다시 확인하세요.');}message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal('account');break;
-   case 'password-edit':await api.setPassword(data.password);form.querySelector('[name=password]').value='';$('#dialog').close();message('로그인 비밀번호를 저장했습니다.');break;
    case 'server-create-form':{
     const s=await api.rpc('server_create',{name:data.name.trim()});$('#dialog').close();await poll(true);await selectServer(s.id);break;
    }
@@ -2277,6 +2294,8 @@ document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle
 globalThis.addEventListener('online',()=>poll());
 globalThis.addEventListener('focus',()=>{if(bridge.native&&lifecycle?.platform==='windows')run(foreground);});
 api.addEventListener('auth',()=>{
+ refreshGoogleLogin();
+ if(!api.session&&!loggingOut&&!$('#workspace').hidden){recoverSignedOut().catch(error);return;}
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
  if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
@@ -2289,9 +2308,9 @@ async function foreground(){
  await poll();
 }
 function showAuthReturnFailure(){
- googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=providers?.external?.google===false;
+ googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();
  const status='인증을 완료하지 못했어요. 오류 안내를 확인한 뒤 로그인을 다시 시도하세요.';
- $('#onboarding-status').textContent=status;if($('#account-auth-status'))$('#account-auth-status').textContent=status;
+ $('#onboarding-status').textContent=status;
 }
 function receiveAuthReturn(url){
  authReturnSeen=true;
@@ -2299,16 +2318,15 @@ function receiveAuthReturn(url){
  const task=authReturnQueue.then(async()=>{
   await authReady;if(loggingOut||epoch!==accountUIEpoch)return false;if(authReturns.has(url)){await ackNativeAuthReturn(url);return true;}
   googleBusy=true;$('#auth-pending').hidden=false;$('#google-login').disabled=true;$('#onboarding-status').textContent='';
-  const value=await api.authReturn(url);if(loggingOut||epoch!==accountUIEpoch)return false;authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
+  await api.authReturn(url);if(loggingOut||epoch!==accountUIEpoch)return false;authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
   googleBusy=false;$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');$('#dialog').close();
-  if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);if(loggingOut||epoch!==accountUIEpoch)return false;await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
-  else{await boot();if(!loggingOut&&epoch===accountUIEpoch&&value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
+  await boot();
   await ackNativeAuthReturn(url);return true;
  });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;if(e.authReturnHandled){authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);}showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
 }
-bridge.addEventListener('event',e=>{if(e.detail?.type==='lifecycle'){nativeBackground=e.detail.state==='background';if(nativeBackground)api.leavePresence?.().catch(()=>{});}if(e.detail?.type==='media-receive-fullscreen'){fullscreenID=e.detail.enabled?e.detail.id:null;updateFullscreenLabels();}if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
+bridge.addEventListener('event',e=>{if(e.detail?.type==='lifecycle'){nativeBackground=e.detail.state==='background';if(nativeBackground)api.leavePresence?.().catch(()=>{});}if(e.detail?.type==='media-receive-fullscreen'){fullscreenID=e.detail.enabled?e.detail.id:null;updateFullscreenLabels();}if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();});});
 await run(async()=>{
- try{const saved=JSON.parse(localStorage.getItem('solaris-verification')??'null');if(saved&&['email','signup','recovery'].includes(saved.type))verification=saved;}catch{}
+ localStorage.removeItem('solaris-verification');
  {const t=bridge.native?await bridge.call('vaultGet',{key:'turn'}):await ledger.get('turn');if(t){try{const saved=JSON.parse(t);if(saved?.urls&&saved.username&&saved.credential)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},saved];}catch{}}}
  for(const n of document.querySelectorAll('[data-icon]')){const text=n.textContent.trim();n.replaceChildren(icon(n.dataset.icon,20));if(!n.hasAttribute('aria-label')||n.closest('#mobile-tabs'))n.append(el('span',text,{class:'button-label'}));n.title=n.getAttribute('aria-label')??text;}
  const attach=document.querySelector('[data-action=send-file]');attach.id='compose-attach';attach.type='button';attach.className='compose-attach';attach.setAttribute('aria-label','파일 보내기');attach.title='원본 파일 보내기';attach.replaceChildren(icon('plus',20));$('#chat button').id='chat-send';$('#chat-send').type='submit';$('#chat').prepend(attach);
@@ -2327,7 +2345,7 @@ await run(async()=>{
   try{if(!authReturnSeen){const pending=await api.authFlow.resume?.();if(!authReturnSeen){googleBusy=!!pending?.kind?.startsWith('google');$('#auth-pending').hidden=!pending;}}}catch(e){error(e);}
   await boot();
  }
- api.authSettings().then(value=>{providers=value;$('#google-login').disabled=googleBusy||value?.external?.google===false;}).catch(()=>{});
+ api.authSettings().then(value=>{providers=value;refreshGoogleLogin();}).catch(()=>{});
 });
 
 $('#chat textarea').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(128,e.target.scrollHeight)+'px';});

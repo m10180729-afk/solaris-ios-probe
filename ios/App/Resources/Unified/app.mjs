@@ -15,9 +15,9 @@ const emptySnapshot=()=>({friends:[],servers:[],channels:[],members:[],sessions:
 let media,files,dm,snapshot=emptySnapshot(),scope=null,server=null,friend=null,page='friends';
 let friendFilter='all',cursor=0,polling=false,pollPromise=null,timer,lastPoll=0,log,lifecycle,loadedUID,booting=false;
 let settings=readSettings(localStorage.getItem('solaris-settings')),diagnostics={},conversations={},drafts={},uiKey='',searchDraft='';
-let verification={type:'email',reset:false},nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
+let nativeFullscreen=false,fullscreenID=null,messageKey='',chatSave=Promise.resolve();
 let providers=null,googleBusy=false,friendListQuery='',authReturnQueue=Promise.resolve(),authReturnSeen=false;const authReturns=new Set();
-let loggingOut=false,accountUIEpoch=0,bootPromise=null,dialogReturnFocus=null,dialogAnchor=null,windowState={platform:'browser',state:'normal',fullscreen:false};
+let loggingOut=false,accountUIEpoch=0,bootPromise=null,signedOutCleanup=null,dialogReturnFocus=null,dialogAnchor=null,windowState={platform:'browser',state:'normal',fullscreen:false};
 let navigationEpoch=0,navigationSerial=Promise.resolve(),navigationBusy=false,joinedChannel=null,capabilities={canPublish:true,systemTitlebar:false};
 let nativeBackground=false;
 let authReadyResolve;const authReady=new Promise(resolve=>authReadyResolve=resolve);
@@ -45,19 +45,15 @@ function setButtonLabel(n,text,glyph){n.replaceChildren(...(glyph?[icon(glyph,18
 function error(e){
  let text=e.message??String(e);
  if(e.name==='AbortError'&&/화면공유/.test(text))return;
- if(e.code==='email_address_not_authorized'||/Email address not authorized/i.test(text))text='이메일 발송이 제한되어 있어요. 프로젝트 소유자가 Supabase의 SMTP 설정을 확인해야 합니다.';
- if(e.status===429||/rate limit|over_email_send_rate_limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 인증 메일을 다시 요청하세요.';
- if(/manual linking|manual_linking_disabled/i.test(text))text='기존 계정에 Google을 연결하려면 Supabase에서 Manual Linking을 활성화해야 합니다.';
+ if(e.status===429||/rate limit/i.test(text))text='요청이 너무 많아요. 잠시 기다린 뒤 Google 로그인을 다시 시도하세요.';
  if(/provider.*(disabled|not enabled)|Unsupported provider/i.test(text))text='Google 로그인이 아직 설정되지 않았어요. Supabase의 Google 제공자 설정을 확인하세요.';
- if(e.code==='otp_expired'||/Token has expired|invalid.*otp/i.test(text))text='인증 코드가 만료되었거나 일치하지 않아요. 메일을 다시 요청하세요.';
- if(/Anonymous sign-ins are disabled/i.test(text))text='ID로 시작하려면 익명 인증을 활성화해야 합니다. 이메일 계정 만들기는 익명 인증 없이 사용할 수 있어요.';
  if(/Unknown action.*dm_|Unknown Solaris action|Unknown action/i.test(text))text='개인 메시지 업데이트가 필요합니다. Supabase SQL Editor에서 backend/003_build60_dm.sql을 실행하세요.';
  if(/Could not find the function.*solaris_action/i.test(text))text='서버에 Solaris 데이터베이스 설정이 필요합니다. 처음 설정하는 프로젝트는 backend/001_solaris.sql을 실행하세요. 이미 사용 중인 DB는 테이블을 삭제하거나 001을 재실행하지 말고 빌드61 안내의 업데이트 SQL과 스키마 새로고침을 확인하세요.';
  text=String(text).replace(/https?:\/\/\S+/g,'[주소 숨김]');log?.record('error',{message:text});$('#error').replaceChildren(el('span',text),button('닫기','dismiss-error',null,{'aria-label':'오류 안내 닫기'}));$('#error').hidden=false;
 }
 async function run(fn,control){
  try{$('#error').hidden=true;if(control){control.disabled=true;control.setAttribute('aria-busy','true');}await fn();}
- catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');}}
+ catch(e){error(e);}finally{if(control?.isConnected){control.disabled=false;control.removeAttribute('aria-busy');if(control.id==='google-login')refreshGoogleLogin();}}
 }
 function presenceFor(p,online){
  if(online===false)return 'offline';
@@ -121,13 +117,14 @@ function formModal(title,id,fields,submitText,data={}){
 }
 function showAuth(mode='login',status=''){
  $('#onboarding').hidden=false;$('#workspace').hidden=true;$('#mobile-tabs').hidden=true;$('#onboarding-status').textContent=status;
- const active=mode==='signup'?'email-register':mode==='quick'||mode==='claim'?'register':mode==='recover'||mode==='reset'?'recover':mode==='verify'?'verify':'login';
- for(const f of $('#onboarding').querySelectorAll('form'))f.hidden=f.id!==active;
- for(const b of $('.auth-tabs').children)b.classList.toggle('active',b.dataset.action==='auth-'+mode);
- $('#onboarding').dataset.mode=mode;
- $('#google-panel').hidden=['claim','verify'].includes(mode);$('#google-login').disabled=googleBusy||providers?.external?.google===false;
- $('#verify-title').textContent=verification.type==='recovery'?'비밀번호 복구 인증':'이메일 인증';
- $('#quick-help').textContent=mode==='claim'?'로그인이 완료되었습니다. 사용할 고유 ID와 닉네임을 설정하세요.':'이 기기에 계정이 저장됩니다. 내 프로필에서 이메일과 비밀번호를 연결하면 다른 기기에서도 로그인할 수 있어요.';
+ const pending=api.deletionPending===true,claim=!pending&&mode==='claim';$('#register').hidden=!claim;$('#deletion-pending-panel').hidden=!pending;$('#onboarding').dataset.mode=pending?'deletion':claim?'claim':'google';
+ $('#onboarding-title').textContent=pending?'계정 삭제를 완료해 주세요':claim?'프로필을 만들어 주세요':'Solaris에 오신 것을 환영해요';
+ $('#google-panel').hidden=claim||pending;$('#google-login').disabled=pending||googleBusy||providers?.external?.google===false;if(pending)$('#auth-pending').hidden=true;
+ refreshGoogleLogin();
+}
+function refreshGoogleLogin(){
+ const retained=!!api.session;$('#google-session-recovery').hidden=!retained||$('#google-panel').hidden;
+ $('#google-login').disabled=retained||api.deletionPending||googleBusy||providers?.external?.google===false;
 }
 function conversationKey(s=scope,f=friend){return s?.kind==='channel'?'channel:'+s.id:f?'friend:'+f.uid:'activity';}
 function renderMessages(){
@@ -295,7 +292,7 @@ async function pollOnce(){
    }
   }
   render();
- }catch(e){if(!loggingOut){$('#connection').textContent='재연결 중';showSelf(false);if(Date.now()-lastPoll>15000)error(e);}}
+ }catch(e){if(!loggingOut){if(e.localSignedOut){await recoverSignedOut();}else if(api.session){$('#connection').textContent='재연결 중';showSelf(false);if(Date.now()-lastPoll>15000)error(e);}}}
  finally{polling=false;}
 }
 async function boot(){
@@ -307,6 +304,7 @@ async function bootOnce(){
  const current=()=>!loggingOut&&accountUIEpoch===epoch&&(!uid||api.session?.user?.id===uid);
  try{
   if(!current())return;if(!api.session){showAuth('login',authReturnSeen?$('#onboarding-status').textContent:'');return;}uid=api.session.user.id;
+  if(api.deletionPending){await deletionRetryScreen();return;}
   let me=await api.rpc('profile');if(!current())return;
   if(!me){
    const m=api.session.user?.user_metadata??{};
@@ -360,7 +358,7 @@ async function bootOnce(){
    if(saved?.page==='transfers'){page='transfers';renderTransfers();}
   }
   if(current()){render();timer=setInterval(poll,2000);}
- }catch(e){if(current()){showAuth('login','계정 데이터는 유지되어 있습니다. 네트워크를 확인하거나 기존 계정으로 로그인하세요.');error(e);}}
+ }catch(e){if(e.localSignedOut&&!loggingOut&&!api.session)await recoverSignedOut();else if(current()){showAuth('login','계정 데이터는 유지되어 있습니다. 네트워크를 확인하거나 같은 Google 계정으로 다시 로그인하세요.');error(e);}}
  finally{booting=false;}
 }
 async function notify(title,body){if(bridge.native&&snapshot.me?.presence_preference!=='dnd')await bridge.call('notify',{title,body}).catch(()=>{});}
@@ -596,23 +594,37 @@ async function profileModal(tab='profile'){
  const user=api.session?.user??{},body=el('div',null,{class:'profile-settings'}),nav=settingsNavigation(tab),content=el('div',null,{class:'settings-content'});body.append(nav,content);
  const profile=el('section',null,{'data-profile-pane':'profile'});profile.hidden=tab!=='profile';
  const edit=el('form',null,{id:'profile-edit',class:'stack-form'}),preview=profileCard(snapshot.me,true);
- edit.append(field('로그인 ID','user_id',{value:snapshot.me.user_id,minlength:'3',maxlength:'32',pattern:'[a-zA-Z0-9_]{3,32}',autocomplete:'username',autocapitalize:'none',spellcheck:'false',required:'true'}),el('p','ID를 변경하면 새 ID로 로그인하세요. 친구·서버·메시지는 같은 계정에 유지됩니다.',{class:'form-help'}),field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
+ edit.append(field('고유 ID','user_id',{value:snapshot.me.user_id,minlength:'3',maxlength:'32',pattern:'[a-zA-Z0-9_]{3,32}',autocomplete:'username',autocapitalize:'none',spellcheck:'false',required:'true'}),el('p','고유 ID는 친구 검색과 프로필에 사용합니다. 변경해도 Google 로그인과 친구·서버·메시지는 유지됩니다.',{class:'form-help'}),field('표시 이름','nickname',{value:snapshot.me.nickname,maxlength:'32',required:'true'}));
  const label=el('label','내 소개'),bio=el('textarea',null,{name:'bio',rows:'4',maxlength:'380',placeholder:'좋아하는 것, 지금 하고 있는 일… 나를 소개해 보세요.'}),count=el('span',null,{class:'field-counter'});bio.value=snapshot.me.bio??'';label.append(bio,count);edit.append(label);
  const updatePreview=()=>{if(Array.from(bio.value).length>190)bio.value=Array.from(bio.value).slice(0,190).join('');count.textContent=Array.from(bio.value).length+' / 190';preview.querySelector('.profile-bio').textContent=bio.value||'아직 소개가 없어요.';preview.querySelector('.profile-card-content strong').textContent=edit.elements.nickname.value||snapshot.me.nickname;};bio.addEventListener('input',updatePreview);edit.elements.nickname.addEventListener('input',updatePreview);updatePreview();
  edit.append(el('button','변경사항 저장',{class:'primary'}));profile.append(preview,button('상태 변경 · '+presenceLabels[snapshot.me.presence_preference??'online'],'presence-menu',null,{'aria-haspopup':'dialog'}),el('h2','프로필 편집'),edit,el('h2','프로필 사진'));
  const photos=el('div',null,{class:'profile-photo-actions'}),upload=el('label','프로필 사진 변경',{class:'upload-photo-button'});upload.append(el('input',null,{type:'file',accept:'image/jpeg,image/png,image/webp',id:'avatar-file','aria-label':'프로필 사진 변경'}));photos.append(upload,button('사진 삭제','avatar-delete'));profile.append(photos);
- const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';account.append(el('h2','로그인 및 계정 복구'),el('p',user.email_confirmed_at?'인증된 이메일: '+user.email:user.email?'이메일 인증 대기: '+user.email:'이 기기에 저장된 계정입니다. 이메일이나 Google을 연결해 같은 계정으로 다시 로그인할 수 있어요.',{class:'account-summary'}));
- const google=user.identities?.some(i=>i.provider==='google');account.append(el('h2','연결된 계정'),el('p',google?'Google 계정 연결됨':'Google 계정을 연결하면 기존 친구와 서버가 유지돼요.',{class:'form-help'}));
- if(!google)account.append(button('Google 계정 연결','google-link',null,{class:'google-button',...(providers?.external?.google===false?{disabled:'true',title:'Supabase Google 제공자 설정이 필요합니다.'}:{})}));else account.append(el('button','Google 연결됨',{type:'button',class:'google-button linked-account',disabled:'true','aria-disabled':'true'}));
- const status=el('p',null,{id:'account-auth-status',role:'status',class:'form-help'});account.append(status);
- if(!user.email_confirmed_at){
-  const rec=el('form',null,{id:'recovery-link',class:'stack-form'});rec.append(field('복구 이메일','email',{type:'email',value:user.email??'',required:'true'}),el('button','이메일 인증 보내기',{class:'primary'}));account.append(rec);
-  const verify=el('form',null,{id:'link-verify',class:'stack-form'});verify.append(field('인증할 이메일','email',{type:'email',value:user.email??'',required:'true'}),field('이메일 인증 코드','token',{autocomplete:'one-time-code',inputmode:'numeric',pattern:'[0-9]{6,10}',required:'true'}),el('p','메일의 인증 링크를 열거나, 메일에 적힌 코드를 입력하세요.',{class:'form-help'}),el('button','이메일 연결 완료'));account.append(verify);
- }else{
-  const pw=el('form',null,{id:'password-edit',class:'stack-form'});pw.append(field('비밀번호 설정 / 변경','password',{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}),el('button','비밀번호 저장',{class:'primary'}));account.append(pw);
- }
- const recoverable=user.email_confirmed_at||google;account.append(el('p',recoverable?'다른 기기에서도 ID와 비밀번호 또는 Google로 로그인하면 같은 계정이 열립니다.':'이메일이나 Google을 연결하기 전에 로그아웃하면 이 계정에 다시 접근하지 못할 수 있어요.',{class:'form-help'+(recoverable?'':' account-warning')}));
+ const account=el('section',null,{'data-profile-pane':'account'});account.hidden=tab!=='account';
+ account.append(el('h2','Google 계정'),el('p',user.email?'로그인한 Google 계정: '+user.email:'Google 계정으로 로그인했습니다.',{class:'account-summary'}),el('button','Google 계정 사용 중',{type:'button',class:'google-button linked-account',disabled:'true','aria-disabled':'true'}),el('p','모든 기기에서 같은 Google 계정으로 로그인하면 친구·서버·프로필이 유지됩니다. 다른 Google 계정을 사용하려면 로그아웃하세요.',{class:'form-help'}));
  const danger=el('section',null,{class:'danger-zone'});danger.append(el('h2','계정 탈퇴'),el('p','계정과 서버에 저장된 프로필·친구 관계·메시지·소유 서버 및 파일이 삭제됩니다. 복구할 수 없어요.',{class:'form-help'}),button('계정 탈퇴','account-delete',null,{class:'danger'}));account.append(danger);content.append(profile,account);modal('사용자 설정',body);
+}
+function clearPrivateUI(){
+   snapshot=emptySnapshot();loadedUID=null;conversations={};drafts={};diagnostics={};scope=null;server=null;friend=null;page='friends';uiKey='';messageKey='';cursor=0;lastPoll=0;log=null;googleBusy=false;autoWatchDisabled.clear();autoWatchAttempt.clear();
+   for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();
+   clearVideos();$('#dialog').close();for(const id of ['videos','messages','panel','channels','servers','participants','requests','broadcast-list','self-profile'])$('#'+id).replaceChildren();
+   $('#chat').reset();$('#chat').dataset.conversation='';$('#chat textarea').style.height='auto';$('#share-state').hidden=true;$('#incoming-request').hidden=true;$('#auth-pending').hidden=true;$('#register').reset();localStorage.removeItem('solaris-verification');closeNav();closePeople();
+ senderDiagnostics={};joinedChannel=null;$('#scope-title').textContent='';delete $('#scope-title').dataset.id;delete $('#scope-title').dataset.action;$('#scope-avatar').replaceChildren();$('#scope-avatar').removeAttribute('data-identity');$('#self-profile').removeAttribute('data-identity');$('#scope-status').textContent='';$('#sidebar-connection').replaceChildren();$('#server-title').textContent='개인 메시지';$('#server-tools').replaceChildren();$('#channel-add').dataset.id='';$('#chat textarea').placeholder='메시지';
+}
+async function deletionRetryScreen(mode='deletion',status=''){
+ const uid=api.session?.user?.id,revision=api.revision,epoch=++accountUIEpoch,storedUID=loadedUID,ownedMedia=media,ownedFiles=files,ownedDM=dm,ownedLog=log,storedMessages=structuredClone(conversations);
+ navigationEpoch++;navigationBusy=false;clearInterval(timer);clearTimeout(message.saveTimer);showAuth(mode,status);$('#dialog').close();
+ await Promise.allSettled([ownedMedia?.stop(),ownedFiles?.suspend(),ownedDM?.close(),...(ownedMedia?[...ownedMedia.watching.keys()].map(id=>ownedMedia.unwatch(id)):[])]);
+ ownedFiles?.close();ownedMedia?.close();
+ await Promise.allSettled([storedUID?ledger.set('messages:'+storedUID,storedMessages):Promise.resolve(),ownedLog?.flush(),chatSave]);
+ if(loggingOut||epoch!==accountUIEpoch||revision!==api.revision||api.session?.user?.id!==uid)return false;
+ if(files===ownedFiles)files=null;if(media===ownedMedia)media=null;if(dm===ownedDM)dm=null;exitViewingFullscreen();nativeScreens.clear();clearPrivateUI();showAuth(mode,status);return true;
+}
+function recoverSignedOut(){
+ if(loggingOut||api.session)return Promise.resolve(false);
+ const revision=api.revision,uid=loadedUID;
+ if(signedOutCleanup?.revision===revision&&signedOutCleanup.uid===uid)return signedOutCleanup.promise;
+ const cleanup={revision,uid};cleanup.promise=deletionRetryScreen('login','로그인 정보가 만료됐어요. 같은 Google 계정으로 다시 로그인하세요.');signedOutCleanup=cleanup;
+ cleanup.promise.then(()=>{if(signedOutCleanup===cleanup)signedOutCleanup=null;},()=>{if(signedOutCleanup===cleanup)signedOutCleanup=null;});return cleanup.promise;
 }
 async function action(a,id,anchor=null){
  if(loggingOut&&!a.startsWith('window-'))return;
@@ -659,12 +671,11 @@ async function action(a,id,anchor=null){
   const current=VERSION.replace(/^v/,''),tag=latest?.tag_name?.replace(/^v/,'');body.append(el('p',!latest?'선택한 업데이트 채널에 공개된 버전이 없습니다.':tag===current?'현재 공개된 버전을 사용하고 있어요.':'최근 공개 버전: '+latest.tag_name+' · '+(latest.name??'')));
   if(latest&&/^https:\/\/github\.com\//.test(latest.html_url))body.append(el('a','배포 안내 보기',{href:latest.html_url,target:'_blank',rel:'noopener noreferrer',class:'release-link'}));modal('업데이트 확인',body);return;
  }
- if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;return;}
- if(a==='auth-resend'){const email=$('#verify [name=email]').value.trim();if(!email)throw new Error('이메일을 입력하세요.');if(Date.now()-(verification.requestedAt??0)<60000)throw new Error('인증 메일은 1분 뒤 다시 요청할 수 있어요.');await api.resendVerification(email,verification.type);verification.requestedAt=Date.now();localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#onboarding-status').textContent='인증 메일을 다시 요청했어요. 받은 편지함과 스팸함을 확인하세요.';return;}
- if(a==='google-login'||a==='google-link'){
-  if(googleBusy)return;googleBusy=true;$('#onboarding-status').textContent='';try{await api.google(a==='google-link');$('#auth-pending').hidden=false;if($('#account-auth-status'))$('#account-auth-status').textContent='브라우저에서 Google 계정 연결을 완료하세요.';}catch(e){googleBusy=false;throw e;}return;
+ if(a==='auth-cancel-flow'){await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();return;}
+ if(a==='google-login'){
+  if(api.deletionPending){showAuth('deletion');throw new Error('현재 계정의 삭제 정리를 먼저 완료하거나 이 기기에서 로그아웃하세요.');}
+  if(googleBusy)return;googleBusy=true;$('#onboarding-status').textContent='';try{await api.google(false);$('#auth-pending').hidden=false;}catch(e){googleBusy=false;throw e;}return;
  }
- if(a.startsWith('auth-')){showAuth(a.slice(5));return;}
  if(a==='toggle-nav'){const on=$('#workspace').classList.toggle('nav-open');$('#nav-toggle').setAttribute('aria-expanded',String(on));$('#nav-scrim').hidden=!on;return;}
  if(a==='close-nav'){closeNav();return;}
  if(a==='toggle-people'){const on=$('#workspace').classList.toggle('people-open');document.querySelector('[data-action=toggle-people]').setAttribute('aria-expanded',String(on));return;}
@@ -780,8 +791,8 @@ if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{la
  if(a==='avatar-delete'){const path=snapshot.me.avatar_path;await api.rpc('profile',{avatar_path:null});if(path)await api.avatar(path);await poll(true);$('#dialog').close();return;}
  if(a==='logout'||a==='account-delete-confirm'){
   const deleting=a==='account-delete-confirm';let incomplete=false;
-  if(loggingOut)return;const user=api.session?.user??{},recoverable=user.email_confirmed_at||user.identities?.some(i=>i.provider==='google');
-  if(!deleting&&!await confirmAction('로그아웃',recoverable?'이 기기에서 로그아웃할까요? 화면공유와 진행 중인 파일 전송은 중지됩니다. 다시 로그인하면 친구·서버·메시지가 그대로 돌아옵니다.':'아직 이메일이나 Google을 연결하지 않았어요. 로그아웃하면 이 계정에 다시 접근하지 못할 수 있습니다. 계정 연결을 권장해요. 그래도 이 기기에서 로그아웃할까요?'))return;
+  if(loggingOut)return;
+  if(!deleting&&!await confirmAction('로그아웃',api.deletionPending?'계정 삭제 정리는 아직 완료되지 않았어요. 이 기기에서 로그아웃할까요? 같은 Google 계정으로 로그인하면 삭제를 다시 시도할 수 있습니다.':'이 기기에서 로그아웃할까요? 화면공유와 진행 중인 파일 전송은 중지됩니다. 같은 Google 계정으로 다시 로그인하면 친구·서버·메시지가 그대로 돌아옵니다.'))return;
   loggingOut=true;accountUIEpoch++;navigationEpoch++;navigationBusy=false;clearInterval(timer);$('#dialog').close();$('#workspace').inert=true;$('#onboarding').inert=true;showAuth('login',deleting?'화면공유와 전송을 정리하고 계정을 삭제하고 있어요…':'화면공유와 전송을 정리하고 로그아웃하고 있어요…');clearTimeout(message.saveTimer);let result;
   try{
    await Promise.allSettled([api.authFlow.cancel(),pollPromise,bootPromise]);log?.record('account-logout');
@@ -789,14 +800,11 @@ if(a==='server-join'){formModal('서버에 참여하기','server-join-form',[{la
    files?.close();media?.close();files=null;media=null;dm=null;exitViewingFullscreen();nativeScreens.clear();
    await Promise.allSettled([loadedUID?ledger.set('messages:'+loadedUID,structuredClone(conversations)):Promise.resolve(),log?.flush(),chatSave]);
    try{result=deleting?await api.deleteAccount():await api.logout();}catch(e){if(e.localSignedOut)result={localSignedOut:true};else{incomplete=!!e.deletionStarted;throw e;}}
-   snapshot=emptySnapshot();loadedUID=null;conversations={};drafts={};diagnostics={};scope=null;server=null;friend=null;page='friends';uiKey='';messageKey='';cursor=0;lastPoll=0;log=null;googleBusy=false;autoWatchDisabled.clear();autoWatchAttempt.clear();authReturns.clear();
-   for(const value of avatarCache.values())Promise.resolve(value).then(url=>{if(url)URL.revokeObjectURL(url);});avatarCache.clear();
-   clearVideos();$('#dialog').close();for(const id of ['videos','messages','panel','channels','servers','participants','requests','broadcast-list','self-profile'])$('#'+id).replaceChildren();
-   $('#chat').reset();$('#chat').dataset.conversation='';$('#chat textarea').style.height='auto';$('#share-state').hidden=true;$('#incoming-request').hidden=true;$('#auth-pending').hidden=true;$('#login [name=password]').value='';$('#register').reset();$('#email-register').reset();localStorage.removeItem('solaris-verification');closeNav();closePeople();
-   showAuth('login',deleting?result?.localSignedOut?'이 계정의 로그인 세션이 종료됐어요. 삭제 완료 여부는 네트워크 복구 후 확인하세요.':'계정 탈퇴가 완료됐어요. 삭제된 계정으로는 다시 로그인할 수 없습니다.':result?.remoteRevoked===false?'이 기기에서 로그아웃했어요. 네트워크 문제로 서버의 로그인 종료 확인은 받지 못했습니다. 다시 로그인할 수 있어요.':'로그아웃했어요. 같은 계정으로 로그인하면 친구·서버·메시지가 유지됩니다.');$('#login [name=user_id]').focus();
+   authReturns.clear();clearPrivateUI();
+   showAuth('login',deleting?result?.localSignedOut?'이 계정의 로그인 세션이 종료됐어요. 삭제 완료 여부는 네트워크 복구 후 확인하세요.':'계정 탈퇴가 완료됐어요. 삭제된 계정으로는 다시 로그인할 수 없습니다.':result?.remoteRevoked===false?'이 기기에서 로그아웃했어요. 네트워크 문제로 서버의 로그인 종료 확인은 받지 못했습니다. 다시 로그인할 수 있어요.':'로그아웃했어요. 같은 Google 계정으로 로그인하면 친구·서버·메시지가 유지됩니다.');$('#google-login').focus();
   }finally{
    loggingOut=false;$('#workspace').inert=false;$('#onboarding').inert=false;
-   if(api.session&&!media){if(incomplete){showAuth('login','계정 삭제가 시작됐지만 정리가 완료되지 않았어요. 같은 계정으로 삭제를 다시 시도하세요.');const body=el('div');body.append(el('p','일부 데이터가 이미 삭제됐을 수 있습니다. 삭제 정리가 끝날 때까지 일반 기능을 이용할 수 없어요.'),button('계정 삭제 다시 시도','account-delete-confirm',null,{class:'danger'}),button('이 기기에서 로그아웃','logout'));modal('계정 삭제 정리 필요',body);}else await boot();}
+   if(api.session&&!media){if(incomplete||api.deletionPending)await deletionRetryScreen();else await boot();}
   }return;
  }
  if(a==='settings'){
@@ -826,34 +834,14 @@ document.addEventListener('submit',e=>{
  e.preventDefault();const form=e.target,data=Object.fromEntries(new FormData(form)),control=form.querySelector('button[type=submit],button:not([type])');
  run(async()=>{
   switch(form.id){
-   case 'login':await api.login(data.user_id.trim().toLowerCase(),data.password);form.querySelector('[name=password]').value='';await boot();break;
-   case 'email-register':{
-    const value=await api.registerEmail(data.email,data.password,data);form.querySelector('[name=password]').value='';
-    if(value.confirmationRequired){verification={type:'signup',reset:false,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','가입 이메일의 인증 링크를 연 뒤 로그인하거나, 이메일 인증 코드를 입력하세요.');}
-    else{try{await api.rpc('profile',{user_id:data.user_id,nickname:data.nickname});}catch(e){showAuth('claim','가입한 계정은 유지되어 있습니다. 사용할 고유 ID를 다시 설정하세요.');$('#register [name=nickname]').value=data.nickname;throw e;}await boot();}
-    break;
-   }
-   case 'register':if(!api.session)throw new Error('먼저 Google 또는 ID·비밀번호로 가입하세요.');await api.rpc('profile',data);await boot();break;
-   case 'recover':{
-    const reset=true;await api.passwordReset(data.email);
-    verification={type:reset?'recovery':'email',reset,requestedAt:Date.now()};localStorage.setItem('solaris-verification',JSON.stringify(verification));$('#verify [name=email]').value=data.email;showAuth('verify','인증 메일을 요청했어요. 메일의 링크를 열거나 인증 코드를 입력하세요.');break;
-   }
-   case 'verify':{
-    await api.verifyAccount(data.email,data.token,verification.type);await api.authFlow.cancel();$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');await boot();
-    if(verification.reset)formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호','name':'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');break;
-   }
+   case 'register':if(!api.session)throw new Error('먼저 Google 계정으로 로그인하세요.');await api.rpc('profile',{user_id:data.user_id.trim().toLowerCase(),nickname:data.nickname.trim()});await boot();break;
    case 'friend-search':{
     const p=await api.rpc('search',data);if(!p)throw new Error('사용자를 찾지 못했습니다.');
     if(p.uid===loadedUID)throw new Error('내 ID입니다. 친구의 고유 ID를 입력하세요.');
     const row=identity(p);row.append(button('친구 요청 보내기','friend-request-send',p.uid,{class:'primary'}));modal('검색 결과',row);break;
    }
-   case 'profile-edit':{data.user_id=data.user_id.trim().toLowerCase();await api.rpc('profile',data);await poll(true);await profileModal();break;}
+   case 'profile-edit':{const epoch=accountUIEpoch,uid=loadedUID;data.user_id=data.user_id.trim().toLowerCase();await api.rpc('profile',data);if(loggingOut||epoch!==accountUIEpoch||api.session?.user?.id!==uid)return;await poll(true);if(!loggingOut&&epoch===accountUIEpoch&&api.session?.user?.id===uid&&form.isConnected&&$('#dialog').open)await profileModal();break;}
    case 'delete-account-form':if(data.confirm_id.trim().toLowerCase()!==snapshot.me.user_id)throw new Error('현재 계정의 ID를 정확히 입력하세요.');await action('account-delete-confirm');break;
-   case 'recovery-link':
-    await api.recoverEmail(data.email);$('#link-verify [name=email]').value=data.email;
-    $('#account-auth-status').textContent='인증 메일을 요청했어요. 메일의 링크를 열거나 아래에 받은 코드를 입력하세요.';break;
-   case 'link-verify':await api.verifyEmailLink(data.email,data.token);{const user=await api.account();if(!user.email_confirmed_at||user.email?.toLowerCase()!==data.email.trim().toLowerCase())throw new Error('이메일 인증을 완료한 뒤 다시 확인하세요.');}message('기존 계정에 복구 이메일을 연결했습니다. 비밀번호를 설정하면 다른 기기에서도 로그인할 수 있어요.');await profileModal('account');break;
-   case 'password-edit':await api.setPassword(data.password);form.querySelector('[name=password]').value='';$('#dialog').close();message('로그인 비밀번호를 저장했습니다.');break;
    case 'server-create-form':{
     const s=await api.rpc('server_create',{name:data.name.trim()});$('#dialog').close();await poll(true);await selectServer(s.id);break;
    }
@@ -887,6 +875,8 @@ document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle
 globalThis.addEventListener('online',()=>poll());
 globalThis.addEventListener('focus',()=>{if(bridge.native&&lifecycle?.platform==='windows')run(foreground);});
 api.addEventListener('auth',()=>{
+ refreshGoogleLogin();
+ if(!api.session&&!loggingOut&&!$('#workspace').hidden){recoverSignedOut().catch(error);return;}
  if(files&&files.ownerUID!==api.session?.user?.id)files.close();
  if(media&&media.ownerUID!==api.session?.user?.id){const previous=media;previous.stop().catch(error).finally(()=>previous.close());return;}if(api.session&&media)media.refreshAuth().catch(error);
 });
@@ -899,9 +889,9 @@ async function foreground(){
  await poll();
 }
 function showAuthReturnFailure(){
- googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=providers?.external?.google===false;
+ googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();
  const status='인증을 완료하지 못했어요. 오류 안내를 확인한 뒤 로그인을 다시 시도하세요.';
- $('#onboarding-status').textContent=status;if($('#account-auth-status'))$('#account-auth-status').textContent=status;
+ $('#onboarding-status').textContent=status;
 }
 function receiveAuthReturn(url){
  authReturnSeen=true;
@@ -909,16 +899,15 @@ function receiveAuthReturn(url){
  const task=authReturnQueue.then(async()=>{
   await authReady;if(loggingOut||epoch!==accountUIEpoch)return false;if(authReturns.has(url)){await ackNativeAuthReturn(url);return true;}
   googleBusy=true;$('#auth-pending').hidden=false;$('#google-login').disabled=true;$('#onboarding-status').textContent='';
-  const value=await api.authReturn(url);if(loggingOut||epoch!==accountUIEpoch)return false;authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
+  await api.authReturn(url);if(loggingOut||epoch!==accountUIEpoch)return false;authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);
   googleBusy=false;$('#auth-pending').hidden=true;localStorage.removeItem('solaris-verification');$('#dialog').close();
-  if(['google-link','email-change'].includes(value.kind)&&media){await api.account();await poll(true);if(loggingOut||epoch!==accountUIEpoch)return false;await profileModal('account');$('#account-auth-status').textContent='기존 계정에 연결했어요. 친구와 서버는 그대로 유지됩니다.';}
-  else{await boot();if(!loggingOut&&epoch===accountUIEpoch&&value.kind==='recovery')formModal('새 비밀번호 설정','password-edit',[{label:'새 비밀번호',name:'password',attrs:{type:'password',minlength:'8',autocomplete:'new-password',required:'true'}}],'비밀번호 저장');}
+  await boot();
   await ackNativeAuthReturn(url);return true;
  });const guarded=task.catch(async e=>{if(loggingOut||epoch!==accountUIEpoch)return false;if(e.authReturnHandled){authReturns.add(url);if(authReturns.size>10)authReturns.delete(authReturns.values().next().value);}showAuthReturnFailure();await ackNativeAuthReturn(url);throw e;});authReturnQueue=guarded.catch(()=>{});return guarded;
 }
-bridge.addEventListener('event',e=>{if(e.detail?.type==='lifecycle'){nativeBackground=e.detail.state==='background';if(nativeBackground)api.leavePresence?.().catch(()=>{});}if(e.detail?.type==='media-receive-fullscreen'){fullscreenID=e.detail.enabled?e.detail.id:null;updateFullscreenLabels();}if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;$('#google-login').disabled=false;});});
+bridge.addEventListener('event',e=>{if(e.detail?.type==='lifecycle'){nativeBackground=e.detail.state==='background';if(nativeBackground)api.leavePresence?.().catch(()=>{});}if(e.detail?.type==='media-receive-fullscreen'){fullscreenID=e.detail.enabled?e.detail.id:null;updateFullscreenLabels();}if(e.detail?.type==='window-state')updateWindowState(e.detail);if(e.detail?.type==='auth-callback')receiveAuthReturn(e.detail.url).catch(error);if(e.detail?.type==='auth-cancelled')run(async()=>{await api.authFlow.cancel();googleBusy=false;$('#auth-pending').hidden=true;refreshGoogleLogin();});});
 await run(async()=>{
- try{const saved=JSON.parse(localStorage.getItem('solaris-verification')??'null');if(saved&&['email','signup','recovery'].includes(saved.type))verification=saved;}catch{}
+ localStorage.removeItem('solaris-verification');
  {const t=bridge.native?await bridge.call('vaultGet',{key:'turn'}):await ledger.get('turn');if(t){try{const saved=JSON.parse(t);if(saved?.urls&&saved.username&&saved.credential)settings.iceServers=[{urls:'stun:stun.l.google.com:19302'},saved];}catch{}}}
  for(const n of document.querySelectorAll('[data-icon]')){const text=n.textContent.trim();n.replaceChildren(icon(n.dataset.icon,20));if(!n.hasAttribute('aria-label')||n.closest('#mobile-tabs'))n.append(el('span',text,{class:'button-label'}));n.title=n.getAttribute('aria-label')??text;}
  const attach=document.querySelector('[data-action=send-file]');attach.id='compose-attach';attach.type='button';attach.className='compose-attach';attach.setAttribute('aria-label','파일 보내기');attach.title='원본 파일 보내기';attach.replaceChildren(icon('plus',20));$('#chat button').id='chat-send';$('#chat-send').type='submit';$('#chat').prepend(attach);
@@ -937,7 +926,7 @@ await run(async()=>{
   try{if(!authReturnSeen){const pending=await api.authFlow.resume?.();if(!authReturnSeen){googleBusy=!!pending?.kind?.startsWith('google');$('#auth-pending').hidden=!pending;}}}catch(e){error(e);}
   await boot();
  }
- api.authSettings().then(value=>{providers=value;$('#google-login').disabled=googleBusy||value?.external?.google===false;}).catch(()=>{});
+ api.authSettings().then(value=>{providers=value;refreshGoogleLogin();}).catch(()=>{});
 });
 
 $('#chat textarea').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(128,e.target.scrollHeight)+'px';});
