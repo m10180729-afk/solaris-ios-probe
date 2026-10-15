@@ -749,7 +749,7 @@ async function action(a,id,anchor=null){
   const f=friendRecord(id);if(!f)return;const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});body.append(identity(f.profile,f.online));actions.append(button('프로필 보기','friend-profile',id));
   if(f.status==='accepted'){
    const sharing=button('화면공유 시작','session-request',id),file=button('파일 보내기','friend-file',id);sharing.hidden=!capabilities.canPublish;file.disabled=!f.online;
-   if(!f.online){sharing.title='친구가 온라인일 때 화면공유를 요청할 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
+   if(!f.online){sharing.title='공유를 켜 두면 친구가 이 대화에 들어왔을 때 볼 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
    actions.append(button('메시지 보내기','friend',id));if(capabilities.canPublish)actions.append(sharing);actions.append(file);
   }body.append(actions);
   const danger=el('section',null,{class:'danger-zone context-section context-actions'});

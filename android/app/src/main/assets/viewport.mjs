@@ -10,13 +10,13 @@ export class AppViewport {
  constructor({window=globalThis,document=globalThis.document,bridge,onChange=()=>{}}={}){
   Object.assign(this,{window,document,bridge,onChange});this.baseline=window.innerHeight;this.width=window.innerWidth;
   this.update=()=>{if(this.frame)return;this.frame=this.window.requestAnimationFrame(()=>{this.frame=null;this.apply();});};
-  this.nativeEvent=e=>{if(e.detail?.type==='viewport'){this.native=e.detail;this.update();}};
+  this.nativeEvent=e=>{if(e.detail?.type==='viewport'){this.native=e.detail;this.nativeWidth=this.window.innerWidth;this.update();}};
   window.visualViewport?.addEventListener('resize',this.update);window.visualViewport?.addEventListener('scroll',this.update);
   window.addEventListener('resize',this.update);document.addEventListener('focusin',this.update);document.addEventListener('focusout',this.update);bridge?.addEventListener('event',this.nativeEvent);this.apply();
  }
  apply(){
   const w=this.window,v=w.visualViewport,editable=!!this.document.activeElement?.matches('input,textarea,[contenteditable=true]');
-  if(this.width!==w.innerWidth){this.width=w.innerWidth;this.baseline=w.innerHeight;this.native=null;}
+  if(this.width!==w.innerWidth){this.width=w.innerWidth;this.baseline=w.innerHeight;if(this.nativeWidth!==w.innerWidth)this.native=null;}
   if(!editable)this.baseline=Math.max(this.baseline,w.innerHeight,v?.height??0);
   const value=appViewport({width:w.innerWidth,height:w.innerHeight,visualHeight:v?.height,offsetTop:v?.offsetTop,scale:v?.scale??1,baseline:this.baseline,editable,native:this.native});
   const root=this.document.documentElement;root.style.setProperty('--app-height',value.height+'px');root.style.setProperty('--viewport-top',value.top+'px');

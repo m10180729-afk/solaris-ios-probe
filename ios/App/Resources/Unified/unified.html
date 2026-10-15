@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-wfpdPkJZg5mewWU+qCz3n2sJxuA75Uel872ISFRU8Mk='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-z716GwGwS4ILDdTIuOX4oxbH+FniKcBIO6IeRg3cKlQ='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Solaris</title><style>:root{color-scheme:dark;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#1e1f22;color:#f2f3f5;--muted:#949ba4;--accent:#5865f2;--line:#3f4147;--top:32px}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid transparent;border-radius:4px;padding:8px 12px;background:#41434b;color:inherit;transition:background .12s}button:hover{background:#50535d}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fa9ff;outline-offset:2px}input,select{border:0;border-radius:4px;padding:10px 12px;background:#1e1f22;color:inherit;max-width:100%;min-width:0}h1{font-size:17px;margin:0}h2{font-size:12px;color:var(--muted);margin:18px 0 8px}p{margin:10px 0}.spacer{flex:1}.muted{color:var(--muted);font-size:12px}.primary{background:var(--accent)}.primary:hover{background:#4752c4}.file-action{background:#3f4659}.danger{color:#ff9fa6;background:#f0717812;border-color:#b95b6355}.danger:hover{background:#a43844;color:#fff}.text-button{color:#aab1ff;background:transparent}.text-button:hover{background:#35373e}.count-badge{border-radius:10px;background:#da373c;color:#fff;font-size:10px;padding:1px 6px}.app-header{display:flex;align-items:center;gap:10px;height:var(--top);padding:0 12px;background:#1e1f22;font-size:12px;user-select:none}.brand-mark{color:#b1b7ff}.version-tag{font-size:10px;color:var(--muted)}[hidden]{display:none!important}#workspace{display:grid;grid-template-columns:72px 240px minmax(0,1fr) 232px;height:calc(100dvh - var(--top));min-height:0}#error{background:#71363e;color:#fff0f0;padding:10px 16px;white-space:pre-wrap;position:fixed;top:var(--top);right:12px;max-width:min(600px,94vw);z-index:30;border-radius:5px;box-shadow:0 6px 20px #0005}
 #server-rail{background:#1e1f22;padding:12px 10px;display:flex;align-items:center;flex-direction:column;gap:8px;overflow:auto}#server-rail button{display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;border-radius:50%;background:#313338;font-size:19px;font-weight:650;position:relative;flex-shrink:0}#server-rail button:hover,#server-rail button.active{background:var(--accent);border-radius:16px}#server-rail button.active:before{content:"";position:absolute;left:-10px;height:30px;width:4px;border-radius:0 4px 4px 0;background:#f2f3f5}#server-rail .home-icon{color:#c5caff}#server-rail .rail-add{color:#3ba55c}#server-rail .rail-add:hover{background:#24805e;color:#fff}#servers{display:flex;flex-direction:column;gap:8px}.rail-divider{width:32px;height:2px;background:#35363c;margin:2px 0;flex-shrink:0}
@@ -1530,13 +1530,13 @@ class AppViewport {
  constructor({window=globalThis,document=globalThis.document,bridge,onChange=()=>{}}={}){
   Object.assign(this,{window,document,bridge,onChange});this.baseline=window.innerHeight;this.width=window.innerWidth;
   this.update=()=>{if(this.frame)return;this.frame=this.window.requestAnimationFrame(()=>{this.frame=null;this.apply();});};
-  this.nativeEvent=e=>{if(e.detail?.type==='viewport'){this.native=e.detail;this.update();}};
+  this.nativeEvent=e=>{if(e.detail?.type==='viewport'){this.native=e.detail;this.nativeWidth=this.window.innerWidth;this.update();}};
   window.visualViewport?.addEventListener('resize',this.update);window.visualViewport?.addEventListener('scroll',this.update);
   window.addEventListener('resize',this.update);document.addEventListener('focusin',this.update);document.addEventListener('focusout',this.update);bridge?.addEventListener('event',this.nativeEvent);this.apply();
  }
  apply(){
   const w=this.window,v=w.visualViewport,editable=!!this.document.activeElement?.matches('input,textarea,[contenteditable=true]');
-  if(this.width!==w.innerWidth){this.width=w.innerWidth;this.baseline=w.innerHeight;this.native=null;}
+  if(this.width!==w.innerWidth){this.width=w.innerWidth;this.baseline=w.innerHeight;if(this.nativeWidth!==w.innerWidth)this.native=null;}
   if(!editable)this.baseline=Math.max(this.baseline,w.innerHeight,v?.height??0);
   const value=appViewport({width:w.innerWidth,height:w.innerHeight,visualHeight:v?.height,offsetTop:v?.offsetTop,scale:v?.scale??1,baseline:this.baseline,editable,native:this.native});
   const root=this.document.documentElement;root.style.setProperty('--app-height',value.height+'px');root.style.setProperty('--viewport-top',value.top+'px');
@@ -2296,7 +2296,7 @@ async function action(a,id,anchor=null){
   const f=friendRecord(id);if(!f)return;const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});body.append(identity(f.profile,f.online));actions.append(button('프로필 보기','friend-profile',id));
   if(f.status==='accepted'){
    const sharing=button('화면공유 시작','session-request',id),file=button('파일 보내기','friend-file',id);sharing.hidden=!capabilities.canPublish;file.disabled=!f.online;
-   if(!f.online){sharing.title='친구가 온라인일 때 화면공유를 요청할 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
+   if(!f.online){sharing.title='공유를 켜 두면 친구가 이 대화에 들어왔을 때 볼 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
    actions.append(button('메시지 보내기','friend',id));if(capabilities.canPublish)actions.append(sharing);actions.append(file);
   }body.append(actions);
   const danger=el('section',null,{class:'danger-zone context-section context-actions'});

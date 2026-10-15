@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {appViewport} from '../shared/viewport.mjs';
+import {appViewport,AppViewport} from '../shared/viewport.mjs';
 import {Media} from '../shared/media.mjs';
 
 test('iPad landscape and portrait keyboards resize the conversation without a phone-only width gate',()=>{
@@ -26,6 +26,20 @@ test('Android native safe bounds and keyboard restoration keep one usable viewpo
 test('pinch zoom and malformed viewport measurements cannot collapse application bounds',()=>{
  assert.equal(appViewport({width:1024,height:1000,visualHeight:500,scale:2,offsetTop:100,baseline:1000,editable:true}).height,1000);
  const bad=appViewport({width:393,height:780,visualHeight:NaN,native:{height:0}});assert.equal(bad.height,780);assert(!bad.keyboard);
+});
+
+test('rotation and native keyboard notifications in the same animation frame retain the newest usable bounds',()=>{
+ const w=new EventTarget(),doc=new EventTarget(),bridge=new EventTarget(),frames=[],values=[];
+ Object.assign(w,{innerWidth:390,innerHeight:844,requestAnimationFrame:cb=>frames.push(cb),cancelAnimationFrame:()=>{}});
+ Object.assign(doc,{activeElement:{matches:()=>true},documentElement:{style:{setProperty(){}}},body:{classList:{toggle(){}}}});
+ const view=new AppViewport({window:w,document:doc,bridge,onChange:v=>values.push(v)});
+ try{
+  w.innerWidth=393;w.innerHeight=851;w.dispatchEvent(new Event('resize'));
+  bridge.dispatchEvent(new CustomEvent('event',{detail:{type:'viewport',height:480,keyboard:true}}));
+  frames.shift()();assert.equal(values.at(-1).height,480);assert(values.at(-1).keyboard);
+  w.innerWidth=1194;w.innerHeight=834;w.dispatchEvent(new Event('resize'));frames.shift()();
+  assert.equal(values.at(-1).height,834,'a new orientation must drop measurements from the previous width');
+ }finally{view.close();}
 });
 test('empty cleanup does not emit spurious broadcast ended messages',async()=>{
  const bridge=new EventTarget();bridge.native=false;bridge.call=async()=>true;
