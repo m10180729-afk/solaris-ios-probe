@@ -7,6 +7,7 @@ import {DirectMessages} from './chat.mjs';
 import {clipVideoBounds,resetVideoFullscreen,VideoViewport,NativeLayoutQueue} from './viewing.mjs';
 import {SignalQueue} from './signal-queue.mjs';
 import {AppLifecycle} from './lifecycle.mjs';
+import {AppViewport} from './viewport.mjs';
 import {DiagnosticLog,sanitizeDiagnostics} from './diagnostics.mjs';
 import {icon} from './icons.mjs';
 
@@ -233,6 +234,12 @@ function showSelf(online){
 }
 function friendRecord(uid){return snapshot.friends.find(f=>f.profile.uid===uid);}
 function sessionFor(uid){return snapshot.sessions.find(s=>s.state!=='ended'&&[s.a,s.b].includes(uid));}
+async function openDirectShare(uid){
+ const epoch=navigationEpoch;await api.rpc('direct_open',{target:uid});await poll(true);
+ if(epoch!==navigationEpoch||friend?.uid!==uid)throw new DOMException('화면공유 시작이 취소되었습니다.','AbortError');
+ const session=sessionFor(uid);if(session?.state!=='accepted')throw new Error('개인 화면공유 연결을 준비하지 못했습니다. 다시 시도하세요.');
+ scope={kind:'direct',id:session.id};uiKey='';render();return scope;
+}
 function selectedScope(){if(scope)return scope;if(friend)return{kind:'friend',id:friend.uid};throw new Error('친구 또는 채널을 먼저 선택하세요.');}
 function activeSession(s){return snapshot.sessions.find(x=>x.id===s?.id&&x.state==='accepted');}
 function persistNavigation(){if(loadedUID)ledger.set('navigation:'+loadedUID,{server,friend:friend?.uid,page,channel:scope?.kind==='channel'?scope.id:null}).catch(error);}
@@ -287,9 +294,11 @@ async function pollOnce(){
   await media.update(snapshot);await files.reconcile(snapshot);
   const liveIDs=new Set(snapshot.broadcasts.map(b=>b.id));for(const id of autoWatchDisabled)if(!liveIDs.has(id))autoWatchDisabled.delete(id);for(const id of autoWatchAttempt.keys())if(!liveIDs.has(id))autoWatchAttempt.delete(id);
   if(Date.now()-(files.lastRecovery??0)>5000){files.lastRecovery=Date.now();await files.reconnect();}
-  if(scope?.kind==='direct')for(const b of snapshot.broadcasts.filter(b=>b.scope_kind==='direct'&&b.scope_id===scope.id&&b.publisher!==loadedUID)){
+  if(scope)for(const b of snapshot.broadcasts.filter(b=>b.scope_kind===scope.kind&&b.scope_id===scope.id&&b.publisher!==loadedUID)){
+   if(media.watching.size+[...media.joining.keys()].filter(id=>!media.watching.has(id)).length>=(settings.maxReceive??4))break;
    if(!media.watching.has(b.id)&&!autoWatchDisabled.has(b.id)&&Date.now()-(autoWatchAttempt.get(b.id)??0)>5000){
-    autoWatchAttempt.set(b.id,Date.now());try{await media.watch(b);video({id:b.id});}catch(e){autoWatchDisabled.add(b.id);renderVideoFailure(b.id,e);error(e);}
+    const engine=media,epoch=accountUIEpoch,current=()=>media===engine&&epoch===accountUIEpoch&&scope?.kind===b.scope_kind&&scope?.id===b.scope_id;
+    autoWatchAttempt.set(b.id,Date.now());engine.watch(b).then(()=>{if(current()&&engine.watching.has(b.id))video({id:b.id});}).catch(e=>{if(current()){autoWatchAttempt.set(b.id,Date.now()+10000);renderVideoFailure(b.id,e);}}).finally(()=>{if(current()){uiKey='';render();}});
    }
   }
   render();
@@ -417,10 +426,8 @@ function render(){
  }
  if(!people.childElementCount)people.append(el('p','온라인 사용자가 없습니다.',{class:'muted'}));
  if(page==='direct'&&friend){people.replaceChildren(profileCard(friend,friendRecord(friend.uid)?.online));$('#participants-title').textContent='사용자 프로필';}
- const requests=snapshot.sessions.filter(s=>s.state==='requested'&&s.requester!==loadedUID),req=$('#requests');req.replaceChildren();
- for(const s of requests){const f=friendRecord(s.requester),row=identity(f?.profile,f?.online);row.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));req.append(row);}
- if(!requests.length)req.append(el('p','새로운 요청이 없습니다.',{class:'muted'}));$('#request-count').hidden=!requests.length;$('#request-count').textContent=requests.length;
- const incoming=$('#incoming-request');incoming.hidden=!requests.length;setButtonLabel(incoming,'공유 요청 '+requests.length+'개','screen');incoming.setAttribute('aria-label','화면공유 요청 '+requests.length+'개 확인');
+ $('#requests').replaceChildren();$('#requests').closest('.request-section').hidden=true;
+ $('#request-count').hidden=true;$('#incoming-request').hidden=true;
  $('#scope-title').textContent=page==='transfers'?'파일 전송':page==='channel'?(snapshot.channels.find(c=>c.id===scope?.id)?.name??current?.name??'채널'):page==='direct'?friend?.nickname??'개인 메시지':'친구';
  $('#scope-symbol').replaceChildren(icon(page==='channel'?'hash':page==='transfers'?'files':page==='direct'?'message':'friends',24));
  $('#scope-symbol').hidden=page==='direct'&&!!friend;$('#scope-avatar').hidden=page!=='direct'||!friend;
@@ -432,7 +439,7 @@ function render(){
  $('#friend-tabs').hidden=page!=='friends';
  const tabs=$('#friend-tabs');tabs.replaceChildren();for(const [id,text]of [['online','온라인'],['all','모두'],['pending','대기 중'],['blocked','차단 목록'],['add','친구 추가']])tabs.append(button(text,'friend-filter',id,{class:(friendFilter===id?'active ':'')+(id==='add'?'add-friend':'')}));
  $('#session-controls').hidden=!scope&&!friend&&!media.broadcast&&!media.starting;
- $('#share').hidden=!capabilities.canPublish||!!media.broadcast||!!media.starting;$('#stop').hidden=!capabilities.canPublish||!media.broadcast&&!media.starting;$('#share').disabled=navigationBusy||(!scope&&!friend)||!!media.starting;setButtonLabel($('#share'),scope?'화면공유':'화면공유 요청','screen');setButtonLabel($('#stop'),media.starting?'시작 취소':'화면공유 중지','stop');
+ $('#share').hidden=!capabilities.canPublish||!!media.broadcast||!!media.starting;$('#stop').hidden=!capabilities.canPublish||!media.broadcast&&!media.starting;$('#share').disabled=navigationBusy||(!scope&&!friend)||!!media.starting;setButtonLabel($('#share'),'화면공유 시작','screen');setButtonLabel($('#stop'),media.starting?'시작 취소':'공유 중지','stop');
  $('#compose-attach').disabled=navigationBusy||!scope&&!friend;
  document.querySelector('[data-action="end-session"]').disabled=!scope;
  const compose=conversationKey(),prior=$('#chat').dataset.conversation;if(prior!==compose){if(prior)drafts[prior]=$('#chat textarea').value;$('#chat textarea').value=drafts[compose]??'';$('#chat textarea').style.height='auto';$('#chat').dataset.conversation=compose;}
@@ -480,13 +487,7 @@ function renderFriends(){
 function renderDirect(){
  const panel=$('#panel');panel.dataset.page='direct';panel.replaceChildren();if(!friend)return;
  const profile=el('div',null,{class:'dm-profile'});profile.append(identity(friend,friendRecord(friend.uid)?.online),el('p',friend.bio||'@'+friend.nickname+'님과의 개인 메시지입니다.',{class:'profile-bio muted'}));panel.append(profile);
- const s=sessionFor(friend.uid);if(!s||s.state==='ended')return;
- const banner=el('div',null,{class:'session-banner compact-session connection-banner',role:'status'});
- if(s.state==='accepted')banner.append(icon('screen',18),el('span','화면공유 연결됨'));
- else{banner.append(el('span',s.requester===loadedUID?'화면공유 요청을 보냈어요.':'화면공유 요청이 도착했어요.'));
-  if(s.requester===loadedUID)banner.append(button('요청 취소','session-cancel',s.id));
-  else banner.append(button('수락','session-accept',s.id,{class:'primary'}),button('거절','session-reject',s.id,{class:'danger'}));
- }panel.append(banner);
+ panel.append(el('p',capabilities.canPublish?'화면공유 시작을 누르면 이 대화에 내 화면이 바로 표시돼요.':'상대방이 화면공유를 시작하면 이 대화에서 바로 볼 수 있어요.',{class:'share-help muted'}));
 }
 function renderChannel(){
  const panel=$('#panel');panel.dataset.page='channel';panel.replaceChildren();
@@ -495,7 +496,7 @@ function renderChannel(){
  const live=snapshot.broadcasts.filter(b=>b.scope_kind==='channel'&&b.scope_id===c.id&&b.publisher!==loadedUID);
  const members=snapshot.members.filter(m=>m.channel_id===c.id);
  panel.append(el('h2','현재 채널 — 참여자 '+members.length+'명 · 방송 '+live.length+'개'));
- if(!live.length&&!media.broadcast)panel.append(emptyState('# '+c.name+'에 오신 것을 환영해요.',capabilities.canPublish?'화면공유를 시작하거나 접속한 참여자에게 파일을 보내 보세요.':'다른 참여자가 화면공유를 시작하면 이곳에서 시청할 수 있어요. 파일도 주고받을 수 있어요.'));
+ if(!live.length&&!media.broadcast){const welcome=emptyState('# '+c.name+'에 오신 것을 환영해요.',capabilities.canPublish?'공유를 시작하면 같은 채널의 참여자에게 바로 표시돼요.':'다른 참여자가 화면공유를 시작하면 이곳에 자동으로 표시돼요.');if(capabilities.canPublish)welcome.append(button('내 화면 공유하기','share',null,{class:'primary share-launch'}));panel.append(welcome);}
  for(const b of live){const row=identity(b.profile,true);row.classList.add('broadcast-row');row.append(button(media.watching.has(b.id)?'시청 중지':'화면공유 보기',media.watching.has(b.id)?'unwatch':'watch',b.id,{class:'primary'}));panel.append(row);}
 }
 async function poll(fresh=false){
@@ -696,7 +697,7 @@ async function action(a,id,anchor=null){
  if(a==='focus'){document.getElementById('video-'+id)?.classList.toggle('focused');return;}
  if(a==='zoom-in'||a==='zoom-out'||a==='zoom-reset'){const viewport=document.getElementById('video-'+id)?.zoomViewport;if(a==='zoom-reset')viewport?.reset();else viewport?.zoomBy(a==='zoom-in'?1.2:1/1.2);return;}
  if(a==='fullscreen'){await fullscreen(id);return;}
- if(a==='share'){if(!capabilities.canPublish)throw new Error('Android에서는 화면공유를 시청할 수 있어요. 송출은 Windows 또는 iOS에서 시작하세요.');if(navigationBusy)throw new Error('대화 전환이 끝난 뒤 화면공유를 시작하세요.');const s=selectedScope();if(s.kind==='friend'){await action('session-request',friend.uid);return;}await media.start(s);return;}
+ if(a==='share'){if(!capabilities.canPublish)throw new Error('Android에서는 화면공유를 시청할 수 있어요. 송출은 Windows 또는 iOS에서 시작하세요.');if(navigationBusy)throw new Error('대화 전환이 끝난 뒤 화면공유를 시작하세요.');const selected=selectedScope(),s=selected.kind==='friend'?await openDirectShare(friend.uid):selected;await media.start(s);return;}
  if(a==='dm-retry'){const item=dm.list(friend.uid).find(m=>m.client_id===id);if(item)await dm.send(friend.uid,item.text,id);return;}
  if(a==='dm-latest'){dm.latest(id);await dm.history(id);$('.stage-scroll').scrollTop=$('.stage-scroll').scrollHeight;return;}
  if(a==='dm-history'){const before=dm.view(id).find(m=>m.seq)?.seq,scroll=$('.stage-scroll'),height=scroll.scrollHeight;await dm.history(id,before);scroll.scrollTop+=scroll.scrollHeight-height;return;}
@@ -704,11 +705,7 @@ async function action(a,id,anchor=null){
  if(a==='session-request'){
   if(!capabilities.canPublish)throw new Error('이 기기는 화면공유 수신 전용입니다. 상대방에게 화면공유를 시작해 달라고 요청하세요.');
   $('#dialog').close();
-  await selectFriend(id);const current=sessionFor(id);
-  if(current?.state==='accepted'){scope={kind:'direct',id:current.id};uiKey='';render();return;}
-  if(!friendRecord(id)?.online)throw new Error('친구가 온라인 상태일 때 화면공유를 요청할 수 있어요.');
-  if(current?.requester!==loadedUID&&current?.state==='requested'){await action('session-accept',current.id);return;}
-  await api.rpc('session_request',{target:id});message('화면공유 요청을 보냈습니다. 상대방 수락을 기다리세요.');await poll(true);return;
+  await selectFriend(id);await action('share');return;
  }
  if(a==='session-accept'){
   const s=snapshot.sessions.find(s=>s.id===id);if(!s)throw new Error('요청이 종료되었습니다.');
@@ -751,7 +748,7 @@ async function action(a,id,anchor=null){
  if(a==='friend-menu'){
   const f=friendRecord(id);if(!f)return;const body=el('div',null,{class:'context-menu'}),actions=el('div',null,{class:'context-actions'});body.append(identity(f.profile,f.online));actions.append(button('프로필 보기','friend-profile',id));
   if(f.status==='accepted'){
-   const sharing=button('화면공유 요청','session-request',id),file=button('파일 보내기','friend-file',id);sharing.disabled=!f.online&&sessionFor(id)?.state!=='accepted';file.disabled=!f.online;
+   const sharing=button('화면공유 시작','session-request',id),file=button('파일 보내기','friend-file',id);sharing.hidden=!capabilities.canPublish;file.disabled=!f.online;
    if(!f.online){sharing.title='친구가 온라인일 때 화면공유를 요청할 수 있어요.';file.title='친구가 온라인일 때 파일을 보낼 수 있어요.';}
    actions.append(button('메시지 보내기','friend',id));if(capabilities.canPublish)actions.append(sharing);actions.append(file);
   }body.append(actions);
@@ -933,11 +930,8 @@ await run(async()=>{
 $('#chat textarea').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(128,e.target.scrollHeight)+'px';});
 $('#chat textarea').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(!matchMedia('(pointer: coarse)').matches||e.ctrlKey||e.metaKey)){e.preventDefault();if(!$('#chat-send').disabled)$('#chat').requestSubmit();}});
 
-// Use the visible viewport so the keyboard cannot cover the composer or dialogs.
-let mobileViewportWidth=innerWidth,mobileViewportHeight=globalThis.visualViewport?.height??innerHeight;
-function mobileViewport(){
- const height=globalThis.visualViewport?.height??innerHeight;if(innerWidth!==mobileViewportWidth){mobileViewportWidth=innerWidth;mobileViewportHeight=height;}
- const editable=document.activeElement?.matches('input,textarea,[contenteditable=true]');if(!editable)mobileViewportHeight=Math.max(height,mobileViewportHeight);
- document.documentElement.style.setProperty('--app-height',height+'px');document.body.classList.toggle('keyboard-open',innerWidth<=760&&!!editable&&height<mobileViewportHeight*.82);layoutNativeScreens();
-}
-globalThis.visualViewport?.addEventListener('resize',mobileViewport);window.addEventListener('resize',mobileViewport);document.addEventListener('focusin',mobileViewport);document.addEventListener('focusout',()=>requestAnimationFrame(mobileViewport));mobileViewport();
+let lastViewportHeight=innerHeight;
+const appViewportController=new AppViewport({bridge,onChange:value=>{
+ layoutNativeScreens();if(value.keyboard&&value.height!==lastViewportHeight&&document.activeElement?.closest('#chat')){const pane=$('.stage-scroll');pane.scrollTop=pane.scrollHeight;}
+ lastViewportHeight=value.height;
+}});

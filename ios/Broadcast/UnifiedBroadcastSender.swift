@@ -77,7 +77,10 @@ final class UnifiedBroadcastSender: NSObject, RTCPeerConnectionDelegate {
         guard !stopped else { return }
         stopReason = reason
         stopInternal()
-        let message = reason == "viewers-disconnected" ? "모든 시청자의 연결이 끊겨 화면공유를 종료했습니다." : "화면공유 연결이 끊겨 방송을 종료했습니다. 다시 연결한 뒤 시작하세요."
+        let messages = ["broadcast-heartbeat-timeout": "서버의 송출 유지 신호가 45초 동안 확인되지 않아 화면공유를 종료했습니다.",
+            "signaling-timeout": "시청자 연결 정보를 45초 동안 받지 못해 화면공유를 종료했습니다.",
+            "broadcast-ended": "서버에서 방송이 종료되었거나 다른 기기에서 새 방송을 시작했습니다."]
+        let message = messages[reason] ?? "화면공유를 종료했습니다."
         finish(NSError(domain: "Solaris", code: 4, userInfo: [NSLocalizedDescriptionKey: message]))
     }
     private func removeNode(_ uid: String, expected: Node? = nil) {

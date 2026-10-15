@@ -29,6 +29,8 @@ jobs:
           dotnet windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Solaris.Transport.Tests.dll
       - name: Test native adapter session and viewer isolation
         run: dotnet run --project windows-native/Solaris.Adapter.Tests -c Release
+      - name: Test hardware and CPU capture selection
+        run: dotnet run --project windows-native/Solaris.Capture.Tests -c Release
       - name: Generate H264 interoperability fixture
         run: |
           sudo apt-get update
@@ -85,6 +87,8 @@ jobs:
           if (-not $ffmpeg) { throw "ffmpeg.exe not found" }
           Copy-Item $ffmpeg.FullName dist/native/ffmpeg.exe
           Copy-Item windows-native/THIRD_PARTY_NOTICES.txt dist/native/THIRD_PARTY_NOTICES.txt
+          dotnet run --project windows-native/Solaris.Capture.Tests -c Release -- "$((Resolve-Path dist/native/ffmpeg.exe).Path)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify integrated package
         shell: pwsh
         run: |

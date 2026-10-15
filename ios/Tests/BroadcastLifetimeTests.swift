@@ -30,8 +30,13 @@ import Foundation
         gate.markConnected("connection-a", now: 120); gate.markDisconnected("connection-a", now: 121)
         gate.syncSucceeded(now: 150); gate.touchSucceeded(now: 150)
         check(gate.stopReason(now: 150.9) == nil, "Disconnect recovery grace ended early")
-        check(gate.stopReason(now: 151) == "viewers-disconnected", "Last disconnected viewer left capture running")
-        print("PASS: bounded 30-second grace after the last connected viewer disconnects")
+        check(gate.stopReason(now: 151) == nil, "A viewer leaving must not stop a healthy published screen")
+        for second in stride(from: 155.0, through: 300.0, by: 5.0) {
+            gate.syncSucceeded(now: second); gate.touchSucceeded(now: second)
+            check(gate.stopReason(now: second) == nil, "A viewerless broadcast ended near the one-minute mark")
+        }
+        check(gate.stopReason(now: 345) == "broadcast-heartbeat-timeout", "Actual publisher connection loss must remain bounded")
+        print("PASS: a healthy broadcast survives viewer departures beyond two minutes; true control loss still expires")
 
         gate.markConnected("connection-b", now: 125.5)
         check(gate.stopReason(now: 130) == nil, "New genuine connection did not cancel disconnect grace")

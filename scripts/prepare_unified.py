@@ -10,7 +10,7 @@ for target in (root/'ios/App/Resources/Unified',root/'android/app/src/main/asset
     # WKWebView local modules have inconsistent file-origin CORS behavior.
     # Bundle into one hash-authorized script; never enable unsafe file access.
     parts=[]
-    for name in ('config','sha256','platform','authflow','api','build54-screen','media','files','lifecycle','diagnostics','chat','viewing','icons','signal-queue','app'):
+    for name in ('config','sha256','platform','authflow','api','build54-screen','media','files','lifecycle','diagnostics','chat','viewing','icons','signal-queue','viewport','app'):
         src=(root/'shared'/f'{name}.mjs').read_text(encoding='utf-8')
         exports=re.findall(r'export (?:async )?(?:function|const|class) (\w+)',src)
         src=re.sub(r"\bimport\s*.*?from\s*['\"][^'\"]+['\"]\s*;",'',src)

@@ -3,7 +3,7 @@ import android.app.*;import android.content.*;import android.net.Uri;import andr
 
 public final class SolarisActivity extends Activity{
  private static final String ORIGIN="https://appassets.androidplatform.net/assets/";
- private WebView web;private final AuthCallbacks authCallbacks=new AuthCallbacks();private int rendererRestarts;private NativeDiagnostics nativeDiagnostics;private boolean destroyed;private DiskBridge disk;private final ExecutorService io=Executors.newSingleThreadExecutor();
+ private WebView web;private FrameLayout webContainer;private final AuthCallbacks authCallbacks=new AuthCallbacks();private int rendererRestarts;private NativeDiagnostics nativeDiagnostics;private boolean destroyed;private DiskBridge disk;private final ExecutorService io=Executors.newSingleThreadExecutor();
  private String pickerRequest,pickerCommand;private JSONObject pickerArgs;private View custom;private WebChromeClient.CustomViewCallback customCallback;private ValueCallback<Uri[]> photoCallback;
  @Override public void onCreate(Bundle saved){super.onCreate(saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);disk=new DiskBridge(this);nativeDiagnostics=new NativeDiagnostics(this);stopLegacyProjection();createWeb();captureAuth(getIntent());if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},10);}
  private void captureAuth(Intent intent){String value=authCallbacks.capture(intent==null?null:intent.getDataString());if(intent!=null)intent.setData(value==null?null:Uri.parse(value));if(value==null)return;try{emit(new JSONObject().put("type","auth-callback").put("url",value));}catch(JSONException ignored){}}
@@ -18,14 +18,24 @@ public final class SolarisActivity extends Activity{
   if(++rendererRestarts<=2&&!destroyed){createWeb();}else{stopLegacyProjection();LinearLayout panel=new LinearLayout(SolarisActivity.this);panel.setOrientation(LinearLayout.VERTICAL);TextView text=new TextView(SolarisActivity.this);text.setText("영상 화면을 복구하지 못했습니다. Android System WebView를 업데이트한 뒤 다시 시도하세요.");Button retry=new Button(SolarisActivity.this);retry.setText("Solaris 다시 열기");retry.setOnClickListener(v->{rendererRestarts=0;createWeb();});panel.addView(text);panel.addView(retry);setContentView(panel);}return true;
  }});
   web.setWebChromeClient(new WebChromeClient(){@Override public void onPermissionRequest(PermissionRequest r){r.deny();}@Override public void onShowCustomView(View v,CustomViewCallback cb){if(custom!=null){cb.onCustomViewHidden();return;}custom=v;customCallback=cb;setContentView(v);fullscreen(true);}@Override public void onHideCustomView(){exitVideoFullscreen();}@Override public boolean onShowFileChooser(WebView v,ValueCallback<Uri[]> cb,FileChooserParams p){if(photoCallback!=null)photoCallback.onReceiveValue(null);photoCallback=cb;startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE),45);return true;}});
-  web.addJavascriptInterface(new JavascriptAPI(),"SolarisNative");setContentView(web);applyInsets(web);web.loadUrl(ORIGIN+"index.html");
+  web.addJavascriptInterface(new JavascriptAPI(),"SolarisNative");
+  getWindow().setDecorFitsSystemWindows(false);getWindow().setNavigationBarContrastEnforced(false);
+  getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+  webContainer=new FrameLayout(this);webContainer.setBackgroundColor(0xff17171c);
+  webContainer.addView(web,new FrameLayout.LayoutParams(-1,-1));setContentView(webContainer);applyInsets(webContainer);web.loadUrl(ORIGIN+"index.html");
  }
- private void applyInsets(View view){view.setOnApplyWindowInsetsListener((v,insets)->{android.graphics.Insets safe=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());v.setPadding(safe.left,safe.top,safe.right,safe.bottom);return insets;});view.requestApplyInsets();}
+ private void applyInsets(View view){view.setOnApplyWindowInsetsListener((v,insets)->{
+  int types=WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime();
+  android.graphics.Insets safe=insets.getInsets(types);
+  // Resize the actual WebView bounds: WebView padding does not constrain CSS fixed bars.
+  v.setPadding(safe.left,safe.top,safe.right,safe.bottom);
+  return new WindowInsets.Builder(insets).setInsets(types,android.graphics.Insets.NONE).build();
+ });view.requestApplyInsets();}
  public final class JavascriptAPI{@JavascriptInterface public void postMessage(String json){try{JSONObject m=new JSONObject(json);runOnUiThread(()->command(m));}catch(JSONException ignored){}}}
  private void exitVideoFullscreen(){
   // Clear the callback before invoking it: WebView may reenter onHideCustomView.
   WebChromeClient.CustomViewCallback callback=customCallback;boolean hadView=custom!=null;custom=null;customCallback=null;
-  if(hadView&&web!=null&&!destroyed){setContentView(web);applyInsets(web);}fullscreen(false);
+  if(hadView&&web!=null&&!destroyed){setContentView(webContainer);applyInsets(webContainer);}fullscreen(false);
   if(callback!=null)callback.onCustomViewHidden();
  }
  private void fullscreen(boolean enabled){WindowInsetsController controller=getWindow().getInsetsController();if(controller==null)return;if(enabled)controller.hide(WindowInsets.Type.systemBars());else controller.show(WindowInsets.Type.systemBars());}

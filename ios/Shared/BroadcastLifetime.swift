@@ -2,8 +2,8 @@ import Foundation
 import CoreFoundation
 
 // Monotonic watchdogs are independent of wall-clock changes and in-flight RPCs.
-// A sender may wait for its first viewer; once connected, losing every viewer
-// gets a short recovery grace period before ReplayKit is explicitly finished.
+// Viewer navigation does not stop publication. Ownership/control expiry is
+// still bounded independently of viewer count and in-flight requests.
 struct BroadcastLifetime {
     private(set) var lastSuccessfulSync: TimeInterval
     private(set) var lastSuccessfulTouch: TimeInterval
@@ -26,7 +26,9 @@ struct BroadcastLifetime {
         // evidence that an established RTP connection has disappeared.
         if now - lastSuccessfulTouch >= 45 { return "broadcast-heartbeat-timeout" }
         if connected.isEmpty, now - lastSuccessfulSync >= 45 { return "signaling-timeout" }
-        if connected.isEmpty, let emptySince, now - emptySince >= 30 { return "viewers-disconnected" }
+        // A viewer leaving or navigating away does not revoke the publisher's
+        // screen-share choice. Keep a healthy, authenticated broadcast available
+        // for the next viewer; actual control/auth loss still expires above.
         return nil
     }
 }

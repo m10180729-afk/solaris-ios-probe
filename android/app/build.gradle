@@ -6,7 +6,7 @@ android {
         applicationId 'org.solaris.receiver'
         minSdk 30
         targetSdk 35
-        versionCode 68
+        versionCode 69
         versionName '1.0'
         // Video is received through the platform WebView. No native sender/AAR.
     }

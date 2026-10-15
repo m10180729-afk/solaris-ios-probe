@@ -12,7 +12,7 @@ import AuthenticationServices
 struct UnifiedView: View {
     @State private var picker = false
     var body: some View {
-        UnifiedWebView(showPicker: $picker).ignoresSafeArea(edges: .bottom)
+        UnifiedWebView(showPicker: $picker).ignoresSafeArea(.keyboard, edges: .bottom)
             .onOpenURL { AuthReturnRouter.shared.receive($0) }
             .sheet(isPresented: $picker) {
                 VStack(spacing: 20) {
@@ -37,6 +37,12 @@ struct UnifiedWebView: UIViewRepresentable {
         w.navigationDelegate = context.coordinator
         w.uiDelegate = context.coordinator
         w.clipsToBounds = true; w.isOpaque = false; w.backgroundColor = .black
+        // The document scrolls its chat pane. WKWebView must not additionally
+        // pan the whole application to reveal an input above the keyboard.
+        w.scrollView.isScrollEnabled = false; w.scrollView.bounces = false
+        w.scrollView.delegate = context.coordinator
+        w.scrollView.contentInsetAdjustmentBehavior = .never
+        w.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         context.coordinator.web = w
         if let url = Bundle.main.url(forResource: "unified", withExtension: "html", subdirectory: "Unified") {
             context.coordinator.appURL = url
@@ -47,7 +53,7 @@ struct UnifiedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
 
-final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
+final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIScrollViewDelegate, ASWebAuthenticationPresentationContextProviding {
     weak var web: WKWebView?
     var appURL: URL?
     private let showPicker: Binding<Bool>
@@ -73,8 +79,25 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 self?.emit(["type": "lifecycle", "state": state])
             })
         }
+        for name in [UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardWillHideNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self, let web = self.web, let window = web.window else { return }
+                let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
+                let local = web.convert(window.convert(frame, from: nil), from: window)
+                let docked = note.name != UIResponder.keyboardWillHideNotification && local.width >= web.bounds.width * 0.7 && local.maxY >= web.bounds.maxY
+                let overlap = docked ? max(0, web.bounds.maxY - max(web.bounds.minY, local.minY)) : 0
+                self.emit(["type": "viewport", "height": max(1, web.bounds.height - overlap), "keyboard": overlap > 0])
+            })
+        }
     }
     deinit { for receiver in receivers.values { receiver.stop() }; for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // WebKit can programmatically pan even when user scrolling is disabled.
+        // Only HTML chat/dialog panes scroll; keep the outer application fixed.
+        if scrollView === web?.scrollView && scrollView.contentOffset != .zero {
+            scrollView.setContentOffset(.zero, animated: false)
+        }
+    }
     private func dismissReceiverFullscreen() {
         let id = receiverFullscreenID, controller = receiverFullscreen
         receiverFullscreenID = nil; receiverFullscreenToken = nil; receiverFullscreen = nil
@@ -411,14 +434,17 @@ final class UnifiedDisk {
         if command == "mediaStatus" {
             guard let group = ProbeShared.group(), let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-diagnostics.json")), let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return ["active": false, "nativeAuthRefreshOwner": false, "nativeSignaling": true] }
             let now = Date().timeIntervalSince1970, age = now - (value["updatedAt"] as? Double ?? 0)
-            let active = value["state"] as? String == "active" && age >= 0 && age < 20
+            let active = value["state"] as? String == "active" && age >= 0 && age < 45
             var refreshOwner = false
             if active, let context = BroadcastContextStore.read(group.url),
                let raw = (try? self.command("vaultGet", ["key": "session"])) as? String, let stored = raw.data(using: .utf8),
                let session = (try? JSONSerialization.jsonObject(with: stored)) as? [String: Any] {
                 refreshOwner = BroadcastControlPolicy.refreshOwnedByExtension(now: now, diagnostics: value, context: context, session: session)
             }
-            return ["id": value["id"] ?? NSNull(), "active": active, "nativeSignaling": true, "nativeAuthRefreshOwner": refreshOwner]
+            let explicitReason = value["stopReason"] as? String ?? ""
+            let reason = explicitReason.isEmpty && !active && value["state"] as? String == "active" ? "extension-status-timeout" : explicitReason
+            return ["id": value["id"] ?? NSNull(), "active": active, "nativeSignaling": true, "nativeAuthRefreshOwner": refreshOwner,
+                "stopReason": reason, "diagnosticAgeSeconds": max(0, age)]
         }
         if command == "diagnostics" {
             var result: [String: Any] = ["platform": "ios", "os": UIDevice.current.systemVersion, "version": ProbeShared.appVersion]

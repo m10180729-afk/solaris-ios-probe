@@ -123,9 +123,9 @@ export class Media extends EventTarget {
   this.touchingBroadcast=b;try{const alive=await this.api.rpc('broadcast_touch',{id:b.id});if(this.broadcast!==b||this.closed)return;this.lastServerContact=Date.now();if(!alive)await this.stop();}finally{if(this.touchingBroadcast===b)this.touchingBroadcast=null;}
  }
  publisherDisconnected(){const b=this.broadcast;if(!b?.hadConnection)return;const key='publisher:'+b.id;
-  if(this.nativePeers.size||[...this.peers.values()].some(p=>p.sending&&p.pc.connectionState==='connected')){clearTimeout(this.disconnectTimers.get(key));this.disconnectTimers.delete(key);return;}
-  if(this.disconnectTimers.has(key))return;
-  const ticket=setTimeout(()=>{this.disconnectTimers.delete(key);if(this.broadcast===b&&!this.nativePeers.size&&![...this.peers.values()].some(p=>p.sending&&p.pc.connectionState==='connected')){this.emit('diagnostics',{event:'publisher-no-viewers',timeoutMilliseconds:CONNECTION_LIMITS.publisherGrace});this.stop().catch(e=>this.error(e));}},CONNECTION_LIMITS.publisherGrace);ticket.unref?.();this.disconnectTimers.set(key,ticket);
+  // Viewers may leave and rejoin an ongoing broadcast without stopping its
+  // capture. The independent publisher lease still ends a real outage.
+  clearTimeout(this.disconnectTimers.get(key));this.disconnectTimers.delete(key);
  }
  peerState(p,state){this.emit('state',{id:p.broadcast,state});if(this.closed||p.closed||this.peers.get(p.id)!==p)return;
   if(state==='disconnected'&&this.disconnectTimers.has(p.id))return;
@@ -184,7 +184,7 @@ export class Media extends EventTarget {
   const b=this.broadcast;this.broadcast=null;
   for(const t of this.stream?.getTracks()??[]){t.onended=null;t.stop();}this.stream=null;
   for(const[k,p]of this.peers)if(p.sending){p.close();this.peers.delete(k);this.meters.delete(k);}
-  this.nativePeers.clear();this.nativePeerStates.clear();for(const[key,ticket]of this.disconnectTimers)if(key.startsWith('publisher:')||key.startsWith('native:')){clearTimeout(ticket);this.disconnectTimers.delete(key);}this.emit('broadcast',null);
+  this.nativePeers.clear();this.nativePeerStates.clear();for(const[key,ticket]of this.disconnectTimers)if(key.startsWith('publisher:')||key.startsWith('native:')){clearTimeout(ticket);this.disconnectTimers.delete(key);}if(b)this.emit('broadcast',null);
   this.nativeSenderStats=null;this.receiverReadings?.clear();this.nativeGenerations?.clear();
   // A new start waits for the previous native stop, even after UI recovers.
   const before=publisherOperations.get(this.bridge)??Promise.resolve();
@@ -301,7 +301,10 @@ export class Media extends EventTarget {
  async tick(){if(this.closed||this.ticking)return;this.ticking=true;try{await this.tickOnce();}finally{this.ticking=false;}}
  async tickOnce(){
   const b=this.broadcast;
-  if(b?.transport==='replaykit'){const status=await this.bridge.call('mediaStatus');if(status.active&&status.id===b.id){if(b.pending){b.pending=false;this.emit('broadcast',b);}}else if(this.broadcast===b&&(!b.pending||Date.now()-b.started>45000))await this.stop();}
+  if(b?.transport==='replaykit'){const status=await this.bridge.call('mediaStatus');if(status.active&&status.id===b.id){if(b.pending){b.pending=false;this.emit('broadcast',b);}}else if(this.broadcast===b&&(!b.pending||Date.now()-b.started>45000)){
+   const reason=status.id===b.id?status.stopReason:null;this.emit('diagnostics',{event:'native-broadcast-ended',reason:reason??'capture-not-confirmed',diagnosticAgeSeconds:status.diagnosticAgeSeconds});await this.stop();
+   const messages={'broadcast-heartbeat-timeout':'서버의 송출 유지 신호가 45초 동안 확인되지 않아 공유를 종료했습니다.','signaling-timeout':'시청자 연결 정보를 받지 못해 공유를 종료했습니다.','broadcast-ended':'서버에서 방송이 종료되었거나 다른 기기에서 새 방송을 시작했습니다.','extension-status-timeout':'iPad 방송 확장의 상태 신호가 중단되었습니다. 연결 상태에서 진단 기록을 확인하세요.'};if(messages[reason])this.error(new Error(messages[reason]));
+  }}
   // Start the independent lease renewal before collecting possibly slow stats.
   if(b)this.controlTick().catch(e=>this.error(e));
   if(b&&this.broadcast===b)await this.samplePublisher(b);

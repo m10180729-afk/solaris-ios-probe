@@ -348,3 +348,13 @@ dialog.context-dialog::backdrop{background:transparent}
 .stack-form input[type=checkbox]:before{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .12s}
 .stack-form input[type=checkbox]:checked{background:#5865f2}.stack-form input[type=checkbox]:checked:before{transform:translateX(16px)}
 @media(max-width:760px){.friend-row-main{min-height:44px}.member-profile,.member-menu{min-height:44px}.member-menu{width:44px;min-width:44px;padding:10px}.context-menu .context-section>button{min-height:44px}dialog.context-dialog #dialog-close{width:44px;height:44px;padding:10px}dialog.profile-dialog:has(.profile-card):not(:has(.profile-settings)){width:calc(100vw - 20px);min-width:0}}
+/* One viewport, including iPad keyboards and native Android safe bounds. */
+body{position:fixed;left:0;right:0;top:var(--viewport-top,0px);height:var(--app-height);overscroll-behavior:none}
+body.keyboard-open{--mobile-nav:0px}body.keyboard-open .mobile-tabs{display:none}body.keyboard-open .share-help{display:none}
+body.keyboard-open #stage[data-page=direct] #panel{margin-top:0}body.keyboard-open .dm-profile{display:none}
+body.keyboard-open .stage-scroll{scroll-padding-bottom:12px}
+body.keyboard-open dialog[open]:not(.anchored-context){inset:auto;left:50%;top:calc(var(--viewport-top,0px) + var(--app-height)/2);transform:translate(-50%,-50%);margin:0;max-height:calc(var(--app-height) - 24px)}
+body.keyboard-open #onboarding{width:min(480px,calc(100vw - 20px));max-height:calc(var(--app-height) - 24px);overflow:auto;margin:12px auto}
+.share-help{font-size:12px;margin:8px 0 16px;color:var(--muted)}
+@media(pointer:coarse){#chat textarea,.stack-form input,.stack-form textarea,.stack-form select{font-size:16px}}
+@media(max-width:760px){.stage-header .toolbar #share{width:auto;min-width:100px;background:var(--accent);color:white;padding:8px;gap:5px}.stage-header .toolbar #share .button-label{display:inline;font-size:12px}.stage-header .toolbar #share .ui-icon{width:18px;height:18px}.app-header{display:none}:root{--top:0px}}

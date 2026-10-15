@@ -257,7 +257,7 @@ class EmbeddingTests(unittest.TestCase):
 
     def test_release_shell_and_preserved_capture_fixtures_are_consistent(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn("CURRENT_PROJECT_VERSION: '68'", (root / "ios/project.yml").read_text())
+        self.assertIn("CURRENT_PROJECT_VERSION: '69'", (root / "ios/project.yml").read_text())
         browser_receiver = (root / "ios/App/Resources/solaris-p2p.html").read_text()
         self.assertIn("BUILD_NUMBER = '54'", browser_receiver)
         self.assertIn("0.3.2 build54", browser_receiver)

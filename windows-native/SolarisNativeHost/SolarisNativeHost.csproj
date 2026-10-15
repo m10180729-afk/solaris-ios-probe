@@ -15,7 +15,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
     <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
+    <FileVersion>1.0.0.1</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
