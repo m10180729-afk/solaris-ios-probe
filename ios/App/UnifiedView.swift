@@ -53,7 +53,7 @@ struct UnifiedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
 
-final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIScrollViewDelegate, ASWebAuthenticationPresentationContextProviding {
+final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate, UIScrollViewDelegate, ASWebAuthenticationPresentationContextProviding {
     weak var web: WKWebView?
     var appURL: URL?
     private let showPicker: Binding<Bool>
