@@ -12,7 +12,7 @@ import AuthenticationServices
 struct UnifiedView: View {
     @State private var picker = false
     var body: some View {
-        UnifiedWebView(showPicker: $picker).ignoresSafeArea(edges: .bottom)
+        UnifiedWebView(showPicker: $picker).ignoresSafeArea(.keyboard, edges: .bottom)
             .onOpenURL { AuthReturnRouter.shared.receive($0) }
             .sheet(isPresented: $picker) {
                 VStack(spacing: 20) {
@@ -37,6 +37,12 @@ struct UnifiedWebView: UIViewRepresentable {
         w.navigationDelegate = context.coordinator
         w.uiDelegate = context.coordinator
         w.clipsToBounds = true; w.isOpaque = false; w.backgroundColor = .black
+        // The document scrolls its chat pane. WKWebView must not additionally
+        // pan the whole application to reveal an input above the keyboard.
+        w.scrollView.isScrollEnabled = false; w.scrollView.bounces = false
+        w.scrollView.delegate = context.coordinator
+        w.scrollView.contentInsetAdjustmentBehavior = .never
+        w.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         context.coordinator.web = w
         if let url = Bundle.main.url(forResource: "unified", withExtension: "html", subdirectory: "Unified") {
             context.coordinator.appURL = url
@@ -47,7 +53,7 @@ struct UnifiedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
 
-final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
+final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIDocumentPickerDelegate, UIScrollViewDelegate, ASWebAuthenticationPresentationContextProviding {
     weak var web: WKWebView?
     var appURL: URL?
     private let showPicker: Binding<Bool>
@@ -56,6 +62,8 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     private var pendingPicker: (id: String, command: String)?
     private var receivers: [String: DesktopScreenReceiver] = [:]
     private weak var receiverFullscreen: UIViewController?
+    private var receiverFullscreenID: String?
+    private var receiverFullscreenToken: UUID?
     private var receiverConnections: [String: String] = [:]
     private var surfaces: [String: UIHostingController<Build54ScreenSurface>] = [:]
     private var observers: [NSObjectProtocol] = []
@@ -71,15 +79,35 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 self?.emit(["type": "lifecycle", "state": state])
             })
         }
+        for name in [UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardWillHideNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self, let web = self.web, let window = web.window else { return }
+                let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
+                let local = web.convert(window.convert(frame, from: nil), from: window)
+                let docked = note.name != UIResponder.keyboardWillHideNotification && local.width >= web.bounds.width * 0.7 && local.maxY >= web.bounds.maxY
+                let overlap = docked ? max(0, web.bounds.maxY - max(web.bounds.minY, local.minY)) : 0
+                self.emit(["type": "viewport", "height": max(1, web.bounds.height - overlap), "keyboard": overlap > 0])
+            })
+        }
     }
     deinit { for receiver in receivers.values { receiver.stop() }; for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // WebKit can programmatically pan even when user scrolling is disabled.
+        // Only HTML chat/dialog panes scroll; keep the outer application fixed.
+        if scrollView === web?.scrollView && scrollView.contentOffset != .zero {
+            scrollView.setContentOffset(.zero, animated: false)
+        }
+    }
     private func dismissReceiverFullscreen() {
-        receiverFullscreen?.dismiss(animated: false); receiverFullscreen = nil
+        let id = receiverFullscreenID, controller = receiverFullscreen
+        receiverFullscreenID = nil; receiverFullscreenToken = nil; receiverFullscreen = nil
+        controller?.dismiss(animated: false)
+        if let id { emit(["type": "media-receive-fullscreen", "enabled": false, "id": id]) }
     }
     private func removeReceiver(_ id: String) {
         // The presented viewer retains its receiver snapshot; dismiss it before
         // stopping any receiver so a stale black surface cannot cover the app.
-        if receivers[id] != nil { dismissReceiverFullscreen() }
+        if receiverFullscreenID == id { dismissReceiverFullscreen() }
         receiverConnections.removeValue(forKey: id)
         receivers.removeValue(forKey: id)?.stop()
         if let controller = surfaces.removeValue(forKey: id) { controller.willMove(toParent: nil); controller.view.removeFromSuperview(); controller.removeFromParent() }
@@ -106,10 +134,15 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
               let args = m["args"] as? [String: Any] else { return }
         do {
             switch command {
-            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true])
+            case "platform": reply(id, ["platform": "ios", "version": ProbeShared.appVersion, "nativeReceive": true, "mediaSend": true, "canPublish": true, "systemTitlebar": false])
             case "authListen": reply(id, true)
+            case "copyText":
+                guard let text = args["text"] as? String, text.utf8.count <= 65536 else { throw UnifiedError("복사할 내용을 확인하세요.") }
+                UIPasteboard.general.string = text; reply(id, true)
             case "authTake": reply(id, AuthReturnRouter.shared.take())
-            case "authCancel": authEpoch = UUID(); authBrowser?.cancel(); authBrowser = nil; _ = AuthReturnRouter.shared.take(); reply(id, true)
+            case "authAck": reply(id, AuthReturnRouter.shared.acknowledge(args["url"] as? String ?? ""))
+            case "authStatus": reply(id, AuthReturnRouter.shared.metadata)
+            case "authCancel": authEpoch = UUID(); authBrowser?.cancel(); authBrowser = nil; AuthReturnRouter.shared.clear(); reply(id, true)
             case "authOpen":
                 guard let text = args["url"] as? String, let url = URL(string: text), url.scheme == "https", url.user == nil, url.password == nil, url.port == nil,
                       (url.host == "lfwjkaipghctigswxoxq.supabase.co" && url.path == "/auth/v1/authorize") || (url.host == "accounts.google.com" && url.path.hasPrefix("/o/oauth2/")) else { throw UnifiedError("Invalid authentication URL") }
@@ -156,7 +189,7 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 for view in surfaces.values { view.view.isHidden = true }
                 for item in items {
                     guard let bid = item["id"] as? String, let surface = surfaces[bid] else { continue }
-                    func n(_ key: String) -> CGFloat { CGFloat((item[key] as? NSNumber)?.doubleValue ?? 0) * scale }
+                    func n(_ key: String) -> CGFloat { let value = (item[key] as? NSNumber)?.doubleValue ?? 0; return value.isFinite ? CGFloat(value) * scale : 0 }
                     surface.view.frame = CGRect(x: n("x"), y: n("y"), width: max(0, n("width")), height: max(0, n("height")))
                     let mask = CAShapeLayer()
                     mask.path = UIBezierPath(rect: CGRect(x: n("clipX"), y: n("clipY"), width: max(0, n("clipWidth")), height: max(0, n("clipHeight")))).cgPath
@@ -165,11 +198,19 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
                 }
                 reply(id, true)
             case "mediaReceiveFullscreen":
+                if args["enabled"] as? Bool == false { dismissReceiverFullscreen(); reply(id, true); break }
                 let bid = args["id"] as? String ?? ""
-                guard receivers[bid] != nil else { throw UnifiedError("방송이 종료되었습니다.") }
-                let controller = UIHostingController(rootView: Build54Fullscreen(receivers: receivers, selected: bid))
-                dismissReceiverFullscreen(); receiverFullscreen = controller
-                controller.modalPresentationStyle = .fullScreen; present(controller); reply(id, true)
+                guard receivers[bid] != nil, host != nil else { throw UnifiedError("방송이 종료되었습니다.") }
+                let token = UUID()
+                let controller = UIHostingController(rootView: Build54Fullscreen(receivers: receivers, selected: bid, didSelect: { [weak self] selected in
+                    guard let self, self.receiverFullscreenToken == token else { return }
+                    self.receiverFullscreenID = selected; self.emit(["type": "media-receive-fullscreen", "enabled": true, "id": selected])
+                }, didExit: { [weak self] in
+                    guard let self, self.receiverFullscreenToken == token else { return }; self.dismissReceiverFullscreen()
+                }))
+                dismissReceiverFullscreen(); receiverFullscreen = controller; receiverFullscreenID = bid; receiverFullscreenToken = token
+                controller.modalPresentationStyle = .fullScreen; present(controller)
+                emit(["type": "media-receive-fullscreen", "enabled": true, "id": bid]); reply(id, true)
             case "pickFile":
                 guard pendingPicker == nil else { throw UnifiedError("파일 선택이 진행 중입니다.") }
                 pendingPicker = (id, command)
@@ -204,15 +245,12 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
             case "broadcastPrepare", "broadcastRefresh":
                 guard let group = ProbeShared.group() else { throw UnifiedError("방송 확장과 인증 정보를 공유할 수 없습니다. AltStore 서명에서 앱과 확장의 Solaris App Group이 함께 유지되어야 합니다.") }
                 var context = args; context["updatedAt"] = Date().timeIntervalSince1970
-                let data = try JSONSerialization.data(withJSONObject: context)
-                let url = group.url.appendingPathComponent("unified-broadcast.json")
-                try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-                guard (try Data(contentsOf: url)) == data else { throw UnifiedError("공유 컨테이너 쓰기 확인 실패") }
+                try BroadcastContextStore.replace(context, directory: group.url, refreshOnly: command == "broadcastRefresh")
                 if command == "broadcastPrepare" { showPicker.wrappedValue = true }
                 reply(id, true)
             case "mediaStop":
-                showPicker.wrappedValue = false
-                if let group = ProbeShared.group() { try? FileManager.default.removeItem(at: group.url.appendingPathComponent("unified-broadcast.json")) }
+                guard let bid = args["id"] as? String, UUID(uuidString: bid) != nil else { throw UnifiedError("Invalid broadcast identity") }
+                if let group = ProbeShared.group(), try BroadcastContextStore.remove(group.url, expectedID: bid) { showPicker.wrappedValue = false }
                 reply(id, true)
             default:
                 io.async { [weak self] in
@@ -236,6 +274,9 @@ final class UnifiedCoordinator: NSObject, WKScriptMessageHandler, WKNavigationDe
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         for id in Array(receivers.keys) { removeReceiver(id) }
+        showPicker.wrappedValue = false
+        // A memory-evicted WKWebView is not a user stop. ReplayKit owns its
+        // capture/signaling in the separate extension and survives this reload.
         if let url = appURL { webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent()) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
@@ -260,19 +301,82 @@ struct Build54ScreenSurface: View {
 struct Build54Fullscreen: View {
     let receivers: [String: DesktopScreenReceiver]
     @State var selected: String
-    @Environment(\.dismiss) private var dismiss
+    let didSelect: (String) -> Void
+    let didExit: () -> Void
+    @State private var zoom: CGFloat = 1
+    @State private var pan = CGSize.zero
+    private func reset() { zoom = 1; pan = .zero }
+    private func bounded(_ value: CGSize, in size: CGSize) -> CGSize {
+        let value = ScreenViewport.offset(x: Double(value.width), y: Double(value.height), width: Double(size.width), height: Double(size.height), scale: Double(zoom))
+        return CGSize(width: value.x, height: value.y)
+    }
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            if let receiver = receivers[selected] { Build54ScreenSurface(receiver: receiver).ignoresSafeArea() }
+            GeometryReader { geometry in
+                if let receiver = receivers[selected] {
+                    ZStack {
+                        Build54ScreenSurface(receiver: receiver)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .scaleEffect(zoom).offset(pan)
+                        FullscreenViewerGestures(zoom: $zoom, pan: $pan, size: geometry.size)
+                    }.onChange(of: geometry.size) { size in pan = bounded(pan, in: size) }
+                }
+            }.clipped().ignoresSafeArea()
             HStack {
                 if receivers.count > 1 {
-                    Menu("방송 전환") { ForEach(receivers.keys.sorted(), id: \.self) { id in Button(String(id.prefix(8))) { selected = id } } }
+                    Menu("방송 전환") { ForEach(receivers.keys.sorted(), id: \.self) { id in Button(String(id.prefix(8))) { selected = id; didSelect(id) } } }
                 }
-                Button("전체화면 종료") { dismiss() }
+                Button("화면 맞춤 · \(Int(zoom * 100))%") { reset() }
+                Button("전체화면 종료") { didExit() }
             }.padding().background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 12)).padding()
-        }
+        }.onChange(of: selected) { _ in reset() }.onDisappear { reset(); didExit() }
     }
+}
+
+// UIKit recognizers also accept iPad trackpad scrolling; a SwiftUI drag alone
+// only covers direct dragging. The controls above this transparent layer retain
+// their own touches, and the video capture/decoder is never reconfigured.
+struct FullscreenViewerGestures: UIViewRepresentable {
+    @Binding var zoom: CGFloat
+    @Binding var pan: CGSize
+    let size: CGSize
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: FullscreenViewerGestures
+        private var startZoom: CGFloat = 1
+        private var startPan = CGSize.zero
+        init(_ parent: FullscreenViewerGestures) { self.parent = parent }
+        private func bound(_ value: CGSize) -> CGSize {
+            let position = ScreenViewport.offset(x: Double(value.width), y: Double(value.height), width: Double(parent.size.width), height: Double(parent.size.height), scale: Double(parent.zoom))
+            return CGSize(width: position.x, height: position.y)
+        }
+        @objc func pinch(_ recognizer: UIPinchGestureRecognizer) {
+            if recognizer.state == .began { startZoom = parent.zoom }
+            parent.zoom = CGFloat(ScreenViewport.scale(Double(startZoom * recognizer.scale)))
+            parent.pan = bound(parent.pan)
+        }
+        @objc func drag(_ recognizer: UIPanGestureRecognizer) {
+            if recognizer.state == .began { startPan = parent.pan; startZoom = parent.zoom }
+            let translation = recognizer.translation(in: recognizer.view)
+            if recognizer.numberOfTouches == 0 {
+                parent.zoom = CGFloat(ScreenViewport.scale(Double(startZoom) * exp(-Double(translation.y) * 0.002)))
+                parent.pan = bound(parent.pan); return
+            }
+            parent.pan = bound(CGSize(width: startPan.width + translation.x, height: startPan.height + translation.y))
+        }
+        func gestureRecognizer(_ first: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith second: UIGestureRecognizer) -> Bool { true }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(); view.backgroundColor = .clear
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pinch(_:)))
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.drag(_:)))
+        pinch.delegate = context.coordinator; pan.delegate = context.coordinator
+        pan.maximumNumberOfTouches = 2; pan.allowedScrollTypesMask = .all
+        view.addGestureRecognizer(pinch); view.addGestureRecognizer(pan)
+        return view
+    }
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.parent = self }
 }
 
 struct UnifiedError: LocalizedError { let message: String; init(_ message: String) { self.message = message }; var errorDescription: String? { message } }
@@ -313,7 +417,7 @@ final class UnifiedDisk {
                    let shared = try? Data(contentsOf: group.url.appendingPathComponent("shared-session.json")),
                    let latest = (try? JSONSerialization.jsonObject(with: shared)) as? [String: Any],
                    let stored = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                   (latest["user"] as? [String: Any])?["id"] as? String == (stored["user"] as? [String: Any])?["id"] as? String,
+                   BroadcastSessionIdentity.sameSession(latest, stored),
                    (latest["expires_at"] as? Double ?? 0) > (stored["expires_at"] as? Double ?? 0) {
                     let update: [String: Any] = [kSecValueData as String: shared]
                     guard SecItemUpdate(query as CFDictionary, update as CFDictionary) == errSecSuccess else { throw UnifiedError("공유 세션 저장 실패") }
@@ -328,8 +432,19 @@ final class UnifiedDisk {
             guard status == errSecSuccess else { throw UnifiedError("Keychain 저장 실패") }; return true
         }
         if command == "mediaStatus" {
-            guard let group = ProbeShared.group(), let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-diagnostics.json")), let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return ["active": false] }
-            return ["id": value["id"] ?? NSNull(), "active": value["state"] as? String == "active" && Date().timeIntervalSince1970 - (value["updatedAt"] as? Double ?? 0) < 20, "nativeSignaling": true]
+            guard let group = ProbeShared.group(), let data = try? Data(contentsOf: group.url.appendingPathComponent("unified-diagnostics.json")), let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return ["active": false, "nativeAuthRefreshOwner": false, "nativeSignaling": true] }
+            let now = Date().timeIntervalSince1970, age = now - (value["updatedAt"] as? Double ?? 0)
+            let active = value["state"] as? String == "active" && age >= 0 && age < 45
+            var refreshOwner = false
+            if active, let context = BroadcastContextStore.read(group.url),
+               let raw = (try? self.command("vaultGet", ["key": "session"])) as? String, let stored = raw.data(using: .utf8),
+               let session = (try? JSONSerialization.jsonObject(with: stored)) as? [String: Any] {
+                refreshOwner = BroadcastControlPolicy.refreshOwnedByExtension(now: now, diagnostics: value, context: context, session: session)
+            }
+            let explicitReason = value["stopReason"] as? String ?? ""
+            let reason = explicitReason.isEmpty && !active && value["state"] as? String == "active" ? "extension-status-timeout" : explicitReason
+            return ["id": value["id"] ?? NSNull(), "active": active, "nativeSignaling": true, "nativeAuthRefreshOwner": refreshOwner,
+                "stopReason": reason, "diagnosticAgeSeconds": max(0, age)]
         }
         if command == "diagnostics" {
             var result: [String: Any] = ["platform": "ios", "os": UIDevice.current.systemVersion, "version": ProbeShared.appVersion]

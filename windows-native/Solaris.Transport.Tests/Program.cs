@@ -46,6 +46,9 @@ using(var probe = new RtpViewer(Guid.NewGuid().ToString(),true,useStun:false)) {
     Check(offer.Contains("m=video")&&offer.Contains("H264/90000")&&offer.Contains("opus/48000/2"),"native SDP contains H264 and stereo Opus tracks");
     Check(!offer.Contains("m=application"),"native video does not use SCTP data channel");
     Check(offer.Contains("a=rtcp-fb:96 nack"),"RTP NACK and PLI advertised");
+    bool invalidAnswerRejected = false;
+    try { probe.Answer("fixture malformed SDP"); } catch (Exception) { invalidAnswerRejected = true; }
+    Check(invalidAnswerRejected, "native SDP parser rejects a malformed viewer answer (adapter must isolate this peer error)");
 }
 if (!args.Contains("--serve")) return;
 var path=args[Array.IndexOf(args,"--serve")+1];

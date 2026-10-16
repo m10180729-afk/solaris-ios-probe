@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -12,18 +13,35 @@ ROOT = Path(__file__).resolve().parents[1]
 UPLOADER = ROOT / "UPLOAD_GIT_BASH.sh"
 BASE_BRANCH = "codex/solaris-build58-20261011-210109-1852"
 SOURCE_DIRS = (".github", "ios", "receiver", "scripts", "tests", "docs",
-               "windows-native", "android", "shared", "backend")
+               "windows-native", "android", "shared", "backend", "supabase")
 
 
-@unittest.skipUnless(shutil.which("git") and shutil.which("bash") and shutil.which("tar"),
-                     "Git, Bash and tar are required")
+def bash_available():
+    """Finding bash.exe is insufficient when its MSYS runtime cannot start."""
+    if not all(shutil.which(tool) for tool in ("git", "bash", "tar")):
+        return False, "Git, Bash and tar are required"
+    try:
+        result = subprocess.run(["bash", "-c", "exit 0"], text=True, encoding="utf-8",
+                                capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, f"Bash runtime is unavailable: {error}"
+    if result.returncode:
+        status = f"0x{result.returncode & 0xffffffff:08X}" if os.name == "nt" else str(result.returncode)
+        return False, f"Bash runtime cannot initialize ({status}); local Git upload integration requires a working Bash"
+    return True, ""
+
+
+BASH_AVAILABLE, BASH_SKIP_REASON = bash_available()
+
+
+@unittest.skipUnless(BASH_AVAILABLE, BASH_SKIP_REASON)
 class UploadIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="solaris-uploader-test-")
         self.addCleanup(self.temporary.cleanup)
         self.folder = Path(self.temporary.name)
         self.env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
-                        GIT_TERMINAL_PROMPT="0", TMPDIR=str(self.folder))
+                        GIT_TERMINAL_PROMPT="0", TMPDIR=self.folder.as_posix())
         for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             self.env.pop(name, None)
         self.remote = self.folder / "remote.git"
@@ -35,7 +53,7 @@ class UploadIntegrationTests(unittest.TestCase):
         (self.seed / "README.md").write_text("build54\n", encoding="utf-8")
         self.commit_seed("main fixture")
         self.main_sha = self.git("rev-parse", "HEAD", cwd=self.seed).strip()
-        self.git("remote", "add", "origin", str(self.remote), cwd=self.seed)
+        self.git("remote", "add", "origin", self.remote.as_posix(), cwd=self.seed)
         self.git("push", "origin", "main", cwd=self.seed)
         self.git("checkout", "-b", BASE_BRANCH, cwd=self.seed)
         (self.seed / "shared").mkdir()
@@ -47,10 +65,12 @@ class UploadIntegrationTests(unittest.TestCase):
         # The production script is unchanged except for these four fixture
         # constants: the local remote, its real main/base SHAs, and branch name.
         script = UPLOADER.read_text(encoding="utf-8")
-        replacements = {"SOLARIS_REMOTE": str(self.remote), "SOLARIS_BASE_BRANCH": BASE_BRANCH,
+        replacements = {"SOLARIS_REMOTE": self.remote.as_posix(), "SOLARIS_BASE_BRANCH": BASE_BRANCH,
                         "SOLARIS_BASE_COMMIT": self.base_sha, "SOLARIS_MAIN_COMMIT": self.main_sha}
         for name, value in replacements.items():
-            script, count = re.subn(rf'^{name}="[^"\n]+"$', f'{name}="{value}"', script,
+            # A function keeps Windows backslashes out of re.sub replacement
+            # escape processing; shell quoting also preserves literal paths.
+            script, count = re.subn(rf'^{name}="[^"\n]+"$', lambda _match: f'{name}={shlex.quote(value)}', script,
                                     count=1, flags=re.MULTILINE)
             self.assertEqual(count, 1, f"missing uploader fixture constant {name}")
         self.downloads = self.folder / "download 폴더"
@@ -63,19 +83,19 @@ class UploadIntegrationTests(unittest.TestCase):
             directory = self.source / name
             directory.mkdir()
             (directory / ".keep").write_text("source fixture\n")
-        (self.source / "README.md").write_text("build61\n")
+        (self.source / "README.md").write_text("1.0\n")
         (self.source / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
         (self.source / "UPLOAD_GIT_BASH.sh").write_text(script, encoding="utf-8")
         (self.source / "package.json").write_text('{}\n')
         (self.source / "package-lock.json").write_text('{}\n')
-        (self.source / "shared" / "index.html").write_text("build61 media\n")
-        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '61'\n")
+        (self.source / "shared" / "index.html").write_text("1.0 media\n")
+        (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '68'\n")
         (self.source / "android" / "app").mkdir()
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 61\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 68\n")
 
     def git(self, *args, cwd=None):
         result = subprocess.run(["git", *args], cwd=cwd or self.folder, env=self.env,
-                                text=True, capture_output=True, timeout=20)
+                                text=True, encoding="utf-8", capture_output=True, timeout=20)
         if result.returncode:
             self.fail(f"Fixture Git failed: {result.stderr}")
         return result.stdout
@@ -91,10 +111,10 @@ class UploadIntegrationTests(unittest.TestCase):
 
     def run_upload(self, *args, default_source=False):
         script = self.source / "UPLOAD_GIT_BASH.sh" if default_source else self.script
-        command = ["bash", str(script), *args]
+        command = ["bash", script.as_posix(), *args]
         if not default_source:
-            command.append(str(self.source))
-        return subprocess.run(command, cwd=self.downloads, env=self.env, text=True,
+            command.append(self.source.as_posix())
+        return subprocess.run(command, cwd=self.downloads, env=self.env, text=True, encoding="utf-8",
                               capture_output=True, timeout=30)
 
     def test_upload_preserves_history_and_excludes_local_files(self):
@@ -109,7 +129,7 @@ class UploadIntegrationTests(unittest.TestCase):
         heads = self.heads()
         self.assertEqual(heads["main"], self.main_sha)
         self.assertEqual(heads[BASE_BRANCH], self.base_sha)
-        branches = [name for name in heads if name.startswith("codex/solaris-build61-")]
+        branches = [name for name in heads if name.startswith("codex/solaris-v1.0-")]
         self.assertEqual(len(branches), 1)
         branch = branches[0]
         self.assertEqual(self.git("--git-dir", str(self.remote), "rev-parse", f"{branch}^").strip(),
@@ -161,11 +181,11 @@ class UploadIntegrationTests(unittest.TestCase):
         (self.source / "ios" / "project.yml").write_text("CURRENT_PROJECT_VERSION: '56'\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("build61 소스용", result.stderr)
+        self.assertIn("1.0 소스용", result.stderr)
         self.assertEqual(len(self.heads()), 2)
 
     def test_wrong_android_build_is_rejected(self):
-        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 610\n")
+        (self.source / "android" / "app" / "build.gradle").write_text("versionCode 680\n")
         result = self.run_upload()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Android 소스 버전", result.stderr)

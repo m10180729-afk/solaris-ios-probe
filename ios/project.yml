@@ -7,8 +7,8 @@ settings:
   base:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
-    MARKETING_VERSION: '0.4.0'
-    CURRENT_PROJECT_VERSION: '61'
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '69'
     GENERATE_INFOPLIST_FILE: 'NO'
     CODE_SIGNING_ALLOWED: 'NO'
 targets:
@@ -25,6 +25,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.solaris.probe
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: App/Info.plist
         SWIFT_OBJC_BRIDGING_HEADER: App/SolarisApp-Bridging-Header.h
         CODE_SIGN_ENTITLEMENTS: Config/App.entitlements

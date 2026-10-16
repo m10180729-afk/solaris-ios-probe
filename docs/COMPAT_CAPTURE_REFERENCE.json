@@ -1,0 +1,6 @@
+{
+  "windows_capture_sha256": "950b96093884ae04c2098ebdabda7c7ccbc704aff879e038eec2ddad1d96718c",
+  "annex_b_parser_sha256": "9f7e6bb4324c58e3084cd184cfc80f42d0c990f9b656d574680f286a422e778e",
+  "reason": "Hardware-first capture adds low-latency CPU fallback; header-only H264 access units no longer count as frames. RTP, pacing and target media policies remain unchanged.",
+  "baseline_annex_b_parser_sha256": "1adeea54ee1c2fa1578492147f038e0bb32e0730c0ffef016296710daf468710"
+}

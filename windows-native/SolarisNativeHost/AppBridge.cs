@@ -13,16 +13,30 @@ internal sealed class AppBridge
     private readonly Build54RtpAdapter media;
     private readonly Action<string> notify;
     private readonly AuthBrowser auth;
+    private readonly WindowController window;
     private readonly SemaphoreSlim diskGate = new(1);
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private Dictionary<string, Entry> entries = new();
-    private FormWindowState savedState;
-    private FormBorderStyle savedBorder;
 
-    internal AppBridge(Form form, Build54RtpAdapter media, Action<string> notify, Action<object> emit)
+    internal AppBridge(Form form, Build54RtpAdapter media, Action<string> notify, Action<object> emit, WindowController window)
     {
-        this.form = form; this.media = media; this.notify = notify;
-        auth = new AuthBrowser(emit); form.FormClosed += (_, _) => auth.Dispose();
+        this.form = form; this.media = media; this.notify = notify; this.window = window;
+        auth = new AuthBrowser(value =>
+        {
+            if (form.IsDisposed || !form.IsHandleCreated) return;
+            try
+            {
+                form.BeginInvoke(new Action(() =>
+                {
+                    if (form.IsDisposed) return;
+                    if (form.WindowState == FormWindowState.Minimized) form.WindowState = FormWindowState.Normal;
+                    form.Activate();
+                    emit(value);
+                }));
+            }
+            catch (InvalidOperationException) { }
+        });
+        form.FormClosed += (_, _) => auth.Dispose();
         Directory.CreateDirectory(root);
         try { entries = JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(Path.Combine(root, "files.json"))) ?? new(); } catch (IOException) { } catch (JsonException) { }
     }
@@ -42,11 +56,21 @@ internal sealed class AppBridge
     internal async Task<object?> Command(string command, JsonElement a)
     {
         string S(string name) => a.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
-        if (command == "platform") return new { platform = "windows", version = Program.Version };
+        if (command == "platform") return new { platform = "windows", version = Program.Version, systemTitlebar = true, mediaSend = true, canPublish = true };
         if (command == "mediaStatus") return media.Snapshot();
+        if (command == "windowState") return window.Snapshot();
+        if (command == "copyText") {
+            string text = S("text");
+            if (System.Text.Encoding.UTF8.GetByteCount(text) > 65536) throw new ArgumentException("복사할 내용을 확인하세요.");
+            if (text.Length > 0) Clipboard.SetText(text); return true;
+        }
+        if (command == "windowMinimize") { window.Minimize(); return window.Snapshot(); }
+        if (command == "windowMaximize") { window.ToggleMaximize(); return window.Snapshot(); }
+        if (command == "windowClose") { form.BeginInvoke(new Action(form.Close)); return true; }
         if (command == "authListen") { auth.Listen(S("redirectTo")); return true; }
         if (command == "authOpen") { auth.Open(S("url")); return true; }
         if (command == "authTake") return auth.Take();
+        if (command == "authAck") return auth.Ack(S("url"));
         if (command == "authCancel") { auth.Cancel(); return true; }
         if (command is "vaultGet" or "vaultSet")
         {
@@ -112,8 +136,7 @@ internal sealed class AppBridge
         if (command == "fullscreen")
         {
             var enabled = a.GetProperty("enabled").GetBoolean();
-            if (enabled) { savedState = form.WindowState; savedBorder = form.FormBorderStyle; form.FormBorderStyle = FormBorderStyle.None; form.WindowState = FormWindowState.Maximized; }
-            else { form.FormBorderStyle = savedBorder; form.WindowState = savedState; } return true;
+            window.SetFullscreen(enabled); return window.Snapshot();
         }
         if (command == "notify") { notify(S("title") + " · " + S("body")); return true; }
         if (command == "diagnostics") { using var p = Process.GetCurrentProcess(); return new { platform = "windows", os = Environment.OSVersion.VersionString, version = Program.Version, memoryBytes = p.WorkingSet64, cpuSeconds = p.TotalProcessorTime.TotalSeconds, uptimeSeconds = clock.Elapsed.TotalSeconds }; }

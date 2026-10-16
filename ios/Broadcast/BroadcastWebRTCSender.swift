@@ -16,6 +16,8 @@ final class BroadcastWebRTCSender: NSObject {
     private let directory: URL?
     private let queue = DispatchQueue(label: "org.solaris.probe.webrtc")
     private let frameGate = NSLock()
+    private let telemetryGate = NSLock()
+    private var captureSnapshot: [String: Any] = [:]
     private let factory: RTCPeerConnectionFactory
     private let appAudioDevice: SolarisReplayKitAudioDevice
     private let source: RTCVideoSource
@@ -370,19 +372,13 @@ final class BroadcastWebRTCSender: NSObject {
     func unifiedScreenSDP(_ sdp: String) -> String { screenAnswerSDP(sdp) }
 
     func unifiedFramesReady() -> Bool {
-        queue.sync { !stopped && diagnostics.framesSubmitted > 0 }
+        telemetryGate.lock(); defer { telemetryGate.unlock() }
+        return (captureSnapshot["framesSubmitted"] as? Int ?? 0) > 0
     }
 
     func unifiedCaptureDiagnostics() -> [String: Any] {
-        queue.sync {
-            ["callbackFPS": diagnostics.callbackFPS,
-             "submittedFPS": diagnostics.submittedFPS,
-             "framesSubmitted": diagnostics.framesSubmitted,
-             "sourceWidth": diagnostics.sourceWidth, "sourceHeight": diagnostics.sourceHeight,
-             "outputWidth": diagnostics.outputWidth, "outputHeight": diagnostics.outputHeight,
-             "format": diagnostics.outputFormat, "senderQueueDrops": diagnostics.senderQueueDrops,
-             "engine": "build54 ReplayKit / H264 VideoToolbox"]
-        }
+        telemetryGate.lock(); defer { telemetryGate.unlock() }
+        return captureSnapshot
     }
 
     private func applyAudioSenderPolicy() {
@@ -525,6 +521,13 @@ final class BroadcastWebRTCSender: NSObject {
         guard force || now - lastWrite >= 1 else { return }
         lastWrite = now
         diagnostics.updatedAt = Date().timeIntervalSince1970
+        telemetryGate.lock()
+        captureSnapshot = ["callbackFPS": diagnostics.callbackFPS, "submittedFPS": diagnostics.submittedFPS,
+            "framesSubmitted": diagnostics.framesSubmitted, "sourceWidth": diagnostics.sourceWidth,
+            "sourceHeight": diagnostics.sourceHeight, "outputWidth": diagnostics.outputWidth,
+            "outputHeight": diagnostics.outputHeight, "format": diagnostics.outputFormat,
+            "senderQueueDrops": diagnostics.senderQueueDrops, "engine": "ReplayKit / H264 VideoToolbox"]
+        telemetryGate.unlock()
         if let directory {
             do { try ProbeShared.write(diagnostics, name: ProbeShared.diagnosticsName, directory: directory) }
             catch { NSLog("Solaris diagnostics write failed: %@", error.localizedDescription) }

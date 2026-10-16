@@ -20,7 +20,7 @@ let browser, page, sender;
 const errors=[];
 let work=Promise.resolve();
 try {
-  browser=await chromium.launch({headless:true,args:[
+  browser=await chromium.launch({headless:true,...(process.env.SOLARIS_BROWSER_EXECUTABLE?{executablePath:process.env.SOLARIS_BROWSER_EXECUTABLE}:{}),args:[
     '--disable-background-timer-throttling','--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows','--disable-features=WebRtcHideLocalIpsWithMdns']});
   const context=await browser.newContext();

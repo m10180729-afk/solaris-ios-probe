@@ -1,5 +1,5 @@
 import{test}from'node:test';import assert from'node:assert/strict';
-import{Media,qualityGrade}from'../shared/media.mjs';
+import{Media,qualityGrade,CONNECTION_LIMITS}from'../shared/media.mjs';
 import{Transfers,validOffer}from'../shared/files.mjs';
 import{MAX_FILE_BYTES}from'../shared/platform.mjs';
 import{DirectMessages}from'../shared/chat.mjs';
@@ -12,7 +12,20 @@ test('stop watching immediately removes the surface even when native and server 
 test('publisher controls recover before remote broadcast-stop returns',async()=>{const f=mediaFixture();try{let stopped=0;const gate=deferred();f.media.broadcast={id:ID,transport:'native'};f.media.stream={getTracks:()=>[{stop(){stopped++}}]};f.api.rpc=()=>gate.promise;f.bridge.call=()=>gate.promise;let event;f.media.addEventListener('broadcast',e=>event=e.detail);const stop=f.media.stop();assert.equal(stopped,1);assert.equal(event,null);assert.equal(f.media.broadcast,null);gate.resolve(true);await stop;}finally{f.media.close();}});
 test('closing while native start is pending cannot recreate a video surface',async()=>{const f=mediaFixture();const gate=deferred(),original=f.bridge.call;f.bridge.call=(c,a)=>c==='mediaReceiveStart'?gate.promise:original(c,a);let tracks=0;f.media.addEventListener('track',()=>tracks++);const watch=f.media.watch(f.b);await new Promise(r=>setImmediate(r));f.media.close();gate.resolve(true);await watch;assert.equal(tracks,0);assert.equal(f.media.watching.size,0);});
 test('a healthy static native image is not mistaken for a failed stream',async()=>{const f=mediaFixture();try{await f.media.watch(f.b);const w=f.media.watching.get(ID),n=f.media.nativeReceivers.get(ID);w.frames=12;w.lastFrame=Date.now()-60000;w.lastJoin=Date.now()-60000;n.stats={state:'connected',active:true,frames:12,fps:0};const count=f.calls.length;await f.media.tickNative(ID,w,n);assert.equal(f.calls.length,count);assert.equal(f.media.nativeReceivers.get(ID),n);}finally{f.media.close();}});
-test('repeated recovery failure stops automatic viewing and emits a retry state',async()=>{const f=mediaFixture();try{await f.media.watch(f.b);const w=f.media.watching.get(ID);w.retries=2;w.lastFrame=Date.now()-21000;let failed;f.media.addEventListener('view-failed',e=>failed=e.detail);await f.media.tick();assert.equal(failed.id,ID);assert.equal(f.media.watching.size,0);}finally{f.media.close();}});
+test('repeated native recovery failures retain consent for a bounded window then stop automatic viewing',async()=>{
+ const f=mediaFixture(),realNow=Date.now;let now=realNow();Date.now=()=>now;
+ try{
+  await f.media.watch(f.b);const w=f.media.watching.get(ID),original=f.bridge.call,states=[];let attempts=0,failed;
+  f.media.addEventListener('state',e=>states.push(e.detail));f.media.addEventListener('view-failed',e=>failed=e.detail);
+  f.bridge.call=async(command,args)=>{if(command==='mediaReceiveStart'){attempts++;throw Error('recovery receiver unavailable');}return original(command,args);};
+  w.lastFrame=now-CONNECTION_LIMITS.firstFrameTimeout-1;await f.media.tick();await w.recoveryPending;const recoveryStarted=w.recoveryStarted;
+  assert.equal(f.media.watching.get(ID),w);assert.equal(failed,undefined);assert.equal(attempts,1);
+  for(let attempt=1;attempt<CONNECTION_LIMITS.maxRecoveries;attempt++){now+=CONNECTION_LIMITS.retryInterval;await f.media.tick();await w.recoveryPending;}
+  assert.equal(attempts,CONNECTION_LIMITS.maxRecoveries);assert(states.some(s=>s.id===ID&&s.state==='reconnecting'));
+  now=recoveryStarted+CONNECTION_LIMITS.recoveryTimeout-1;await f.media.tick();assert.equal(f.media.watching.get(ID),w);assert.equal(attempts,CONNECTION_LIMITS.maxRecoveries);assert.equal(failed,undefined);
+  now++;await f.media.tick();assert.equal(failed.id,ID);assert.equal(f.media.watching.size,0);assert.equal(f.media.nativeReceivers.size,0);assert.equal(attempts,CONNECTION_LIMITS.maxRecoveries);assert(f.calls.some(c=>c.c==='mediaReceiveStop'));
+ }finally{Date.now=realNow;f.media.close();}
+});
 test('one pending diagnostics tick prevents overlapping polling work',async()=>{const f=mediaFixture();const gate=deferred();let calls=0;f.media.broadcast={id:ID,transport:'replaykit',started:Date.now(),pending:true};f.bridge.call=()=>{calls++;return gate.promise};const first=f.media.tick();await f.media.tick();assert.equal(calls,1);gate.resolve({active:true,id:ID});await first;f.media.close();});
 test('unknown native network metrics never claim blue quality',()=>{assert.equal(qualityGrade({active:true,state:'connected',frames:10,qualityMeasured:false}).color,'black');});
 test('file limit rejects 1GiB and oversized metadata before reading or hashing',async()=>{const offer={id:ID,name:'video.mp4',size:MAX_FILE_BYTES};assert(validOffer(offer));assert(!validOffer({...offer,size:MAX_FILE_BYTES+1}));assert(!validOffer({...offer,size:1024**3}));let hashed=0;const t=new Transfers({session:{user:{id:'me'}}},{hash:async()=>hashed++},{},[]);await assert.rejects(t.offer('friend',{kind:'friend',id:'friend'},{id:ID,size:1024**3,name:'video.mp4'}),/100MiB/);assert.equal(hashed,0);t.close();});

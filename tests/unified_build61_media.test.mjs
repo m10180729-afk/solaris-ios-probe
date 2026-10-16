@@ -20,7 +20,7 @@ test('cancel while the start RPC is pending removes its late broadcast',async t=
 });
 test('an old heartbeat response cannot stop a replacement broadcast',async t=>{
  const{media,api}=fixture();t.after(()=>media.close());const gate=deferred(),ready=deferred();api.rpc=async action=>{if(action==='broadcast_touch'){ready.resolve();return gate.promise;}return true;};
- media.broadcast={id:'old',transport:'browser'};const pending=media.tick();await ready.promise;const next={id:'new',transport:'browser'};media.broadcast=next;gate.resolve(false);await pending;assert.equal(media.broadcast,next);
+ media.broadcast={id:'old',transport:'browser'};const pending=media.controlTick();await ready.promise;const next={id:'new',transport:'browser'};media.broadcast=next;gate.resolve(false);await pending;assert.equal(media.broadcast,next);
 });
 test('native stop is serialized across engine replacement using the same bridge',async t=>{
  const bridge=new EventTarget(),gate=deferred(),ready=deferred(),commands=[];bridge.native=true;bridge.call=async(command,args)=>{commands.push({command,args});if(command==='mediaStop'&&args.id==='old'){ready.resolve();await gate.promise;}return command==='platform'?{platform:'windows',nativeSignaling:true}:true;};

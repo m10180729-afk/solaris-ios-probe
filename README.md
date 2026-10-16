@@ -1,31 +1,15 @@
-# Solaris 0.4.0 build61
+# Solaris 1.0
 
-Discord와 함께 사용하는 Windows·Android·iOS·iPadOS 화면공유 및 일반 파일 전송 앱이다. Google OAuth PKCE와 기존 UID 계정 연결, 이메일 로그인·복구, 프로필 소개, 중복 방송 방지, PC·모바일 Discord형 UI를 추가했다.
+Google 계정으로 가입하고 로그인하는 Windows·Android·iPhone·iPad용 화면공유·메시지·파일 전송 앱입니다.
 
-- [적용·Google·Supabase·메일·Git Bash 안내](docs/START_BUILD61_KO.md)
-- [구현·실제 검증 범위·미검증 항목](docs/BUILD61_STATUS_KO.md)
-- [Android 별도 작업 병합 안내](docs/CONTINUE_BUILD61_KO.md)
+Windows와 iPad는 화면을 보내고 받을 수 있고 Android는 시청 전용입니다. 공유 화면 확대·축소, 시청자별 연결 진단, 서버와 개인 메시지, 프로필 ID 변경, 접속 상태 선택, 서버 멤버 초대, 로그아웃과 회원 탈퇴를 제공합니다.
 
-기존 DB는 003_build60_dm.sql 다음 004_build61_accounts_broadcast.sql을 적용한다. 기존 DB에 001_solaris.sql을 재실행하거나 테이블을 삭제하지 않는다. Google·Redirect URLs·Manual Linking·SMTP는 소유자의 설정이 필요하다.
+상단의 화면공유 시작 버튼을 누르면 친구 대화·현재 채널에서 추가 요청 수락 없이 시청합니다. Windows는 GPU 실패 시 CPU H.264 호환 모드를 사용합니다.
 
-소스 ZIP 전체를 압축 해제한 폴더에서 Git Bash로 실행한다.
+일시적인 연결 손실에는 제한된 재연결을 시도하며, 복구되지 않는 연결은 자동 종료합니다. 한 시청자의 오류나 느린 신호·영상 통계 조회가 전체 송출을 종료하지 않도록 연결 처리를 분리했습니다. iPad의 방송 유지·인증 갱신은 공유 컨텍스트와 계정 세션을 확인합니다.
 
-```bash
-bash UPLOAD_GIT_BASH.sh
-```
+[설치와 사용 안내](docs/SOLARIS_1_0_KO.md)를 참고하세요. 앱 화면과 배포 파일에는 공개 버전 1.0을 사용합니다. 플랫폼 업데이트 순서를 위한 내부 버전 코드는 별도로 유지합니다.
 
-업로더는 기존 이력을 확인하고 build61 검토 브랜치를 만든다. Actions에서 Windows 설치 EXE, Android APK, iOS 재서명 후보 IPA를 빌드한다. main 강제 덮어쓰기·공식 릴리스는 자동으로 하지 않는다.
+소스 업로드는 압축을 푼 폴더에서 `bash UPLOAD_GIT_BASH.sh`로 실행합니다. 자동 검증은 플랫폼 컴파일, 권한·계정·영상 연결 회귀, 원본 파일의 전송 무결성, 패키지 리소스와 서명을 확인합니다. Android 배포용 APK는 CI의 release 출력에 보존된 개발자 키로 서명합니다. 서명 키·비밀번호와 개인 자격 증명은 저장소나 소스 ZIP에 포함하지 않습니다.
 
-공통 UI 원본은 shared다. python3 scripts/prepare_unified.py로 Android/iOS 리소스를 생성하며 Windows도 shared를 포함한다.
-
-```bash
-npm ci
-npm test
-npm run test:database
-node scripts/unified_ui_test.mjs
-python3 scripts/check_build54_engine.py
-python3 scripts/check_build54_capture.py
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-실제 고화질/FPS·Android capture/crash·메일 도착·Google 계정·iOS 전체 빌드는 별도 검증이 필요하다. 음성통화는 없으며 일반 파일 상한은 100MiB다. docs의 build55–60 문서는 이전 기록이다.
+기존 서비스에는 DB 마이그레이션 001·003·004·005·006·007·008을 적용 순서대로 관리하며, 사용자 데이터를 삭제하거나 초기화하지 않습니다. 이전 변경 문서는 개발 이력으로 보관합니다. Google 전용 인증에는 SMTP 설정이 필요하지 않습니다.

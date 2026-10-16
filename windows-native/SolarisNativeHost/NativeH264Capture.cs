@@ -44,7 +44,7 @@ internal sealed class NativeH264Capture : IDisposable
         foreach (var encoder in OrderEncoders(EncoderCandidates(options), preferredEncoder))
         {
             token.ThrowIfCancellationRequested();
-            onStatus("probing", $"{encoder.Name} 하드웨어 인코더 확인 중", encoder.Name);
+            onStatus("probing", $"{encoder.Name} 인코더 확인 중", encoder.Name);
             var firstFrame = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var startInfo = new ProcessStartInfo
             {
@@ -64,8 +64,10 @@ internal sealed class NativeH264Capture : IDisposable
             {
                 if (!string.IsNullOrWhiteSpace(e.Data))
                 {
-                    if (stderr.Length > 4000) stderr.Remove(0, Math.Min(2000, stderr.Length));
-                    stderr.AppendLine(e.Data);
+                    lock (stderr) {
+                        if (stderr.Length > 4000) stderr.Remove(0, Math.Min(2000, stderr.Length));
+                        stderr.AppendLine(e.Data);
+                    }
                 }
             };
 
@@ -88,9 +90,10 @@ internal sealed class NativeH264Capture : IDisposable
                     }, TaskScheduler.Default);
                     return;
                 }
-                failures.Add($"{encoder.Name}: {LastUsefulLine(stderr.ToString())}");
                 StopProcess(candidate);
                 try { await reader.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
+                try { await candidate.WaitForExitAsync(token); candidate.WaitForExit(); } catch { }
+                lock (stderr) failures.Add($"{encoder.Name}: {LastUsefulLine(stderr.ToString())}");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -114,7 +117,7 @@ internal sealed class NativeH264Capture : IDisposable
 
         var detail = string.Join(" | ", failures.Where(value => !string.IsNullOrWhiteSpace(value)));
         throw new InvalidOperationException(
-            "이 PC에서 사용할 수 있는 H.264 하드웨어 인코더를 찾지 못했습니다." +
+            "화면 캡처 또는 H.264 인코더를 시작하지 못했습니다. 그래픽 드라이버와 화면 잠금 상태를 확인하세요." +
             (detail.Length > 0 ? "\n" + detail : ""));
     }
 
@@ -191,16 +194,23 @@ internal sealed class NativeH264Capture : IDisposable
         yield return ("Intel Quick Sync", $"{common.Replace("-bsf:v", "-c:v h264_qsv -preset veryfast -look_ahead 0 -forced_idr 1 -repeat_pps 1 -bsf:v")}");
         yield return ("AMD AMF", $"{common.Replace("-bsf:v", "-c:v h264_amf -usage lowlatency_high_quality -quality speed -rc vbr_peak -bsf:v")}");
         yield return ("Windows Media Foundation", $"{common.Replace("-bsf:v", "-c:v h264_mf -hw_encoding 1 -rate_control cbr -bsf:v")}");
+        // Keep the same H.264 transport, dimensions and requested frame rate
+        // on machines without a usable hardware encoder (including remote PCs).
+        yield return ("CPU 호환 모드", common.Replace("format=nv12", "format=yuv420p").Replace("-bsf:v",
+            "-c:v libx264 -preset ultrafast -tune zerolatency -threads 4 -x264-params aud=1:repeat-headers=1:scenecut=0 -bsf:v"));
     }
 
     internal static IEnumerable<(string Name, string Arguments)> OrderEncoders(
         IEnumerable<(string Name, string Arguments)> candidates, string? preferred) =>
         candidates.OrderByDescending(candidate => candidate.Name == preferred);
 
-    private static string LastUsefulLine(string text)
+    internal static string LastUsefulLine(string text)
     {
         var line = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault(value => !value.Contains("frame=", StringComparison.OrdinalIgnoreCase));
+            .LastOrDefault(value => !value.Contains("frame=", StringComparison.OrdinalIgnoreCase)
+                && !value.Contains("Nothing was written", StringComparison.OrdinalIgnoreCase)
+                && !value.Contains("Conversion failed", StringComparison.OrdinalIgnoreCase)
+                && !value.Contains("Output file is empty", StringComparison.OrdinalIgnoreCase));
         return string.IsNullOrWhiteSpace(line) ? "초기 프레임 없음" : line.Trim();
     }
 
@@ -217,7 +227,7 @@ internal sealed class AnnexBAccessUnitParser
     private readonly Action<byte[], bool> emit;
     private byte[] pending = Array.Empty<byte>();
     private readonly MemoryStream accessUnit = new();
-    private bool keyFrame, hasSps, hasPps;
+    private bool keyFrame, hasSps, hasPps, hasVideoSlice;
     private byte[]? sps, pps;
 
     internal AnnexBAccessUnitParser(Action<byte[], bool> emit) => this.emit = emit;
@@ -254,12 +264,16 @@ internal sealed class AnnexBAccessUnitParser
         if (type == 7) { sps = nal.ToArray(); hasSps = true; }
         if (type == 8) { pps = nal.ToArray(); hasPps = true; }
         if (type == 5) keyFrame = true;
+        if (type is >= 1 and <= 5) hasVideoSlice = true;
         accessUnit.Write(nal);
     }
 
     private void Flush()
     {
         if (accessUnit.Length == 0) return;
+        // FFmpeg can put SPS/PPS before the first AUD. Configuration alone is
+        // not a frame and must not mark capture ready or enter the RTP clock.
+        if (!hasVideoSlice) { accessUnit.SetLength(0); keyFrame = hasSps = hasPps = false; return; }
         // A late-joining/recovering viewer needs the parameter sets with its IDR,
         // even if this hardware encoder emitted them only at stream startup.
         using var complete = new MemoryStream();
@@ -268,7 +282,7 @@ internal sealed class AnnexBAccessUnitParser
         complete.Write(accessUnit.ToArray());
         emit(complete.ToArray(), keyFrame);
         accessUnit.SetLength(0);
-        keyFrame = hasSps = hasPps = false;
+        keyFrame = hasSps = hasPps = hasVideoSlice = false;
     }
 
     private static List<int> FindStartCodes(ReadOnlySpan<byte> data)

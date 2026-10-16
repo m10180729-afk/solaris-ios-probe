@@ -27,6 +27,10 @@ jobs:
         run: |
           dotnet build windows-native/Solaris.Transport.Tests -c Release
           dotnet windows-native/Solaris.Transport.Tests/bin/Release/net8.0/Solaris.Transport.Tests.dll
+      - name: Test native adapter session and viewer isolation
+        run: dotnet run --project windows-native/Solaris.Adapter.Tests -c Release
+      - name: Test hardware and CPU capture selection
+        run: dotnet run --project windows-native/Solaris.Capture.Tests -c Release
       - name: Generate H264 interoperability fixture
         run: |
           sudo apt-get update
@@ -42,7 +46,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build61-rtp-test-evidence
+          name: Solaris-1.0-rtp-test-evidence
           path: build/rtp-diagnostics/
           if-no-files-found: warn
           retention-days: 7
@@ -62,6 +66,11 @@ jobs:
         shell: pwsh
         run: |
           dotnet run --project windows-native/Solaris.Auth.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project windows-native/Solaris.Window.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project windows-native/Solaris.Adapter.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet run --project windows-native/Solaris.Transport.Tests -c Release -- --unit-only
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build self-contained Solaris Windows sender
@@ -78,6 +87,8 @@ jobs:
           if (-not $ffmpeg) { throw "ffmpeg.exe not found" }
           Copy-Item $ffmpeg.FullName dist/native/ffmpeg.exe
           Copy-Item windows-native/THIRD_PARTY_NOTICES.txt dist/native/THIRD_PARTY_NOTICES.txt
+          dotnet run --project windows-native/Solaris.Capture.Tests -c Release -- "$((Resolve-Path dist/native/ffmpeg.exe).Path)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify integrated package
         shell: pwsh
         run: |
@@ -95,10 +106,10 @@ jobs:
       - name: Upload Windows Solaris app
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Windows-build61
+          name: Solaris-Windows-1.0
           path: |
             dist/native/
-            dist/windows/Solaris-Windows-build61-Setup.exe
+            dist/windows/Solaris-Windows-1.0-Setup.exe
           if-no-files-found: error
           retention-days: 7
   browser-test:
@@ -129,7 +140,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Solaris-build61-unified-test-evidence
+          name: Solaris-1.0-unified-test-evidence
           path: |
             build/build54-capture-evidence/results.json
             build/build54-engine-evidence/results.json
@@ -164,16 +175,50 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build integrated Android app
         run: |
+          set -o pipefail
           python3 scripts/prepare_android_receiver.py
           python3 scripts/prepare_unified.py
-          gradle -p android :app:testDebugUnitTest :app:assembleDebug
+          gradle -p android :app:testDebugUnitTest :app:assembleRelease
           mkdir -p dist/android
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/android/Solaris-Android-build61-debug.apk
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk dist/android/Solaris-Android-1.0-unsigned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" dist/android/apksigner.jar
+          sha256sum dist/android/apksigner.jar > dist/android/apksigner.jar.sha256
+          printf "%s\n" "Unsigned release APK; signed locally with the persistent Solaris release key after CI verification." > dist/android/Solaris-Android-1.0-signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/android/Solaris-Android-1.0-unsigned.apk > dist/android/Solaris-Android-1.0-metadata.txt
+          python3 -m unittest discover -s tests -p 'test_android_pages.py' -v 2>&1 | tee dist/android/Solaris-Android-1.0-16kb-tests.txt
+          SOLARIS_ELF_EXIT=0
+          python3 scripts/check_android_pages.py --phone-apk --receive-only --apk dist/android/Solaris-Android-1.0-unsigned.apk --output dist/android/Solaris-Android-1.0-16kb-elf.json || SOLARIS_ELF_EXIT=$?
+          SOLARIS_ZIP_EXIT=0
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 dist/android/Solaris-Android-1.0-unsigned.apk > dist/android/Solaris-Android-1.0-16kb-zip.txt || SOLARIS_ZIP_EXIT=$?
+          if [ "$SOLARIS_ELF_EXIT" -ne 0 ] || [ "$SOLARIS_ZIP_EXIT" -ne 0 ]; then exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: Solaris-Android-build61-debug
-          path: dist/android/Solaris-Android-build61-debug.apk
+          name: Solaris-Android-1.0-packaging
+          path: |
+            dist/android/Solaris-Android-1.0-unsigned.apk
+            dist/android/Solaris-Android-1.0-signature.txt
+            dist/android/Solaris-Android-1.0-metadata.txt
+            dist/android/Solaris-Android-1.0-16kb-elf.json
+            dist/android/Solaris-Android-1.0-16kb-zip.txt
+            dist/android/Solaris-Android-1.0-16kb-tests.txt
           if-no-files-found: error
+          retention-days: 7
+      - name: Keep Android test and signing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Solaris-Android-1.0-test-evidence
+          path: |
+            android/app/build/test-results/testDebugUnitTest/
+            android/app/build/reports/tests/testDebugUnitTest/
+            dist/android/apksigner.jar
+            dist/android/apksigner.jar.sha256
+            dist/android/Solaris-Android-1.0-signature.txt
+            dist/android/Solaris-Android-1.0-metadata.txt
+            dist/android/Solaris-Android-1.0-16kb-elf.json
+            dist/android/Solaris-Android-1.0-16kb-zip.txt
+            dist/android/Solaris-Android-1.0-16kb-tests.txt
+          if-no-files-found: warn
           retention-days: 7
   build:
     needs: [browser-test, native-rtp-test]
@@ -209,13 +254,17 @@ jobs:
           build/config-tests
           swiftc ios/Shared/ProcessMetrics.swift tests/ProcessMetricsTests.swift -o build/process-metrics-tests
           build/process-metrics-tests
+          swiftc -parse-as-library ios/Shared/AuthCallback.swift tests/AuthCallbackTests.swift -o build/auth-callback-tests
+          build/auth-callback-tests
+          swiftc -parse-as-library ios/Shared/BroadcastLifetime.swift ios/Tests/BroadcastLifetimeTests.swift -o build/broadcast-lifetime-tests
+          build/broadcast-lifetime-tests
       - name: Build and package for local re-signing
         run: bash scripts/build_ios.sh
       - name: Keep actual Xcode project and build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-build61-xcode-evidence
+          name: Solaris-1.0-xcode-evidence
           path: |
             build/diagnostics/
             build/package.*/Build.xcresult/
@@ -224,9 +273,9 @@ jobs:
       - name: Upload re-signing candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-0.4.0-build61-integrated
+          name: Solaris-iPad-1.0
           path: |
-            dist/Solaris-0.4.0-build61-resign.ipa
+            dist/Solaris-1.0.ipa
             dist/START_HERE_KO.md
           if-no-files-found: error
           retention-days: 3
